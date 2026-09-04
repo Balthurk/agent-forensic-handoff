@@ -29,12 +29,38 @@ export async function installSkill({ target = "codex", explicitPath = null, forc
       const same = await treesEqual(SKILL_SOURCE, destination);
       if (same) { results.push({ destination, status: "UNCHANGED" }); continue; }
       if (!force) throw new Error(`Skill already exists with different content: ${destination}. Re-run with --force to replace that exact skill folder.`);
-      fs.rmSync(destination, { recursive: true, force: true });
+      await atomicReplaceTree(SKILL_SOURCE, destination);
+      results.push({ destination, status: "REPLACED_ATOMICALLY" });
+      continue;
     }
     fs.cpSync(SKILL_SOURCE, destination, { recursive: true, force: false, errorOnExist: true });
     results.push({ destination, status: "INSTALLED" });
   }
   return results;
+}
+
+async function atomicReplaceTree(source, destination) {
+  const parent = path.dirname(destination);
+  const name = path.basename(destination);
+  const nonce = `${process.pid}-${Date.now()}`;
+  const stage = path.join(parent, `.${name}.stage-${nonce}`);
+  const backup = path.join(parent, `.${name}.backup-${nonce}`);
+  fs.cpSync(source, stage, { recursive: true, force: false, errorOnExist: true });
+  if (!await treesEqual(source, stage)) {
+    fs.rmSync(stage, { recursive: true, force: true });
+    throw new Error(`Staged skill verification failed for ${destination}`);
+  }
+  fs.renameSync(destination, backup);
+  try {
+    fs.renameSync(stage, destination);
+    if (!await treesEqual(source, destination)) throw new Error(`Activated skill verification failed for ${destination}`);
+  } catch (error) {
+    try { if (fs.existsSync(destination)) fs.rmSync(destination, { recursive: true, force: true }); } catch {}
+    try { if (fs.existsSync(backup)) fs.renameSync(backup, destination); } catch {}
+    try { if (fs.existsSync(stage)) fs.rmSync(stage, { recursive: true, force: true }); } catch {}
+    throw error;
+  }
+  fs.rmSync(backup, { recursive: true, force: true });
 }
 
 async function treesEqual(left, right) {

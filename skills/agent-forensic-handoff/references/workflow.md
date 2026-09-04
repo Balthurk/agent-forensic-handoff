@@ -2,7 +2,7 @@
 
 ## 1. Establish the evidence boundary
 
-Record what was requested: exact native ID, path, harness hint, expected workspace, and whether child sessions should be included. `afh audit` includes children by default when a supported state store exposes explicit parent/child edges.
+Record what was requested: exact native ID, path, harness hint, expected workspace, and whether child sessions should be included. `afh audit` includes children by default from supported state-store edges and exact successful task/fork/subagent identifiers observed in the acquired records. Closure is cycle-safe and bounded.
 
 Accept an ID only when it resolves unambiguously. A session ID is a locator into available local state, not a universal cloud retrieval token.
 
@@ -16,7 +16,7 @@ afh audit <id-or-path> [--harness auto] [--workspace /current/project]
 
 The case path is printed. If the source and semantic configuration are unchanged, the existing completed case is reused. Use a separate `--case-dir` only for controlled evaluation or export workflows.
 
-Never delete an existing case merely to suppress a discrepancy. Cases are snapshots at their recorded verification time.
+Never delete or modify an existing case merely to suppress a discrepancy. Cases are snapshots at their recorded verification time. Use `afh verify-case <case-dir>` after creation or transfer; any failed finding blocks reliance on that case.
 
 ## 3. Triage the receipt
 
@@ -37,7 +37,7 @@ Otherwise continue with the gaps explicitly represented.
 
 - **Hot:** `hot-context.md`, normally at most 6,000 estimated tokens. Mission, current state, open work, active decisions, live artifacts, failures, external influences, unknowns, next safe action.
 - **Warm:** focused ledgers in `views/` and FTS queries. Use for phase-level reconstruction.
-- **Cold:** canonical source records and content-addressed blobs. Retrieve only exact records required to verify a claim.
+- **Cold:** canonical source records plus content-addressed derived blobs. Event input/output values are recovered from the registered source record; retrieve only exact records required to verify a claim.
 
 If hot context reaches its budget, that is a retrieval instruction, not permission to omit uncertainty.
 

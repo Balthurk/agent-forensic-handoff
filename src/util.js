@@ -9,10 +9,13 @@ export function sha256(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
 
-export async function hashFile(filePath) {
+export async function hashFile(filePath, byteLimit = null) {
   const hash = crypto.createHash("sha256");
-  const stream = fs.createReadStream(filePath);
-  for await (const chunk of stream) hash.update(chunk);
+  if (byteLimit === 0) return hash.digest("hex");
+  const stream = fs.createReadStream(filePath, byteLimit == null ? {} : { start: 0, end: byteLimit - 1 });
+  let bytes = 0;
+  for await (const chunk of stream) { hash.update(chunk); bytes += chunk.length; }
+  if (byteLimit != null && bytes !== byteLimit) throw new Error(`Source became shorter during acquisition: expected ${byteLimit} bytes, read ${bytes}`);
   return hash.digest("hex");
 }
 
@@ -90,7 +93,23 @@ export function redactText(input) {
       return `[REDACTED:${kind}:${shortHash(match, 8)}]`;
     });
   }
+  const assignment = /\b(password|passwd|secret|api[_-]?key|access[_-]?token|auth[_-]?token)\s*([:=])\s*(["']?)([^\s,"']{8,})/gi;
+  text = text.replace(assignment, (match, name, separator, quote, value) => {
+    if (!credibleCredentialAssignment({ separator, quote, value })) return match;
+    const fingerprint = shortHash(match, 12);
+    findings.push({ kind: "credential-assignment", fingerprint });
+    return `[REDACTED:credential-assignment:${fingerprint.slice(0, 8)}]`;
+  });
   return { text, findings };
+}
+
+function credibleCredentialAssignment({ separator, quote, value }) {
+  const candidate = String(value).replace(/[);}\]]+$/, "");
+  if (!candidate || /^(?:null|none|undefined|unknown|unavailable|redacted|placeholder|example|changeme|not[-_]?set)$/i.test(candidate)) return false;
+  if (/^(?:\$\{|\$env:|%[A-Z0-9_]+%|process\.env\.|os\.environ|env\(|getenv\()/i.test(candidate)) return false;
+  if (!quote && separator === ":" && /^[A-Z][A-Za-z0-9_.<>\[\]|]*$/.test(candidate)) return false;
+  if (!quote && /^(?:Secret|Password|Token|Credential|ApiKey)[A-Za-z0-9_.<>\[\]|]*$/.test(candidate)) return false;
+  return true;
 }
 
 export function preview(input, maxChars = 1200) {

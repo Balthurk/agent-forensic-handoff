@@ -17,6 +17,7 @@ Given a native session ID or transcript path, `afh`:
 - streams plain, gzip, and Zstandard sources without placing the transcript in one prompt;
 - preserves every source record, including invalid or unsupported records;
 - correlates calls and results, failures, retries, compaction, subagents, MCP activity, and file changes;
+- follows exact successful Codex delegation/fork results to acquire bounded causal child sessions, including standalone project tasks;
 - stores immutable evidence plus a queryable SQLite case;
 - separates reported state from current, read-only verification;
 - labels conclusions as `DIRECT_EVIDENCE`, `CORROBORATED`, `INFERRED`, `UNCERTAIN`, `CONTRADICTED`, or `UNAVAILABLE`;
@@ -84,9 +85,10 @@ afh hydrate ~/.afh/cases/<session>/<case> --budget 6000
 afh query ~/.afh/cases/<session>/<case> "parser timeout"
 afh show ~/.afh/cases/<session>/<case> evt-...
 afh evidence ~/.afh/cases/<session>/<case> 'afh://evidence/sha256/...'
+afh verify-case ~/.afh/cases/<session>/<case>
 ```
 
-`afh evidence` intentionally returns raw, untrusted historical content. Projections are redacted; cold evidence is not guaranteed to be.
+`afh evidence` intentionally returns raw, untrusted historical content. Projections are redacted; cold evidence is not guaranteed to be. `afh verify-case` performs a read-only integrity audit of the database, source accounting, hashes, blobs, metrics, and hydration pack; use `--quick` to omit the per-record deep pass.
 
 ## Case layout
 
@@ -106,14 +108,14 @@ case/
 │   ├── external-influences.md
 │   ├── validations.md
 │   └── warnings.md
-└── evidence/                  # cold canonical sources and content-addressed blobs
+└── evidence/                  # cold canonical sources and large derived blobs
 ```
 
 Every event points to an `afh://evidence/sha256/.../record/...#bytes=...` locator. Retrieval checks both case registration and the record hash. If evidence is missing or altered, resolution fails instead of returning a plausible substitute.
 
 ## Harness support
 
-| Harness | Session discovery | Normalization in v0.1 | Status |
+| Harness | Session discovery | Normalization in v0.2 | Status |
 |---|---|---|---|
 | Codex | `CODEX_HOME` state databases, session rollouts, archived rollouts, explicit paths | messages, tools/results, shell outcomes, patches, compaction, MCP, subagents, token events, parent/child edges where persisted | Primary |
 | Claude Code | `~/.claude/projects`, explicit paths | messages, `tool_use`/`tool_result`, summaries/compaction, file-history snapshots | Supported baseline |
@@ -146,7 +148,7 @@ The benchmark reports factual recall, precision, unsupported-claim rate, artifac
 - Historical instructions are never executed.
 - Project workspaces are read-only under `V0` and `V1`.
 - Symlink transcript inputs are refused unless explicitly acknowledged.
-- Decompressed size, record size, and compression ratio are bounded.
+- Total acquired source size, per-source decompressed size, record size, child count, and compression ratio are bounded.
 - Common credentials are redacted from hot/warm projections.
 - Raw cases are private by default and ignored by Git.
 - Unknown, malformed, truncated, or missing evidence is surfaced explicitly.

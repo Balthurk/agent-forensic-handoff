@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
+import { Readable } from "node:stream";
 import zlib from "node:zlib";
 import { spawn } from "node:child_process";
 import { ensureDir, sha256 } from "./util.js";
@@ -12,16 +13,19 @@ export function compressionFor(filePath) {
   return "none";
 }
 
-export function openDecodedStream(filePath) {
+export function openDecodedStream(filePath, byteLimit = null) {
   const compression = compressionFor(filePath);
-  const source = fs.createReadStream(filePath);
+  if (byteLimit === 0) return { stream: Readable.from([]), compression };
+  const streamOptions = byteLimit == null ? {} : { start: 0, end: Math.max(0, byteLimit - 1) };
+  const source = fs.createReadStream(filePath, streamOptions);
   if (compression === "none") return { stream: source, compression };
   if (compression === "gzip") return { stream: source.pipe(zlib.createGunzip()), compression };
   if (typeof zlib.createZstdDecompress === "function") {
     return { stream: source.pipe(zlib.createZstdDecompress()), compression };
   }
-  source.destroy();
-  const child = spawn("zstd", ["-dc", "--", filePath], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+  const child = spawn("zstd", ["-dc"], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+  source.pipe(child.stdin);
+  source.on("error", (error) => child.stdin.destroy(error));
   let stderr = "";
   child.stderr.setEncoding("utf8");
   child.stderr.on("data", (chunk) => { stderr += chunk; });
@@ -31,8 +35,8 @@ export function openDecodedStream(filePath) {
   return { stream: child.stdout, compression };
 }
 
-export async function* decodedLines(filePath) {
-  const { stream, compression } = openDecodedStream(filePath);
+export async function* decodedLines(filePath, byteLimit = null) {
+  const { stream, compression } = openDecodedStream(filePath, byteLimit);
   const lines = readline.createInterface({ input: stream, crlfDelay: Infinity });
   let ordinal = 0;
   let offset = 0;
@@ -45,8 +49,10 @@ export async function* decodedLines(filePath) {
 }
 
 export class EvidenceStore {
-  constructor(caseDir) {
+  constructor(caseDir, { db = null, inlineBlobBytes = 16 * 1024 } = {}) {
     this.caseDir = caseDir;
+    this.db = db;
+    this.inlineBlobBytes = inlineBlobBytes;
     this.root = ensureDir(path.join(caseDir, "evidence"));
     this.blobRoot = ensureDir(path.join(this.root, "blobs"));
     this.sourceRoot = ensureDir(path.join(this.root, "sources"));
@@ -57,16 +63,34 @@ export class EvidenceStore {
     return this.putBuffer(buffer, extension);
   }
 
+  digestText(text) {
+    const buffer = Buffer.from(String(text), "utf8");
+    return { sha256: sha256(buffer), byteLength: buffer.length, path: null, storage: "SOURCE" };
+  }
+
   putJson(value) {
     return this.putText(JSON.stringify(value), "json");
   }
 
   putBuffer(buffer, extension = "bin") {
     const hash = sha256(buffer);
+    const safeExtension = /^[a-z0-9]{1,12}$/i.test(extension) ? extension.toLowerCase() : "bin";
+    if (this.db && buffer.length <= this.inlineBlobBytes) {
+      this.db.insertContentBlob({
+        sha256: hash, byteLength: buffer.length, extension: safeExtension,
+        storage: "SQLITE", inlineData: buffer,
+      });
+      return { sha256: hash, byteLength: buffer.length, path: null, storage: "SQLITE" };
+    }
     const dir = ensureDir(path.join(this.blobRoot, hash.slice(0, 2)));
-    const filePath = path.join(dir, `${hash}.${extension}`);
+    const filePath = path.join(dir, `${hash}.${safeExtension}`);
     if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, buffer, { mode: 0o600 });
-    return { sha256: hash, byteLength: buffer.length, path: path.relative(this.caseDir, filePath).replaceAll(path.sep, "/") };
+    const relativePath = path.relative(this.caseDir, filePath).replaceAll(path.sep, "/");
+    this.db?.insertContentBlob({
+      sha256: hash, byteLength: buffer.length, extension: safeExtension,
+      storage: "FILE", path: relativePath,
+    });
+    return { sha256: hash, byteLength: buffer.length, path: relativePath, storage: "FILE" };
   }
 
   beginCanonicalSource(sourceId, locatorHash) {

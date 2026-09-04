@@ -19,7 +19,7 @@ flowchart TD
 ```
 
 1. **Resolve.** An exact ID or path resolves to one or more source files and explicit session edges. Ambiguity fails closed.
-2. **Acquire.** Hash original files, decode plain/gzip/Zstandard streams, enforce resource limits, and write the exact decoded records into a private canonical source file.
+2. **Acquire.** Freeze each source at its observed byte length, hash and decode only that prefix, verify the prefix remained stable, enforce resource limits, and write the exact decoded records into a private canonical source file.
 3. **Normalize.** Harness adapters emit typed events, actors, sessions, call IDs, artifacts, timestamps, and evidence pointers. Invalid and unknown records become first-class forensic events.
 4. **Reduce.** Rule-based joins build tool executions, explicit correlation edges, mission/task claims, decisions with explicit markers, retry fingerprints, and artifact revision chains.
 5. **Verify.** `V0` observes Git metadata and referenced file hashes. `V1` additionally inventories common project configuration. Neither runs project code.
@@ -29,7 +29,7 @@ flowchart TD
 
 SQLite is justified by the need to correlate thousands or millions of events without placing them in a prompt. It supplies transactions, indexed joins, FTS retrieval, deterministic ordering, and a single portable case file without a service. Content hashes make source identity, artifact revision identity, tamper detection, and idempotent caching explicit.
 
-The database stores projections and references. Full tool inputs/outputs are content-addressed blobs, while original decoded records remain addressable by byte range. This avoids duplicating giant values into every rendered view.
+The database stores projections, normalized value hashes, and references. Full transcript values remain recoverable from exact canonical-source byte ranges rather than being duplicated as event blobs. Small derived values such as captured diffs are packed into SQLite; large derived values remain content-addressed files. This avoids duplicating transcript payloads and avoids creating thousands of tiny files.
 
 ## Canonical data model
 
@@ -44,6 +44,7 @@ The database stores projections and references. Full tool inputs/outputs are con
 | `artifact` / `artifact_revision` | Provenance and current status | producing event, predecessor, content/diff hash |
 | `claim` / `decision_record` / `task` | Mission and decision state | evidence, derivation rule, epistemic status |
 | `state_snapshot` / `validation` | Reported-vs-observed checks | workspace, Git, file hash, freshness |
+| `content_blob` | Deduplicated derived content | hash, length, SQLite/file storage locator |
 | `hydration_pack` | Bounded successor projection | case hash, token budget, selected event IDs |
 
 The normative SQL is [src/schema.sql](../src/schema.sql); the public event interchange shape is [schemas/event.schema.json](../schemas/event.schema.json).
@@ -52,7 +53,7 @@ The normative SQL is [src/schema.sql](../src/schema.sql); the public event inter
 
 Ordering uses explicit timestamps where present and stable `(source_id, record_ordinal, subordinal)` order otherwise. Timestamp precision is retained. Concurrent events with equal/absent timestamps are not given a fabricated total causal order.
 
-Current v0.1 causal edges are intentionally sparse: call/result pairs use shared native call IDs and session topology uses explicit parent/child evidence. Temporal proximity is available for inspection but is not stored as fact. Later inference may add edges only with a named rule and non-direct epistemic status.
+Current v0.2 causal edges remain intentionally sparse: call/result pairs use shared native call IDs; session topology uses state-store edges or exact native IDs returned by successful `create_thread`, `fork_thread`, or observed subagent-start records. Temporal proximity is available for inspection but is not stored as fact. Later inference may add edges only with a named rule and non-direct epistemic status.
 
 ## Adapter boundary
 
@@ -73,7 +74,7 @@ Event, actor, revision, claim, and evidence IDs derive from normalized identitie
 
 A case is also a time-scoped verification snapshot. If the workspace changes later, its historical validation does not magically refresh. Re-audit into a new explicit case directory or perform current read-only checks before continuation; never rewrite the old observation as though it happened earlier.
 
-## Deliberate omissions in v0.1
+## Deliberate omissions in v0.2
 
 - no cloud service, vector database, or mandatory MCP server;
 - no LLM parsing/enrichment in the factual path;

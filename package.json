@@ -1,6 +1,6 @@
 {
   "name": "agent-forensic-handoff",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Evidence-backed forensic reconstruction and context hydration for agent sessions.",
   "type": "module",
   "bin": {

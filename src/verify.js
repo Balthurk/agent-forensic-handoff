@@ -53,7 +53,18 @@ export async function verifyCurrentState(db, options = {}) {
 
   const artifacts = db.all("SELECT * FROM artifact ORDER BY logical_path");
   for (const artifact of artifacts) {
-    const candidate = resolveArtifactPath(artifact, workspace);
+    let candidate;
+    try { candidate = resolveArtifactPath(artifact, workspace); }
+    catch (error) {
+      const observedResult = `not inspected: ${String(error.message || error)}`;
+      db.run("UPDATE artifact SET current_path=NULL,current_status='LIVE_UNVERIFIED',current_sha256=NULL WHERE id=$id", { id: artifact.id });
+      db.insertValidation({
+        id: `val-${shortHash([artifact.id, snapshotSha, "outside-workspace"])}`, target: artifact.logical_path, level,
+        method: "workspace containment check", command: null, result: observedResult, observedAt,
+        freshness: snapshotSha, status: EPISTEMIC.UNCERTAIN, event: null,
+      });
+      continue;
+    }
     let state = "MISSING";
     let currentSha = null;
     let status = EPISTEMIC.CORROBORATED;
@@ -110,6 +121,6 @@ function resolveArtifactPath(artifact, workspace) {
     ? path.resolve(artifact.logical_path)
     : path.resolve(workspaceRoot, artifact.logical_path);
   const root = workspaceRoot + path.sep;
-  if (target !== workspaceRoot && !target.startsWith(root)) throw new Error(`Artifact path escapes workspace: ${artifact.logical_path}`);
+  if (target !== workspaceRoot && !target.startsWith(root)) throw new Error(`historical artifact is outside verified workspace: ${artifact.logical_path}`);
   return target;
 }

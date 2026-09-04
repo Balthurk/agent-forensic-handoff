@@ -15,20 +15,24 @@ export async function auditSession(identifier, options = {}) {
   const config = {
     harness: options.harness || "auto",
     includeChildren: options.includeChildren ?? DEFAULTS.includeChildren,
+    maxChildSessions: Number(options.maxChildSessions ?? DEFAULTS.maxChildSessions),
+    inlineBlobBytes: Number(options.inlineBlobBytes ?? DEFAULTS.inlineBlobBytes),
     verificationLevel: options.verificationLevel || DEFAULTS.verificationLevel,
     tokenBudget: Number(options.tokenBudget || DEFAULTS.tokenBudget),
     maxRecordBytes: Number(options.maxRecordBytes || DEFAULTS.maxRecordBytes),
     maxDecompressedBytes: Number(options.maxDecompressedBytes || DEFAULTS.maxDecompressedBytes),
+    maxTotalSourceBytes: Number(options.maxTotalSourceBytes || DEFAULTS.maxTotalSourceBytes),
     maxCompressionRatio: Number(options.maxCompressionRatio || DEFAULTS.maxCompressionRatio),
     workspace: options.workspace ? path.resolve(options.workspace) : null,
   };
   validateAuditConfig(config);
   const resolution = await resolveSession(identifier, { ...options, ...config });
-  const sources = [];
-  for (const source of resolution.sources) {
-    const stat = fs.statSync(source.path);
-    sources.push({ ...source, rawSha256: await hashFile(source.path), byteLength: stat.size });
+  const sources = resolution.sources.map((source) => ({ ...source, byteLength: fs.statSync(source.path).size }));
+  const totalSourceBytes = sources.reduce((sum, source) => sum + source.byteLength, 0);
+  if (totalSourceBytes > config.maxTotalSourceBytes) {
+    throw new Error(`Resolved sources total ${totalSourceBytes} bytes, exceeding maxTotalSourceBytes=${config.maxTotalSourceBytes}`);
   }
+  for (const source of sources) source.rawSha256 = await hashFile(source.path, source.byteLength);
   sources.sort((a, b) => a.path.localeCompare(b.path));
   const snapshotHash = sha256(stableStringify(sources.map((source) => ({
     harness: source.harness, nativeId: source.nativeId, rawSha256: source.rawSha256, byteLength: source.byteLength,
@@ -52,8 +56,8 @@ export async function auditSession(identifier, options = {}) {
   const staging = `${caseDir}.tmp-${process.pid}`;
   if (fs.existsSync(staging)) fs.rmSync(staging, { recursive: true, force: true });
   ensureDir(staging);
-  const evidence = new EvidenceStore(staging);
   const db = new CaseDatabase(path.join(staging, "case.sqlite"));
+  const evidence = new EvidenceStore(staging, { db, inlineBlobBytes: config.inlineBlobBytes });
   const runId = `run-${caseHash.slice(0, 20)}`;
   const startedAt = new Date().toISOString();
   const counters = { records: 0, parsed: 0, unparsed: 0, warnings: 0 };
@@ -78,7 +82,7 @@ export async function auditSession(identifier, options = {}) {
       let decompressedBytes = 0;
       const dedupe = new Map();
 
-      for await (const decoded of decodedLines(source.path)) {
+      for await (const decoded of decodedLines(source.path, source.byteLength)) {
         counters.records += 1;
         decompressedBytes = decoded.byteOffset + decoded.byteLength + 1;
         if (decoded.byteLength > config.maxRecordBytes) throw new Error(`Record ${decoded.ordinal} in ${source.path} exceeds maxRecordBytes`);
@@ -134,12 +138,14 @@ export async function auditSession(identifier, options = {}) {
       source.canonicalSha256 = canonical.sha256;
       source.canonicalByteLength = canonical.byteLength;
       source.evidencePath = canonical.path;
+      const stableRawSha256 = await hashFile(source.path, source.byteLength);
+      if (stableRawSha256 !== source.rawSha256) throw new Error(`Source prefix changed during acquisition: ${source.path}`);
     }
     for (const edge of resolution.edges ?? []) {
       const parent = `ses:codex:${edge.parent_thread_id}`;
       const child = `ses:codex:${edge.child_thread_id}`;
       if (db.get("SELECT id FROM session WHERE id=$id", { id: parent }) && db.get("SELECT id FROM session WHERE id=$id", { id: child })) {
-        db.insertSessionEdge({ parent, child, type: "SPAWNED", epistemic: EPISTEMIC.DIRECT });
+        db.insertSessionEdge({ parent, child, type: edge.edge_type || "SPAWNED", epistemic: EPISTEMIC.DIRECT });
       }
     }
     finalizeIncompleteTools(db);
@@ -195,12 +201,14 @@ export async function auditSession(identifier, options = {}) {
 }
 
 function validateAuditConfig(config) {
-  for (const key of ["tokenBudget", "maxRecordBytes", "maxDecompressedBytes", "maxCompressionRatio"]) {
+  for (const key of ["tokenBudget", "maxRecordBytes", "maxDecompressedBytes", "maxTotalSourceBytes", "maxCompressionRatio", "maxChildSessions", "inlineBlobBytes"]) {
     if (!Number.isFinite(config[key]) || config[key] <= 0) throw new Error(`${key} must be a positive finite number`);
   }
   if (config.tokenBudget > 1_000_000) throw new Error("tokenBudget exceeds the 1,000,000-token safety limit");
   if (config.maxRecordBytes > config.maxDecompressedBytes) throw new Error("maxRecordBytes cannot exceed maxDecompressedBytes");
   if (config.maxCompressionRatio < 1) throw new Error("maxCompressionRatio must be at least 1");
+  if (!Number.isInteger(config.maxChildSessions) || config.maxChildSessions > 256) throw new Error("maxChildSessions must be an integer between 1 and 256");
+  if (!Number.isInteger(config.inlineBlobBytes) || config.inlineBlobBytes > 1024 * 1024) throw new Error("inlineBlobBytes must be an integer between 1 and 1048576");
 }
 
 function insertUnparsedEvent(db, { source, sourceId, currentSession, decoded, recordHash, dedupe }) {
@@ -225,8 +233,10 @@ function insertNormalizedEvent(db, evidence, { source, sourceId, session, normal
   db.upsertActor(normalized.actor);
   const eventIdentity = [sourceId, decoded.ordinal, subordinal, normalized.kind, normalized.callId, normalized.nativeId];
   const eventId = `evt-${shortHash(eventIdentity, 24)}`;
-  const inputBlob = normalized.input ? evidence.putText(normalized.input) : null;
-  const outputBlob = normalized.output ? evidence.putText(normalized.output) : null;
+  // Normalized event values remain recoverable from the exact source record referenced below.
+  // Persist their digest for identity, but do not duplicate full transcript payloads as blobs.
+  const inputBlob = normalized.input ? evidence.digestText(normalized.input) : null;
+  const outputBlob = normalized.output ? evidence.digestText(normalized.output) : null;
   const inputProjection = normalized.input ? preview(normalized.input) : { text: null, findings: [], truncated: false };
   const outputProjection = normalized.output ? preview(normalized.output) : { text: null, findings: [], truncated: false };
   const fingerprint = shortHash([normalized.kind, normalized.actor.id, inputBlob?.sha256, outputBlob?.sha256, normalized.callId, normalized.status], 32);
@@ -282,7 +292,8 @@ function evidenceUri(rawHash, decoded) {
 }
 
 function processTool(db, event, normalized) {
-  if (!["tool.requested", "tool.completed", "mcp.completed", "filesystem.patch"].includes(event.kind)) return;
+  const correlatedPatch = event.kind === "filesystem.patch" && Boolean(event.callId);
+  if (!correlatedPatch && !["tool.requested", "tool.completed", "mcp.completed"].includes(event.kind)) return;
   const callId = event.callId || event.id;
   const toolId = `tex-${shortHash(callId, 24)}`;
   const existing = db.get("SELECT * FROM tool_execution WHERE id=$id", { id: toolId });

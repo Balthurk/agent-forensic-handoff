@@ -8,30 +8,45 @@ function refsForEvent(db, eventId) {
 export function reduceCase(db) {
   const messages = db.all(`SELECT * FROM event WHERE canonical=1 AND kind IN ('message.user','message.agent')
     ORDER BY COALESCE(observed_at,''), source_id, record_ordinal, subordinal`);
-  const preferredMission = messages.find((event) => {
-    if (event.kind !== "message.user" || !event.input_preview?.trim()) return false;
-    try { return JSON.parse(event.metadata_json).userVisible === true; } catch { return false; }
-  }) ?? messages.find((event) => event.kind === "message.user" && event.input_preview?.trim());
+  const subagentSessions = new Map(db.all("SELECT id,metadata_json FROM session").map((session) => {
+    const metadata = JSON.parse(session.metadata_json || "{}");
+    return [session.id, Boolean(metadata.agentPath || metadata.stateMetadata?.agentPath)];
+  }));
+  const userRequests = messages
+    .filter((event) => event.kind === "message.user" && !subagentSessions.get(event.session_id))
+    .map((event) => ({ event, text: substantiveUserText(event.input_preview) }))
+    .filter((item) => item.text);
+  const originalMission = userRequests[0] ?? null;
+  const currentMission = userRequests.at(-1) ?? null;
 
-  if (preferredMission) {
-    const refs = refsForEvent(db, preferredMission.id);
+  if (originalMission) {
+    const refs = refsForEvent(db, originalMission.event.id);
     db.insertClaim({
-      id: `clm-${shortHash(["mission", preferredMission.id])}`,
+      id: `clm-${shortHash(["mission-original", originalMission.event.id])}`,
       subject: "mission",
       predicate: "original_request",
-      object: stableStringify({ text: preferredMission.input_preview }),
+      object: stableStringify({ text: originalMission.text }),
       epistemic: EPISTEMIC.DIRECT,
-      rule: "first-user-visible-message",
+      rule: "first-substantive-user-message-after-harness-envelope-filter",
       contradiction: null,
-      event: preferredMission.id,
+      event: originalMission.event.id,
       refs: stableStringify(refs),
       current: 1,
     });
   }
+  if (currentMission) {
+    db.insertClaim({
+      id: `clm-${shortHash(["mission-current", currentMission.event.id])}`,
+      subject: "mission", predicate: "current_request",
+      object: stableStringify({ text: currentMission.text }), epistemic: EPISTEMIC.DIRECT,
+      rule: "latest-substantive-user-message-after-harness-envelope-filter",
+      contradiction: null, event: currentMission.event.id,
+      refs: stableStringify(refsForEvent(db, currentMission.event.id)), current: 1,
+    });
+  }
 
   let priority = 1000;
-  for (const message of messages.filter((event) => event.kind === "message.user" && event.input_preview?.trim())) {
-    const text = message.input_preview.trim();
+  for (const { event: message, text } of userRequests) {
     db.insertTask({
       id: `tsk-${shortHash([message.id, text])}`,
       text,
@@ -44,7 +59,7 @@ export function reduceCase(db) {
     });
   }
 
-  const decisionPattern = /^(?:decision|decisi[oó]n|chosen approach|enfoque elegido)\s*:\s*(.+)$/gim;
+  const decisionPattern = /^(?:decision|decisi[oó]n|chosen approach|enfoque elegido|resoluci[oó]n adoptada)\s*:\s*(.+)$/gim;
   for (const message of messages) {
     const text = message.input_preview ?? "";
     let match;
@@ -87,7 +102,78 @@ export function reduceCase(db) {
 
   advanceRequestedTasks(db);
   pairToolEdges(db);
+  deriveHistoricalValidations(db);
   detectReportedStateContradictions(db);
+}
+
+function substantiveUserText(input) {
+  let text = String(input ?? "").trim();
+  if (!text) return null;
+  const realtime = /<realtime_delegation>[\s\S]*?<input>([\s\S]*?)<\/input>[\s\S]*?<\/realtime_delegation>/i.exec(text);
+  if (realtime) text = realtime[1].trim();
+  const explicitRequest = /(?:^|\n)## My request:\s*([\s\S]*)$/i.exec(text);
+  if (explicitRequest) text = explicitRequest[1].trim();
+  if (!text) return null;
+  if (/^(?:<recommended_plugins>|<environment_context>|<permissions instructions>|<skills_instructions>|<apps_instructions>|<plugins_instructions>|<collaboration_mode>|# Response annotations:)/i.test(text)) return null;
+  if (/^<[^>]+>\s*(?:<[^>]+>[\s\S]*<\/[^>]+>\s*)+<\/[^>]+>$/i.test(text) && !/[.!?]\s*$/.test(text)) return null;
+  return text;
+}
+
+function deriveHistoricalValidations(db) {
+  const observed = db.all("SELECT * FROM event WHERE canonical=1 AND kind='tool.observed' ORDER BY COALESCE(observed_at,''),source_id,record_ordinal");
+  const observedKeys = new Set(observed.map((event) => {
+    const metadata = JSON.parse(event.metadata_json || "{}");
+    return historicalCommandKey(event.session_id, metadata.command || event.input_preview);
+  }));
+  const tools = db.all("SELECT * FROM tool_execution WHERE command_text IS NOT NULL ORDER BY COALESCE(started_at,''),id");
+  for (const tool of tools) {
+    if (!looksLikeValidation(tool.command_text)) continue;
+    if (observedKeys.has(historicalCommandKey(tool.session_id, tool.command_text))) continue;
+    const eventId = tool.result_event_id || tool.call_event_id;
+    const event = eventId ? db.get("SELECT observed_at FROM event WHERE id=$id", { id: eventId }) : null;
+    db.insertValidation({
+      id: `val-${shortHash(["historical-tool", eventId || tool.id])}`,
+      target: validationTarget(tool.command_text), level: "HISTORICAL",
+      method: "recorded tool execution; not rerun by AFH", command: tool.command_text,
+      result: tool.semantic_extract || `recorded status=${tool.status}; exit_code=${tool.exit_code ?? "UNAVAILABLE"}`,
+      observedAt: event?.observed_at || tool.ended_at || tool.started_at || "ORDER_ONLY",
+      freshness: null, status: validationStatus(tool.status, tool.exit_code), event: eventId,
+    });
+  }
+  for (const event of observed) {
+    const metadata = JSON.parse(event.metadata_json || "{}");
+    const command = metadata.command || event.input_preview;
+    if (!looksLikeValidation(command)) continue;
+    db.insertValidation({
+      id: `val-${shortHash(["historical-observation", event.id])}`,
+      target: validationTarget(command), level: "HISTORICAL",
+      method: "direct item_completed observation; not rerun by AFH", command,
+      result: event.output_preview || `recorded status=${event.status}; exit_code=${metadata.exitCode ?? "UNAVAILABLE"}`,
+      observedAt: event.observed_at || "ORDER_ONLY", freshness: null,
+      status: validationStatus(event.status, metadata.exitCode), event: event.id,
+    });
+  }
+}
+
+function historicalCommandKey(sessionId, command) {
+  return `${sessionId}\0${String(command || "").replace(/\s+/g, " ").trim().toLowerCase()}`;
+}
+
+function looksLikeValidation(command) {
+  const segments = String(command || "").split(/(?:\r?\n|;|&&|\|\|)/).map((part) => part.trim()).filter(Boolean);
+  return segments.some((segment) => /^(?:&\s*)?(?:(?:python|python3|py)\s+(?:-B\s+)?(?:-m\s+(?:pytest|unittest|py_compile)\b|[^\s]*validate[^\s]*\.py\b)|pytest\b|py\.test\b|node\s+(?:--test\b|[^\s]*validate[^\s]*\.m?js\b)|npm\s+(?:test\b|run\s+(?:test|check|lint|build)\b)|pnpm\s+(?:test\b|run\s+(?:test|check|lint|build)\b)|yarn\s+(?:test\b|run\s+(?:test|check|lint|build)\b)|cargo\s+test\b|go\s+test\b|dotnet\s+test\b|mvnw?\s+test\b|gradlew?\s+test\b|ruff\s+(?:check|format)\b|eslint\b|tsc\s+--noEmit\b|git\s+diff\s+--check\b|afh\s+(?:doctor|benchmark|verify-case)\b)/i.test(segment));
+}
+
+function validationTarget(command) {
+  const compact = String(command).replace(/\s+/g, " ").trim();
+  return `historical command: ${compact.slice(0, 180)}`;
+}
+
+function validationStatus(status, exitCode) {
+  if (Number.isInteger(exitCode)) return exitCode === 0 ? "OBSERVED_PASS" : "OBSERVED_FAIL";
+  if (String(status).toUpperCase() === "FAILED") return "OBSERVED_FAIL";
+  if (String(status).toUpperCase() === "INCOMPLETE") return "INCOMPLETE";
+  return "OBSERVED_PASS";
 }
 
 function advanceRequestedTasks(db) {

@@ -36,6 +36,150 @@ function durationMs(value) {
   return null;
 }
 
+function exactThreadIds(value) {
+  const ids = new Set();
+  const visit = (node, depth = 0) => {
+    if (depth > 8 || node == null) return;
+    if (typeof node === "string") {
+      if (/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(node)) { ids.add(node); return; }
+      try { visit(JSON.parse(node), depth + 1); } catch {}
+      return;
+    }
+    if (Array.isArray(node)) {
+      for (const item of node) visit(item, depth + 1);
+      return;
+    }
+    if (typeof node !== "object") return;
+    for (const [key, child] of Object.entries(node)) {
+      if ((key === "threadId" || key === "thread_id") && typeof child === "string" && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(child)) ids.add(child);
+      else visit(child, depth + 1);
+    }
+  };
+  visit(value);
+  return [...ids];
+}
+
+function commandFromCompletedItem(item) {
+  const parsed = Array.isArray(item.parsed_cmd) ? item.parsed_cmd.map((entry) => entry?.cmd).filter(Boolean) : [];
+  return parsed.join("\n--- parsed command ---\n") || (Array.isArray(item.command) ? item.command.join(" ") : asText(item.command));
+}
+
+function normalizeCompletedItem(record, payload, ctx) {
+  const item = payload.item ?? {};
+  const common = { nativeId: item.id ?? null, turnId: payload.turn_id ?? null };
+  if (item.type === "UserMessage" || item.type === "AgentMessage") {
+    const isUser = item.type === "UserMessage";
+    return [normalized({
+      ...common,
+      kind: isUser ? "message.user" : "message.agent",
+      subtype: `item_completed.${item.type}`,
+      actor: isUser ? actor("act:user", ACTOR_KINDS.USER, "user") : actor("act:agent:primary", ACTOR_KINDS.AGENT, "assistant"),
+      input: contentText(item.content), phase: item.phase ?? null,
+      metadata: { origin: "event_msg.item_completed", userVisible: true },
+      pointer: "/payload/item/content",
+    }, record, payload)];
+  }
+  if (item.type === "Reasoning") return [normalized({
+    ...common, kind: "reasoning.summary", subtype: "item_completed.Reasoning",
+    actor: actor("act:agent:primary", ACTOR_KINDS.AGENT, "assistant"),
+    input: asText(item.summary_text ?? item.raw_content),
+    status: item.summary_text || item.raw_content ? "AVAILABLE" : "UNAVAILABLE",
+    metadata: { origin: "event_msg.item_completed", privateReasoningRecoverable: false },
+    pointer: "/payload/item",
+  }, record, payload)];
+  if (item.type === "CommandExecution") {
+    const command = commandFromCompletedItem(item);
+    return [normalized({
+      ...common, kind: "tool.observed", subtype: "item_completed.CommandExecution",
+      actor: actor("act:tool:exec", ACTOR_KINDS.TOOL, "tool", "command execution"),
+      input: command, output: item.aggregated_output ?? `${item.stdout ?? ""}${item.stderr ? `\n${item.stderr}` : ""}`,
+      status: String(item.status ?? (item.exit_code === 0 ? "completed" : "failed")).toUpperCase(),
+      metadata: {
+        toolName: "exec", command, exitCode: item.exit_code ?? null,
+        cwd: String(item.cwd ?? "").replace(/^file:\/\/\//i, ""), durationMs: durationMs(item.duration),
+        processId: item.process_id ?? null, origin: "event_msg.item_completed",
+      },
+      pointer: "/payload/item",
+    }, record, payload)];
+  }
+  if (item.type === "McpToolCall") {
+    const completed = String(item.status || "").toLowerCase() === "completed" && item.result?.isError !== true;
+    const children = completed && ["create_thread", "fork_thread"].includes(item.tool) ? exactThreadIds(item.result) : [];
+    return [normalized({
+      ...common, kind: "mcp.observed", subtype: item.tool ?? "item_completed.McpToolCall",
+      actor: actor(`act:mcp:${item.server || "unknown"}`, ACTOR_KINDS.MCP, "mcp_server", item.server ?? null),
+      input: JSON.stringify(item.arguments ?? {}), output: asText(item.result),
+      status: completed ? "COMPLETED" : "FAILED", callId: item.id ?? null,
+      metadata: { toolName: item.tool ?? "unknown", server: item.server ?? null, durationMs: durationMs(item.duration), origin: "event_msg.item_completed" },
+      sessionEdges: children.map((childNativeId) => ({ parentNativeId: payload.thread_id ?? ctx.sessionNativeId, childNativeId, type: item.tool === "fork_thread" ? "FORKED" : "DELEGATED_TASK" })),
+      pointer: "/payload/item",
+    }, record, payload)];
+  }
+  if (item.type === "FileChange") {
+    const artifacts = Object.entries(item.changes ?? {}).map(([filePath, change]) => ({
+      path: filePath, operation: String(change?.type ?? "update").toUpperCase(),
+      content: change?.content ?? null, diff: change?.unified_diff ?? null, movePath: change?.move_path ?? null,
+    }));
+    return [normalized({
+      ...common, kind: "filesystem.patch", subtype: "item_completed.FileChange",
+      actor: actor("act:tool:apply_patch", ACTOR_KINDS.TOOL, "tool", "apply_patch"),
+      input: JSON.stringify(Object.keys(item.changes ?? {})),
+      output: `${item.stdout ?? ""}${item.stderr ? `\n${item.stderr}` : ""}`,
+      status: String(item.status ?? "completed").toUpperCase(), artifacts,
+      metadata: { toolName: "apply_patch", origin: "event_msg.item_completed" },
+      pointer: "/payload/item/changes",
+    }, record, payload)];
+  }
+  if (item.type === "ContextCompaction") return [normalized({
+    ...common, kind: "session.compacted", subtype: "item_completed.ContextCompaction",
+    actor: actor("act:harness:codex", ACTOR_KINDS.SYSTEM, "harness"), status: "OBSERVED",
+  }, record, payload)];
+  if (item.type === "FunctionCallOutput") return [normalized({
+    ...common, kind: "tool.observed", subtype: "item_completed.FunctionCallOutput",
+    actor: actor(`act:tool:${item.name || "unknown"}`, ACTOR_KINDS.TOOL, "tool", item.name ?? null),
+    output: asText(item.output), status: outputStatus(item.output),
+    metadata: { toolName: item.name ?? "unknown", namespace: item.namespace ?? null, origin: "event_msg.item_completed" },
+    pointer: "/payload/item/output",
+  }, record, payload)];
+  if (item.type === "ImageView") return [normalized({
+    ...common, kind: "external.image_view", subtype: "item_completed.ImageView",
+    actor: actor("act:tool:image_view", ACTOR_KINDS.TOOL, "tool", "image view"),
+    input: item.path ?? "", status: "OBSERVED", metadata: { origin: "event_msg.item_completed" },
+    pointer: "/payload/item",
+  }, record, payload)];
+  if (item.type === "SubAgentActivity") {
+    const childNativeId = item.agent_thread_id ?? null;
+    return [normalized({
+      ...common, kind: "external.subagent", subtype: item.kind ?? "activity",
+      actor: actor(`act:subagent:${childNativeId || item.agent_path || "unknown"}`, ACTOR_KINDS.SUBAGENT, item.agent_path ?? "subagent", item.agent_path ?? null, childNativeId),
+      status: String(item.kind ?? "observed").toUpperCase(),
+      metadata: { agentThreadId: childNativeId, agentPath: item.agent_path ?? null, origin: "event_msg.item_completed" },
+      sessionEdges: childNativeId ? [{ parentNativeId: payload.thread_id ?? ctx.sessionNativeId, childNativeId, type: "SPAWNED" }] : [],
+      pointer: "/payload/item",
+    }, record, payload)];
+  }
+  if (item.type === "CollabAgentToolCall") return [normalized({
+    ...common, kind: "external.collaboration", subtype: item.tool ?? "collaboration",
+    actor: actor("act:tool:collaboration", ACTOR_KINDS.TOOL, "coordination_tool", "collaboration"),
+    input: JSON.stringify({ senderThreadId: item.sender_thread_id ?? null, receiverThreadIds: item.receiver_thread_ids ?? [], receiverAgents: item.receiver_agents ?? [] }),
+    output: JSON.stringify(item.agents_states ?? {}), status: String(item.status ?? "observed").toUpperCase(),
+    metadata: { toolName: item.tool ?? "collaboration", origin: "event_msg.item_completed" },
+    pointer: "/payload/item",
+  }, record, payload)];
+  if (item.type === "Extension") return [normalized({
+    ...common, kind: "external.extension", subtype: item.kind ?? "extension",
+    actor: actor(`act:service:${item.kind || "extension"}`, ACTOR_KINDS.SERVICE, "external_service", item.kind ?? "extension"),
+    input: item.query ?? JSON.stringify(item.action ?? {}), output: JSON.stringify(item.results ?? []), status: "COMPLETED",
+    metadata: { toolName: item.kind ?? "extension", resultCount: Array.isArray(item.results) ? item.results.length : null, origin: "event_msg.item_completed" },
+    pointer: "/payload/item",
+  }, record, payload)];
+  return [normalized({
+    ...common, kind: "forensic.unknown_record", subtype: `event_msg.item_completed.${item.type || "unknown"}`,
+    actor: actor("act:harness:codex", ACTOR_KINDS.SYSTEM, "harness"), status: "PRESERVED",
+    metadata: { keys: Object.keys(item).sort() },
+  }, record, payload)];
+}
+
 function codexSession(payload, sourceContext) {
   const nativeId = payload.session_id ?? payload.id ?? sourceContext.nativeId;
   return {
@@ -122,6 +266,7 @@ function codexResponseItem(record, payload, ctx) {
 }
 
 function codexEventMessage(record, payload, ctx) {
+  if (payload.type === "item_completed") return normalizeCompletedItem(record, payload, ctx);
   if (payload.type === "user_message") return [normalized({
     kind: "message.user", subtype: "event_msg", actor: actor("act:user", ACTOR_KINDS.USER, "user"),
     input: payload.message ?? "", metadata: { origin: "event_msg", userVisible: true }, pointer: "/payload/message",
@@ -243,6 +388,41 @@ export function normalizeCodex(record, ctx) {
     input: payload.replacement_history ?? "", status: "OBSERVED",
     metadata: { windowId: payload.window_id ?? null, previousWindowId: payload.previous_window_id ?? null, windowNumber: payload.window_number ?? null },
     pointer: "/payload/replacement_history",
+  }, record, payload)];
+  if (record.type === "token_usage_record") return [normalized({
+    kind: "telemetry.token_usage", subtype: "token_usage_record",
+    actor: actor("act:harness:codex", ACTOR_KINDS.SYSTEM, "harness"), status: "OBSERVED",
+    turnId: payload.turn_id ?? null,
+    metadata: {
+      responseId: payload.response_id ?? null, usage: payload.usage ?? null,
+      turnTokenUsage: payload.turn_token_usage ?? null, threadTokenUsage: payload.thread_token_usage ?? null,
+    },
+    pointer: "/payload",
+  }, record, payload)];
+  if (record.type === "realtime_item") {
+    if (payload.type === "transcript_segment") {
+      const isUser = payload.role === "user";
+      return [normalized({
+        kind: "realtime.transcript", subtype: payload.type,
+        actor: isUser ? actor("act:user", ACTOR_KINDS.USER, "user") : actor("act:agent:primary", ACTOR_KINDS.AGENT, payload.role ?? "assistant"),
+        input: payload.text ?? "", nativeId: payload.id ?? null,
+        metadata: { realtimeSessionId: payload.realtime_session_id ?? null, role: payload.role ?? null },
+        pointer: "/payload/text",
+      }, record, payload)];
+    }
+    return [normalized({
+      kind: "realtime.session", subtype: payload.type ?? "unknown",
+      actor: actor("act:harness:codex", ACTOR_KINDS.SYSTEM, "harness"),
+      status: payload.outcome ?? (payload.type === "realtime_session_closed" ? "CLOSED" : "OBSERVED"),
+      nativeId: payload.id ?? null,
+      metadata: { realtimeSessionId: payload.realtime_session_id ?? null, itemId: payload.item_id ?? null, presentation: payload.presentation ?? null },
+      pointer: "/payload",
+    }, record, payload)];
+  }
+  if (record.type === "inter_agent_communication_metadata") return [normalized({
+    kind: "telemetry.inter_agent", subtype: "inter_agent_communication_metadata",
+    actor: actor("act:harness:codex", ACTOR_KINDS.SYSTEM, "harness"), status: "OBSERVED",
+    metadata: { triggerTurn: payload.trigger_turn ?? null }, pointer: "/payload",
   }, record, payload)];
   return [normalized({
     kind: "forensic.unknown_record", subtype: record.type || "unknown",

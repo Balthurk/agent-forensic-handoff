@@ -14,7 +14,7 @@ if (!fs.existsSync(agentPath)) errors.push("agents/openai.yaml is missing");
 
 if (!errors.length) {
   const skill = fs.readFileSync(skillPath, "utf8");
-  const frontmatter = /^---\n([\s\S]*?)\n---\n/.exec(skill)?.[1] ?? "";
+  const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/.exec(skill)?.[1] ?? "";
   const name = /^name:\s*(.+)$/m.exec(frontmatter)?.[1]?.trim();
   const description = /^description:\s*(.+)$/m.exec(frontmatter)?.[1]?.trim();
   if (name !== "agent-forensic-handoff") errors.push(`unexpected skill name: ${name || "missing"}`);

@@ -1,5 +1,5 @@
-export const AFH_VERSION = "0.1.0";
-export const SCHEMA_VERSION = 1;
+export const AFH_VERSION = "0.2.0";
+export const SCHEMA_VERSION = 2;
 
 export const EPISTEMIC = Object.freeze({
   DIRECT: "DIRECT_EVIDENCE",
@@ -58,10 +58,13 @@ export const DEFAULTS = Object.freeze({
   tokenBudget: 6000,
   maxRecordBytes: 64 * 1024 * 1024,
   maxDecompressedBytes: 8 * 1024 * 1024 * 1024,
+  maxTotalSourceBytes: 8 * 1024 * 1024 * 1024,
   maxCompressionRatio: 250,
   previewChars: 1200,
   evidenceMode: "copy",
   includeChildren: true,
+  maxChildSessions: 32,
+  inlineBlobBytes: 16 * 1024,
   verificationLevel: "V0",
 });
 
@@ -71,5 +74,4 @@ export const SECRET_PATTERNS = Object.freeze([
   ["openai-key", /\bsk-[A-Za-z0-9_-]{20,}\b/g],
   ["aws-access-key", /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g],
   ["jwt", /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g],
-  ["credential-assignment", /\b(?:password|passwd|secret|api[_-]?key|access[_-]?token|auth[_-]?token)\s*[:=]\s*["']?[^\s,"']{8,}/gi],
 ]);

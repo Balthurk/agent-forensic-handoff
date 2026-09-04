@@ -24,7 +24,7 @@ test("generic skill installation is idempotent and protects divergent content", 
   fs.appendFileSync(path.join(destination, "SKILL.md"), "\nlocal change\n");
   await assert.rejects(installSkill({ target: "generic", explicitPath: destination }), /different content/);
   const forced = await installSkill({ target: "generic", explicitPath: destination, force: true });
-  assert.equal(forced[0].status, "INSTALLED");
+  assert.equal(forced[0].status, "REPLACED_ATOMICALLY");
   assert.doesNotMatch(fs.readFileSync(path.join(destination, "SKILL.md"), "utf8"), /local change/);
 });
 

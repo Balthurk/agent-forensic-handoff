@@ -26,7 +26,9 @@ export async function renderCase(db, caseDir, manifest, options = {}) {
   const views = ensureDir(path.join(caseDir, "views"));
   const tokenBudget = Number(options.tokenBudget || 6000);
   if (!Number.isFinite(tokenBudget) || tokenBudget <= 0 || tokenBudget > 1_000_000) throw new Error("tokenBudget must be between 1 and 1,000,000");
-  const mission = db.get("SELECT * FROM claim WHERE subject='mission' AND predicate='original_request' ORDER BY id LIMIT 1");
+  const mission = db.get("SELECT * FROM claim WHERE subject='mission' AND predicate='current_request' ORDER BY id LIMIT 1")
+    ?? db.get("SELECT * FROM claim WHERE subject='mission' AND predicate='original_request' ORDER BY id LIMIT 1");
+  const originalMission = db.get("SELECT * FROM claim WHERE subject='mission' AND predicate='original_request' ORDER BY id LIMIT 1");
   const sessions = db.all("SELECT * FROM session ORDER BY COALESCE(started_at,''),id");
   const tasks = db.all("SELECT * FROM task ORDER BY priority DESC,id");
   const decisions = db.all("SELECT * FROM decision_record ORDER BY id");
@@ -35,7 +37,7 @@ export async function renderCase(db, caseDir, manifest, options = {}) {
   const failures = tools.filter((tool) => ["FAILED", "INCOMPLETE"].includes(tool.status));
   const loops = loopGroups(db);
   const external = db.all("SELECT * FROM event WHERE canonical=1 AND (kind LIKE 'external.%' OR kind LIKE 'mcp.%') ORDER BY COALESCE(observed_at,''),source_id,record_ordinal");
-  const validations = db.all("SELECT * FROM validation ORDER BY target,id");
+  const validations = db.all("SELECT * FROM validation ORDER BY observed_at,id");
   const warnings = db.all("SELECT * FROM parse_warning ORDER BY source_id,record_ordinal,id");
   const completionReports = db.all("SELECT * FROM claim WHERE predicate='reported_completion' ORDER BY id");
   const contradictions = db.all("SELECT * FROM claim WHERE epistemic_status='CONTRADICTED' ORDER BY id");
@@ -53,6 +55,17 @@ export async function renderCase(db, caseDir, manifest, options = {}) {
     const event = db.get("SELECT * FROM event WHERE id=$id", { id: mission.source_event_id });
     if (event) { sections.push(lineForEvent(db, event, quote(payload.text, 1600))); included.add(event.id); }
   } else sections.push("- UNAVAILABLE: no user-visible request was recoverable.");
+  if (originalMission && originalMission.source_event_id !== mission?.source_event_id) {
+    const payload = JSON.parse(originalMission.object_json);
+    const event = db.get("SELECT * FROM event WHERE id=$id", { id: originalMission.source_event_id });
+    if (event) { sections.push(lineForEvent(db, event, `Original substantive request: ${quote(payload.text, 700)}`)); included.add(event.id); }
+  }
+
+  sections.push("## Evidence coverage");
+  sections.push(`- ${manifest.sources.length} immutable source(s) across ${sessions.length} recovered session(s); ${manifest.metrics.sourceRecords} source record(s), ${manifest.metrics.unparsedRecords} unparsed.`);
+  const edges = db.all("SELECT * FROM session_edge ORDER BY parent_session_id,child_session_id");
+  if (edges.length) sections.push(`- ${edges.length} explicit or directly observed parent/child edge(s) are present in the case.`);
+  for (const warning of (manifest.sourceResolutionWarnings ?? []).slice(0, 5)) sections.push(`- **UNCERTAIN child coverage** — ${warning}`);
 
   sections.push("## Current verified state");
   if (snapshot?.workspace_root) {
@@ -63,12 +76,27 @@ export async function renderCase(db, caseDir, manifest, options = {}) {
 
   sections.push("## Mission state and open work");
   if (!tasks.length) sections.push("- No task state could be extracted.");
-  for (const task of tasks.slice(-10)) {
+  for (const task of tasks.slice(-6)) {
     const event = task.last_event_id ? db.get("SELECT * FROM event WHERE id=$id", { id: task.last_event_id }) : null;
     if (event) { sections.push(lineForEvent(db, event, `**${task.state}** — ${quote(task.text, 600)}`)); included.add(event.id); }
     else sections.push(`- **${task.state}** — ${quote(task.text, 600)} (evidence ref unavailable)`);
   }
   if (completionReports.length) sections.push(`- ${completionReports.length} completion statement(s) were recovered as *reported state*; none is upgraded to verified completion without independent validation.`);
+
+  sections.push("## Next safe action");
+  const next = tasks.at(-1);
+  sections.push(next ? `- Re-read the evidence for the latest requested task, inspect current Git/filesystem state, then continue: ${quote(next.text, 600)}` : "- Ask the user to restate the desired continuation objective; no recoverable task is available.");
+  sections.push("- Retrieval: `afh query <case-dir> <terms>`, `afh show <case-dir> <event-id>`, `afh evidence <case-dir> <afh://…>`. ");
+
+  sections.push("## Recorded validation evidence");
+  if (!validations.length) sections.push("- No current or historical validation observation was recoverable.");
+  for (const validation of validations.slice(-6)) {
+    const prefix = validation.level === "HISTORICAL" ? "historical; not rerun" : validation.level;
+    const event = validation.evidence_event_id ? db.get("SELECT * FROM event WHERE id=$id", { id: validation.evidence_event_id }) : null;
+    const text = `**${validation.status}** (${prefix}) — ${quote(validation.target, 350)}: ${quote(validation.observed_result, 450)}`;
+    if (event) { sections.push(lineForEvent(db, event, text)); included.add(event.id); }
+    else sections.push(`- ${text}`);
+  }
 
   sections.push("## Decisions still visible in evidence");
   if (!decisions.length) sections.push("- No decision with an explicit `Decision:`/`Decisión:` marker was recovered. Do not manufacture rationale from outcomes.");
@@ -79,7 +107,7 @@ export async function renderCase(db, caseDir, manifest, options = {}) {
 
   sections.push("## Live artifacts");
   if (!artifacts.length) sections.push("- No artifact-producing event was recoverable.");
-  for (const artifact of prioritizeArtifacts(artifacts).slice(0, 20)) {
+  for (const artifact of prioritizeArtifacts(artifacts).slice(0, 8)) {
     const revision = db.get("SELECT * FROM artifact_revision WHERE artifact_id=$id ORDER BY observed_at DESC,id DESC LIMIT 1", { id: artifact.id });
     const event = revision ? db.get("SELECT * FROM event WHERE id=$id", { id: revision.producer_event_id }) : null;
     const text = `**${artifact.current_status}** \`${escapeTicks(artifact.logical_path)}\` — latest operation ${revision?.operation || "UNAVAILABLE"}; current hash ${artifact.current_sha256?.slice(0, 12) || "UNAVAILABLE"}`;
@@ -89,18 +117,18 @@ export async function renderCase(db, caseDir, manifest, options = {}) {
 
   sections.push("## Failures, retries and approaches not to repeat blindly");
   if (!failures.length && !loops.length) sections.push("- No durable failed/incomplete tool execution or three-attempt repetition was detected.");
-  for (const tool of failures.slice(-15)) {
+  for (const tool of failures.slice(-6)) {
     const eventId = tool.result_event_id || tool.call_event_id;
     const event = eventId ? db.get("SELECT * FROM event WHERE id=$id", { id: eventId }) : null;
     const text = `**${tool.status}** \`${escapeTicks(tool.tool_name)}\`${tool.command_text ? ` — \`${escapeTicks(tool.command_text.slice(0, 300))}\`` : ""}${tool.semantic_extract ? ` — ${quote(tool.semantic_extract, 500)}` : ""}`;
     if (event) { sections.push(lineForEvent(db, event, text)); included.add(event.id); }
     else sections.push(`- ${text}`);
   }
-  for (const loop of loops.slice(0, 10)) sections.push(`- **REPETITION GROUP** \`${escapeTicks(loop.tool_name)}\`: ${loop.attempts} attempts, ${loop.failures} failed; fingerprint \`${loop.invocation_fingerprint.slice(0, 12)}\`. Similar text alone is not asserted as causal looping.`);
+  for (const loop of loops.slice(0, 5)) sections.push(`- **REPETITION GROUP** \`${escapeTicks(loop.tool_name)}\`: ${loop.attempts} attempts, ${loop.failures} failed; fingerprint \`${loop.invocation_fingerprint.slice(0, 12)}\`. Similar text alone is not asserted as causal looping.`);
 
   sections.push("## External influences");
   if (!external.length) sections.push("- No separately attributable subagent, MCP, hook or external-service intervention was recovered.");
-  for (const event of external.slice(-15)) {
+  for (const event of external.slice(-5)) {
     sections.push(lineForEvent(db, event, `**${event.kind}**/${event.subtype || "activity"} — ${quote(event.input_preview || event.output_preview || event.status, 500)}`));
     included.add(event.id);
   }
@@ -120,11 +148,6 @@ export async function renderCase(db, caseDir, manifest, options = {}) {
   }
   sections.push("- Private/hidden reasoning, discarded transient events, truncated bytes, unobserved background activity and unstated motives remain UNAVAILABLE by construction.");
 
-  sections.push("## Next safe action");
-  const next = tasks.at(-1);
-  sections.push(next ? `- Re-read the evidence for the latest requested task, inspect current Git/filesystem state, then continue: ${quote(next.text, 600)}` : "- Ask the user to restate the desired continuation objective; no recoverable task is available.");
-  sections.push("- Retrieval: `afh query <case-dir> <terms>`, `afh show <case-dir> <event-id>`, `afh evidence <case-dir> <afh://…>`.");
-
   let hot = "";
   for (const section of sections) {
     const candidate = hot ? `${hot}\n\n${section}` : section;
@@ -134,7 +157,8 @@ export async function renderCase(db, caseDir, manifest, options = {}) {
     }
     hot = candidate;
   }
-  atomicWrite(path.join(caseDir, "hot-context.md"), `${hot}\n`);
+  const hotFile = `${hot}\n`;
+  atomicWrite(path.join(caseDir, "hot-context.md"), hotFile);
 
   writeWarmViews(db, views, { sessions, tools, artifacts, decisions, tasks, failures, loops, external, validations, warnings });
   const receipt = humanReceipt(manifest, { failures, loops, artifacts, tasks, validations, warnings });
@@ -142,7 +166,7 @@ export async function renderCase(db, caseDir, manifest, options = {}) {
   const pack = {
     id: `hyd-${shortHash([manifest.caseHash, tokenBudget, hot])}`,
     caseHash: manifest.caseHash, budget: tokenBudget, estimate: tokenEstimate(hot),
-    contentSha: shortHash(hot, 64), createdAt: manifest.completedAt,
+    contentSha: shortHash(hotFile, 64), createdAt: manifest.completedAt,
     version: AFH_VERSION, events: stableStringify([...included].sort()),
   };
   db.insertHydrationPack(pack);
@@ -159,11 +183,17 @@ function escapeTicks(value) { return String(value || "").replaceAll("`", "ˋ").r
 function writeWarmViews(db, views, data) {
   const timeline = db.all(`SELECT e.*,a.kind actor_kind,a.role actor_role FROM event e LEFT JOIN actor a ON a.id=e.actor_id
     WHERE e.canonical=1 ORDER BY COALESCE(e.observed_at,''),e.source_id,e.record_ordinal,e.subordinal`);
+  const refsByEvent = new Map();
+  for (const ref of db.all("SELECT event_id,uri FROM evidence_ref ORDER BY event_id,id")) {
+    const refs = refsByEvent.get(ref.event_id) ?? [];
+    refs.push(ref.uri);
+    refsByEvent.set(ref.event_id, refs);
+  }
   atomicWrite(path.join(views, "timeline.ndjson"), `${timeline.map((event) => JSON.stringify({
     id: event.id, observedAt: event.observed_at, actor: { id: event.actor_id, kind: event.actor_kind, role: event.actor_role },
     kind: event.kind, subtype: event.subtype, status: event.status, callId: event.call_id,
     input: event.input_preview, output: event.output_preview, epistemicStatus: event.epistemic_status,
-    evidence: evidenceFor(db, event.id).map((ref) => ref.uri),
+    evidence: refsByEvent.get(event.id) ?? [],
   })).join("\n")}\n`);
 
   const toolLines = ["# Command and tool ledger", ""];
@@ -185,10 +215,10 @@ function writeWarmViews(db, views, data) {
   }).join("\n\n")}\n`);
 
   atomicWrite(path.join(views, "tasks.md"), `# Mission-state ledger\n\n${data.tasks.map((task) => `- **${task.state}** ${quote(task.text, 1000)} — evidence \`${task.last_event_id || "UNAVAILABLE"}\``).join("\n") || "No tasks extracted."}\n`);
-  atomicWrite(path.join(views, "decisions.md"), `# Explicit decision ledger\n\n${data.decisions.map((decision) => `- **${decision.status}** ${decision.decision_text}; rationale: ${decision.rationale || "UNAVAILABLE"}; evidence \`${decision.source_event_id}\``).join("\n") || "No strictly marked decisions extracted."}\n`);
+  atomicWrite(path.join(views, "decisions.md"), `# Evidence-backed decision ledger\n\n${data.decisions.map((decision) => `- **${decision.status}** ${decision.decision_text}; rationale: ${decision.rationale || "UNAVAILABLE"}; evidence \`${decision.source_event_id}\``).join("\n") || "No strictly marked decisions extracted."}\n`);
   atomicWrite(path.join(views, "failures-and-loops.md"), `# Failures, incomplete calls and repetition groups\n\n${data.failures.map((tool) => `- **${tool.status}** ${tool.tool_name}: ${quote(tool.semantic_extract || tool.command_text || "no semantic output", 800)}`).join("\n") || "No failed or incomplete tool executions."}\n\n${data.loops.map((loop) => `- ${loop.tool_name}: ${loop.attempts} attempts, ${loop.failures} failures, fingerprint ${loop.invocation_fingerprint}`).join("\n") || "No three-attempt repetition group."}\n`);
   atomicWrite(path.join(views, "external-influences.md"), `# External influence ledger\n\n${data.external.map((event) => lineForEvent(db, event, `${event.kind}/${event.subtype || "activity"}: ${quote(event.input_preview || event.output_preview || event.status, 900)}`)).join("\n") || "No separately attributable external influence recovered."}\n`);
-  atomicWrite(path.join(views, "validations.md"), `# Current-state validation\n\n${data.validations.map((item) => `- **${item.status}** ${item.target} (${item.level}, ${item.method}, ${item.observed_at}): ${item.observed_result}`).join("\n") || "No validation observations."}\n`);
+  atomicWrite(path.join(views, "validations.md"), `# Current and historical validation evidence\n\nHistorical rows prove only what the persisted execution record reported; AFH did not rerun them.\n\n${data.validations.map((item) => `- **${item.status}** ${item.target} (${item.level}, ${item.method}, ${item.observed_at}): ${item.observed_result}${item.evidence_event_id ? `; evidence \`${item.evidence_event_id}\`` : ""}`).join("\n") || "No validation observations."}\n`);
   atomicWrite(path.join(views, "warnings.md"), `# Parse and source warnings\n\n${data.warnings.map((item) => `- ${item.code} at ${item.source_id || "unknown"}:${item.record_ordinal ?? "?"} — ${item.message}`).join("\n") || "No warnings."}\n`);
 }
 
@@ -212,11 +242,13 @@ function humanReceipt(manifest, data) {
 - **Sessions / actors:** ${m.sessions} / ${m.actors}
 - **Source records:** ${m.sourceRecords} (${m.parsedRecords} parsed; ${m.unparsedRecords} unparsed)
 - **External interventions:** ${m.externalInterventions}
+- **Immutable sources / recovered sessions:** ${m.sources} / ${m.sessions}
 - **Artifacts created/modified:** ${m.artifacts}
 - **Relevant command/tool executions:** ${m.tools} (${m.failedTools} failed; ${m.incompleteTools} incomplete)
 - **Failures/retry groups:** ${m.failedTools + m.incompleteTools} / ${data.loops.length}
 - **Verified artifact states:** ${data.artifacts.filter((item) => item.current_status === "LIVE_VERIFIED").length}
-- **Unresolved requested tasks:** ${data.tasks.filter((item) => item.state === "REQUESTED").length}
+- **Substantive user requests indexed:** ${m.tasks}
+- **Recorded validations:** ${m.validations}
 - **Continuation readiness:** ${readiness}
 - **Confidence:** ${confidence}
 

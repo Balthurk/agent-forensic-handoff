@@ -58,7 +58,7 @@ test("tampered evidence fails closed", async (t) => {
   assert.throws(() => readEvidence(result.caseDir, uri), /hash mismatch/);
 });
 
-test("artifact path traversal aborts verification", async (t) => {
+test("artifact path traversal is not probed and remains explicitly unverified", async (t) => {
   const root = temporary(t, "afh-traversal-");
   const source = path.join(root, "malicious.jsonl");
   const record = {
@@ -67,11 +67,13 @@ test("artifact path traversal aborts verification", async (t) => {
   };
   fs.writeFileSync(source, `${JSON.stringify(record)}\n`);
   fs.mkdirSync(path.join(root, "workspace"));
-  await assert.rejects(
-    auditSession(source, { harness: "generic", caseDir: path.join(root, "case"), workspace: path.join(root, "workspace"), includeChildren: false }),
-    /escapes workspace/,
-  );
+  const result = await auditSession(source, { harness: "generic", caseDir: path.join(root, "case"), workspace: path.join(root, "workspace"), includeChildren: false });
   assert.equal(fs.existsSync(path.join(root, "escape.txt")), false);
+  const db = new CaseDatabase(path.join(result.caseDir, "case.sqlite"), { readOnly: true });
+  try {
+    assert.equal(db.get("SELECT current_status FROM artifact").current_status, "LIVE_UNVERIFIED");
+    assert.match(db.get("SELECT observed_result FROM validation WHERE method='workspace containment check'").observed_result, /outside verified workspace/);
+  } finally { db.close(); }
 });
 
 test("absolute historical artifact paths cannot probe outside the workspace", async (t) => {
@@ -83,10 +85,10 @@ test("absolute historical artifact paths cannot probe outside the workspace", as
     session_id: "absolute", type: "tool_call", tool_name: "Write", call_id: "bad-absolute",
     input: { file_path: "/etc/passwd", content: "not used" },
   })}\n`);
-  await assert.rejects(
-    auditSession(source, { harness: "generic", caseDir: path.join(root, "case"), workspace, includeChildren: false }),
-    /escapes workspace/,
-  );
+  const result = await auditSession(source, { harness: "generic", caseDir: path.join(root, "case"), workspace, includeChildren: false });
+  const db = new CaseDatabase(path.join(result.caseDir, "case.sqlite"), { readOnly: true });
+  try { assert.equal(db.get("SELECT current_status FROM artifact").current_status, "LIVE_UNVERIFIED"); }
+  finally { db.close(); }
 });
 
 test("symlink transcript input is refused by default", { skip: process.platform === "win32" }, async (t) => {

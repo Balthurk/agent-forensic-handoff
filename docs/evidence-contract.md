@@ -20,6 +20,8 @@ For each source, the case stores:
 - compression mode;
 - SHA-256, length, and private path of the canonical decoded JSONL used for indexing.
 
+The source byte length is fixed before hashing and decoding. Append-only growth after that point belongs to a later audit; modification of the captured prefix makes acquisition fail closed.
+
 The evidence URI contains the original source hash as a stable locator key. Its byte range addresses the canonical decoded source. The database binds those two facts and stores the SHA-256 of the addressed record.
 
 ## Evidence resolution
@@ -34,7 +36,8 @@ Hot and warm views contain bounded projections:
 
 - common secret formats are replaced with a type and short non-reversible fingerprint;
 - large values retain a head/tail semantic window and state that bytes were omitted;
-- complete available inputs/outputs are stored as hashed blobs;
+- complete available event inputs/outputs remain in the exact canonical source record and their normalized values are bound by SHA-256 in the event ledger;
+- derived content that is not independently addressable in a source record is stored as a hash-verified SQLite or file blob;
 - original records remain cold evidence.
 
 Redaction is defense in depth, not a guarantee that every secret format is detected. The entire case remains sensitive.
@@ -74,4 +77,4 @@ Every decoded line receives a `source_record` row. Valid but unsupported records
 
 ## Integrity boundary
 
-The current format detects accidental or local post-case tampering at record retrieval. It is not a digital signature and does not establish who originally produced a source. Portable signing and encrypted bundles are future capabilities, not implied by v0.1.
+`afh verify-case` checks SQLite integrity, schema and manifest agreement, source hashes and lengths, record byte ranges and hashes, derived blobs, metrics, and the hydration-pack hash without modifying the case. The format detects accidental or local post-case tampering; it is not a digital signature and does not establish who originally produced a source. Portable signing and encrypted bundles are future capabilities, not implied by v0.2.

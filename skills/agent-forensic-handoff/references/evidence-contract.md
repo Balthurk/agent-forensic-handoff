@@ -31,6 +31,10 @@ The case database binds the URI to the normalized event, source record hash, opt
 
 The source hash identifies the original captured source locator. Canonical evidence files contain the decoded JSONL bytes used by the parser so compressed inputs remain selectively addressable.
 
+Normalized event input/output hashes bind projections to the value represented in the source record; AFH does not duplicate those full transcript values as blobs. Derived artifact content or diffs are stored in the `content_blob` registry, inline in SQLite below the configured threshold or as a content-addressed file above it.
+
+Before relying on a case, `afh verify-case` must pass its database, manifest, source/record, derived-blob, metric, and hydration checks. Verification detects tampering but does not authenticate the original producer.
+
 ## Claims
 
 A material claim needs:

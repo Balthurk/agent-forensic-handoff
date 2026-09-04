@@ -16,6 +16,8 @@ The command exits non-zero when an automated gate fails and writes `benchmark-re
 
 The committed [v0.1.0 baseline](../benchmarks/baseline-v0.1.0.json) was produced on Node 24.19.0 on 4 September 2026. All deterministic gates passed. Its 10,002-record scale stream completed in 1.648 seconds (6,069 records/second), preserved 100% parse accounting, and reduced an estimated 317,297 source tokens to 536 hot tokens (`0.169%`). Environment-dependent timing is informational; fidelity gates are normative.
 
+The [v0.2.0 release profile](../benchmarks/release-v0.2.0.json) adds a same-machine three-run comparison and a one-million-record local gate. The million-record run preserved 1,000,002/1,000,002 records at 4,190 records/second and reduced an estimated 32.2 million source tokens to 592 hot tokens. The production-shaped real case itself is private and excluded from the repository.
+
 A separate [blinded successor smoke trial](../benchmarks/blinded-v0.1.0.md) passed 1/1. It is published as evidence that the end-to-end continuation path works, but is explicitly insufficient to claim the multi-trial `>=90%` continuation acceptance gate.
 
 ## Current fixture families
@@ -23,6 +25,7 @@ A separate [blinded successor smoke trial](../benchmarks/blinded-v0.1.0.md) pass
 | Fixture | Difficult cases represented |
 |---|---|
 | `codex-basic` | repeated failing command, later success, full-content patch, explicit decision, subagent, compaction |
+| `codex-modern` | item-completion families, file changes, direct command exits, MCP delegation, collaboration, token and realtime records |
 | `claude-basic` | structured tool blocks, edit provenance, file-history snapshot, summary/compaction, current hash check |
 | `generic-mixed` | failed deployment, contradictory completion report, invalid JSON retained and counted |
 | generated giant stream | high-volume irrelevant token events, bounded hot context, streaming throughput |
@@ -76,4 +79,4 @@ Continuation success cannot honestly be produced by the same process that genera
 - blinded continuation trials across at least two harnesses;
 - published raw result JSON and tool version/commit.
 
-The initial v0.1 repository provides the pull request profile. Million-record and multi-harness blinded continuation results are release-hardening work and must not be implied by the smoke benchmark.
+The initial v0.1 repository provided the pull request profile. v0.2 adds a production-shaped modern Codex fixture and a local million-record release run; multi-harness blinded continuation remains release-hardening work and must not be implied by the deterministic benchmark.

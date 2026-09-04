@@ -15,6 +15,7 @@ export async function runBenchmark(options = {}) {
   ensureDir(root);
   const fixtures = [
     { harness: "codex", transcript: path.join(FIXTURE_ROOT, "codex", "basic.jsonl"), truth: path.join(FIXTURE_ROOT, "codex", "truth.json") },
+    { harness: "codex", transcript: path.join(FIXTURE_ROOT, "codex", "modern.jsonl"), truth: path.join(FIXTURE_ROOT, "codex", "modern-truth.json") },
     { harness: "claude", transcript: path.join(FIXTURE_ROOT, "claude", "basic.jsonl"), truth: path.join(FIXTURE_ROOT, "claude", "truth.json") },
     { harness: "generic", transcript: path.join(FIXTURE_ROOT, "generic", "mixed.jsonl"), truth: path.join(FIXTURE_ROOT, "generic", "truth.json") },
   ];
@@ -41,7 +42,7 @@ export async function runBenchmark(options = {}) {
     idempotence: reports.every((report) => report.idempotent),
   };
   const result = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: new Date().toISOString(),
     fixtureCount: reports.length,
     metrics: {
@@ -88,6 +89,8 @@ async function evaluateFixture(root, fixture) {
     for (const decision of critical.decisions) checks.push({ category: "decision", expected: decision, ok: actualDecisions.has(decision) });
     checks.push({ category: "external", expected: `>=${critical.externalMinimum}`, ok: Number(db.get("SELECT COUNT(*) n FROM event WHERE canonical=1 AND (kind LIKE 'external.%' OR kind LIKE 'mcp.%')").n) >= critical.externalMinimum });
     checks.push({ category: "unparsed", expected: critical.unparsed, ok: Number(db.get("SELECT COUNT(*) n FROM source_record WHERE parse_status!='PARSED'").n) === critical.unparsed });
+    if (critical.warnings != null) checks.push({ category: "warnings", expected: critical.warnings, ok: Number(db.get("SELECT COUNT(*) n FROM parse_warning").n) === critical.warnings });
+    if (critical.validationsMinimum != null) checks.push({ category: "validations", expected: `>=${critical.validationsMinimum}`, ok: Number(db.get("SELECT COUNT(*) n FROM validation").n) >= critical.validationsMinimum });
 
     const timelineChecks = critical.timelinePairs.map(([before, after]) => {
       const a = events.findIndex((event) => event.kind === before);
@@ -137,6 +140,10 @@ function prepareWorkspace(name, workspace) {
     fs.writeFileSync(path.join(workspace, "src", "parser.js"), "export const canary = 'ALPHA-42';\n");
   }
   if (name === "claude-basic") fs.writeFileSync(path.join(workspace, "config.yaml"), "mode: safe");
+  if (name === "codex-modern") {
+    ensureDir(path.join(workspace, "src"));
+    fs.writeFileSync(path.join(workspace, "src", "modern.js"), "modern artifact\n");
+  }
 }
 
 async function evaluateGiant(root, count) {
@@ -162,7 +169,9 @@ async function evaluateGiant(root, count) {
     hotTokenEstimate: tokenEstimate(hot),
     sourceTokenEstimate,
     hotToSourceTokenRatio: ratio(tokenEstimate(hot), sourceTokenEstimate),
-    note: "Synthetic scale smoke test; release-scale million-record fixtures remain a separate CI profile.",
+    note: count >= 1_000_000
+      ? "Local synthetic release-scale run; CI keeps a smaller default profile."
+      : "Synthetic scale smoke test; run one million records for the local release profile.",
   };
 }
 

@@ -8,9 +8,9 @@ Discovery order:
 2. exact rollout path, accepting `.zst`/`.gz` variants;
 3. filename search under `sessions/` and `archived_sessions/`.
 
-The adapter recognizes current common `session_meta`, `turn_context`, `world_state`, `response_item`, `event_msg`, and `compacted` records. Raw rollout JSONL is an implementation surface and can drift; unsupported variants become warnings and retained cold evidence.
+The adapter recognizes current common `session_meta`, `turn_context`, `world_state`, `response_item`, `event_msg`, `token_usage_record`, `realtime_item`, `inter_agent_communication_metadata`, and `compacted` records. It classifies observed item-completion variants including user/agent messages, reasoning, commands, MCP calls, file changes, subagent/collaboration activity, extensions, images, and compaction. Raw rollout JSONL is an implementation surface and can drift; unsupported variants become warnings and retained cold evidence.
 
-Parent/child edges are used only when explicit state rows or persisted subagent activity expose them. A full native ID is preferred. Prefix resolution is refused when ambiguous unless the operator explicitly acknowledges `--allow-prefix`.
+Parent/child edges are used only when explicit state rows or exact identifiers in persisted successful create/fork/subagent observations expose them. A full native ID is preferred. Prefix resolution is refused when ambiguous unless the operator explicitly acknowledges `--allow-prefix`.
 
 ## Claude Code
 

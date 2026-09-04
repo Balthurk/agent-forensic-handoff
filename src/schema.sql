@@ -266,6 +266,17 @@ CREATE TABLE IF NOT EXISTS secret_finding (
   projection TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS content_blob (
+  sha256 TEXT PRIMARY KEY,
+  byte_length INTEGER NOT NULL,
+  extension TEXT NOT NULL,
+  storage TEXT NOT NULL CHECK(storage IN ('SQLITE','FILE')),
+  inline_data BLOB,
+  evidence_path TEXT,
+  CHECK((storage='SQLITE' AND inline_data IS NOT NULL AND evidence_path IS NULL)
+     OR (storage='FILE' AND inline_data IS NULL AND evidence_path IS NOT NULL))
+);
+
 CREATE TABLE IF NOT EXISTS hydration_pack (
   id TEXT PRIMARY KEY,
   case_hash TEXT NOT NULL,

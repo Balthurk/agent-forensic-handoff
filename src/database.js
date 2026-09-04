@@ -15,7 +15,10 @@ export class CaseDatabase {
     this.sessionValueCache = new Map();
     this.actorValueCache = new Map();
     this.db.exec("PRAGMA foreign_keys = ON");
-    if (!readOnly) this.db.exec(fs.readFileSync(path.join(MODULE_DIR, "schema.sql"), "utf8"));
+    if (!readOnly) {
+      this.db.exec("PRAGMA journal_mode = MEMORY; PRAGMA synchronous = NORMAL; PRAGMA temp_store = MEMORY; PRAGMA cache_size = -32768");
+      this.db.exec(fs.readFileSync(path.join(MODULE_DIR, "schema.sql"), "utf8"));
+    }
   }
 
   close() {
@@ -191,6 +194,15 @@ export class CaseDatabase {
     this.run(`INSERT OR IGNORE INTO secret_finding
       (id,source_id,event_id,kind,fingerprint,projection)
       VALUES ($id,$source,$event,$kind,$fingerprint,$projection)`, finding);
+  }
+
+  insertContentBlob(blob) {
+    this.run(`INSERT OR IGNORE INTO content_blob
+      (sha256,byte_length,extension,storage,inline_data,evidence_path)
+      VALUES ($sha,$bytes,$extension,$storage,$data,$path)`, {
+      sha: blob.sha256, bytes: blob.byteLength, extension: blob.extension,
+      storage: blob.storage, data: blob.inlineData ?? null, path: blob.path ?? null,
+    });
   }
 
   upsertTool(tool) {

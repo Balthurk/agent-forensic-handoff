@@ -1,0 +1,45 @@
+{
+  "version": "0.2.0",
+  "date": "2026-09-04",
+  "environment": {
+    "platform": "win32",
+    "architecture": "x64",
+    "node": "24.15.0"
+  },
+  "sameMachineComparison": {
+    "records": 10002,
+    "v0_1_0": {
+      "runsElapsedMs": [2924, 2938, 3693],
+      "medianElapsedMs": 2938,
+      "medianRecordsPerSecond": 3404
+    },
+    "v0_2_0": {
+      "runsElapsedMs": [1860, 2031, 1692],
+      "medianElapsedMs": 1860,
+      "medianRecordsPerSecond": 5377
+    }
+  },
+  "millionRecordProfile": {
+    "requestedNoiseRecords": 1000000,
+    "parsedSourceRecords": 1000002,
+    "elapsedMs": 238643,
+    "recordsPerSecond": 4190,
+    "parseAccounting": true,
+    "hotTokenEstimate": 592,
+    "sourceTokenEstimate": 32222297,
+    "hotToSourceTokenRatio": 0.000018372371156531764,
+    "allAutomatedGatesPassed": true
+  },
+  "productionShapedCase": {
+    "caseHash": "de089ec502bbff04557c2b1bdc9c5ad2cbb1c5b1e9dd0b4eff3861e2da0d2463",
+    "sources": 9,
+    "sourceRecords": 54924,
+    "warnings": 0,
+    "artifacts": 189,
+    "validations": 514,
+    "deepIntegrityPassed": true,
+    "caseBytes": 609566934,
+    "caseFiles": 56,
+    "largeBlobFiles": 34
+  }
+}

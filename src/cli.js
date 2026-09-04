@@ -8,6 +8,7 @@ import { installSkill } from "./install.js";
 import { loadManifest, readEvidence, readHotContext, renderCase, searchCase, showEvent } from "./render.js";
 import { parseCli, boolFlag } from "./util.js";
 import { runBenchmark } from "./benchmark.js";
+import { verifyCaseIntegrity } from "./integrity.js";
 
 export async function main(argv) {
   const { positional, flags } = parseCli(argv);
@@ -26,12 +27,15 @@ export async function main(argv) {
       caseDir: flags["case-dir"],
       workspace: flags.workspace,
       includeChildren: boolFlag(flags.children, true),
+      maxChildSessions: flags["max-child-sessions"],
+      inlineBlobBytes: flags["inline-blob-bytes"],
       allowSymlink: boolFlag(flags["allow-symlink"], false),
       allowPrefix: boolFlag(flags["allow-prefix"], false),
       verificationLevel: flags.verify || "V0",
       tokenBudget: flags.budget || DEFAULTS.tokenBudget,
       maxRecordBytes: flags["max-record-bytes"],
       maxDecompressedBytes: flags["max-decompressed-bytes"],
+      maxTotalSourceBytes: flags["max-total-source-bytes"],
       maxCompressionRatio: flags["max-compression-ratio"],
       codexHome: flags["codex-home"],
       claudeHome: flags["claude-home"],
@@ -96,6 +100,18 @@ export async function main(argv) {
     return;
   }
 
+  if (command === "verify-case") {
+    const caseDir = requiredCase(positional.shift());
+    const result = await verifyCaseIntegrity(caseDir, { deep: !boolFlag(flags.quick, false) });
+    if (flags.json) print(JSON.stringify(result, null, 2));
+    else {
+      print(`${result.passed ? "PASS" : "FAIL"} forensic case: ${result.caseDir}`);
+      for (const finding of result.findings) print(`${finding.ok ? "OK" : "FAIL"}  ${finding.check}: ${finding.detail}`);
+    }
+    if (!result.passed) process.exitCode = 1;
+    return;
+  }
+
   if (command === "benchmark") {
     const result = await runBenchmark({ output: flags.out, giantRecords: Number(flags["giant-records"] || 10_000) });
     print(JSON.stringify(result, null, 2));
@@ -118,11 +134,14 @@ function printHelp() {
 Usage:
   afh audit <session-id|path> [--harness auto|codex|claude|antigravity|generic]
       [--workspace PATH] [--verify V0|V1] [--budget 6000] [--out AFH_HOME]
-      [--no-children] [--allow-prefix] [--allow-symlink] [--json]
+      [--no-children] [--max-child-sessions 32] [--inline-blob-bytes 16384]
+      [--max-total-source-bytes 8589934592]
+      [--allow-prefix] [--allow-symlink] [--json]
   afh hydrate <case-dir> [--budget 6000]
   afh query <case-dir> <terms> [--limit 25] [--json]
   afh show <case-dir> <event-id>
   afh evidence <case-dir> <afh://evidence/...> [--json]
+  afh verify-case <case-dir> [--quick] [--json]
   afh install-skill [--target codex|claude|antigravity|all|generic] [--path PATH] [--force]
   afh benchmark [--giant-records 10000] [--out PATH]
   afh doctor [--json]
