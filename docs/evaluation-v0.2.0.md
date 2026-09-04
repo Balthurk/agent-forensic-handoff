@@ -33,18 +33,18 @@ The primary production-shaped input was Codex thread `01a0573f-6dfb-7071-8d35-c8
 
 Final isolated case:
 
-`C:\T\afh-v020-final-real-20260904-r2\cases\01a0573f-6dfb-7071-8d35-c816f4d88027\de089ec502bbff04`
+`C:\T\afh-v020-final-real-20260904-r3\cases\01a0573f-6dfb-7071-8d35-c816f4d88027\55a635f831d9aa4d`
 
 - 9 immutable sources; 45 recovered session identities; 53 explicit/direct session edges.
-- 54,924/54,924 records parsed; 0 unparsed; 0 unsupported-format warnings for the captured families.
-- 7,133 correlated tool executions; 189 artifacts; 514 current/historical validation rows; 958 external interventions.
+- 55,179/55,179 records parsed; 0 unparsed; 0 unsupported-format warnings for the captured families.
+- 8,528 reconciled tool executions; 189 artifacts; 515 current/historical validation rows; 958 external interventions.
 - The exact standalone successor was acquired and its current substantive request became the hot mission.
-- Deep integrity verification passed every source, all 54,924 record ranges and hashes, all 1,324 derived blobs, metrics, hydration hash, snapshot hash, and case hash.
+- Deep integrity verification passed every source, all 55,179 record ranges and hashes, all 1,324 derived blobs, metrics, hydration hash, snapshot hash, and case hash.
 - The deliberately low test limit of eight children emitted explicit coverage warnings for additional observed subagents. Those warnings are a bounded-acquisition disclosure, not parser loss.
 
 ## Storage and performance
 
-The earlier pre-optimization v0.2 real run had 774,564,159 bytes, 1,737 files, and 1,716 large blob files. The final case has 609,566,934 bytes, 56 files, and 34 large blob files while capturing one additional source. This is about 21.3% fewer bytes and 96.8% fewer filesystem entries in the production-shaped comparison.
+The earlier pre-optimization v0.2 real run had 774,564,159 bytes, 1,737 files, and 1,716 large blob files. The final case has 614,385,105 bytes, 56 files, and 34 large blob files while capturing one additional and still-growing source. This is about 20.7% fewer bytes and 96.8% fewer filesystem entries in the production-shaped comparison.
 
 A same-machine, same-period three-run comparison at 10,002 records produced:
 

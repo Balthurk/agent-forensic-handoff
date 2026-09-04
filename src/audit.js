@@ -293,12 +293,17 @@ function evidenceUri(rawHash, decoded) {
 
 function processTool(db, event, normalized) {
   const correlatedPatch = event.kind === "filesystem.patch" && Boolean(event.callId);
-  if (!correlatedPatch && !["tool.requested", "tool.completed", "mcp.completed"].includes(event.kind)) return;
+  if (!correlatedPatch && !["tool.requested", "tool.completed", "mcp.completed", "tool.observed"].includes(event.kind)) return;
   const callId = event.callId || event.id;
-  const toolId = `tex-${shortHash(callId, 24)}`;
-  const existing = db.get("SELECT * FROM tool_execution WHERE id=$id", { id: toolId });
+  const observedCommand = normalized.metadata?.command || extractCommand(normalized.input) || null;
+  const observedMatch = event.kind === "tool.observed" && observedCommand
+    ? db.get(`SELECT * FROM tool_execution WHERE session_id=$session AND command_text=$command
+        ORDER BY COALESCE(ended_at,started_at,'') DESC,id DESC LIMIT 1`, { session: event.sessionId, command: observedCommand })
+    : null;
+  const toolId = observedMatch?.id || `tex-${shortHash(callId, 24)}`;
+  const existing = observedMatch || db.get("SELECT * FROM tool_execution WHERE id=$id", { id: toolId });
   const toolName = normalized.metadata?.toolName || existing?.tool_name || normalized.subtype || "unknown";
-  const command = extractCommand(normalized.input) || existing?.command_text || null;
+  const command = observedCommand || existing?.command_text || null;
   const exitCode = normalized.metadata?.exitCode ?? existing?.exit_code ?? null;
   const status = event.kind === "tool.requested" ? (existing?.status ?? "REQUESTED") : (event.status || "COMPLETED");
   const semantic = event.outputPreview ? semanticExtract(event.outputPreview, status, exitCode) : existing?.semantic_extract ?? null;

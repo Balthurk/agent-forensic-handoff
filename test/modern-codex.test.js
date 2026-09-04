@@ -39,6 +39,8 @@ test("modern Codex records produce salient context, artifacts, validations, and 
   try {
     assert.equal(db.get("SELECT COUNT(*) n FROM task").n, 1);
     assert.equal(db.get("SELECT logical_path FROM artifact").logical_path, "src/modern.js");
+    assert.equal(db.get("SELECT COUNT(*) n FROM tool_execution WHERE command_text='python -m pytest -q'").n, 1);
+    assert.equal(db.get("SELECT status FROM tool_execution WHERE command_text='python -m pytest -q'").status, "COMPLETED");
     assert.ok(db.get("SELECT COUNT(*) n FROM content_blob WHERE storage='SQLITE'").n > 0);
     assert.ok(db.get("SELECT COUNT(*) n FROM content_blob").n < db.get("SELECT COUNT(*) n FROM event WHERE input_blob_sha256 IS NOT NULL OR output_blob_sha256 IS NOT NULL").n);
   } finally { db.close(); }

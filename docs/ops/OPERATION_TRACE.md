@@ -81,3 +81,16 @@ Append-only step-level trace for project-affecting Codex work.
 - `evidence_result`: `release:check PASS; 17 tests passed and one Windows symlink test skipped; Node 22.23.2 and Node 24.15.0 suites PASS; skill validators PASS; npm audit reports 0 vulnerabilities; package dry-run contains 58 files. Million profile: 1,000,002/1,000,002 records in 238,643 ms at 4,190 records/s, all gates PASS.`
 - `decision`: `Docker validation omitted because Docker Desktop was not running; redundant Node 22 and Node 24 native runs provide the required runtime coverage. Proceed to commit, remote CI, staged activation, and rollback smoke.`
 - `status`: `done`
+
+### TRACE-2026-09-04-006
+
+- `timestamp`: `2026-09-04T13:21:25+02:00`
+- `task_id`: `TASK-2026-09-04-001`
+- `agent_session`: `Codex`
+- `project_root`: `C:\T\agent-forensic-handoff-improvement-20260904`
+- `phase`: `tool-ledger-reconciliation`
+- `action_type`: `code-and-production-shaped-rerun`
+- `target`: `modern CommandExecution projections and final isolated case C:\T\afh-v020-final-real-20260904-r3\cases\01a0573f-6dfb-7071-8d35-c816f4d88027\55a635f831d9aa4d`
+- `evidence_result`: `3,058/4,393 command observations matched existing wrapper executions and were enriched rather than duplicated; unmatched observations became ledger rows. Final case: 55,179/55,179 parsed, 8,528 tools, 189 artifacts, 515 validations, 0 warnings; deep integrity PASS; 614,385,105 bytes, 56 files.`
+- `decision`: `Do not accept a receipt that reports zero tools when direct CommandExecution evidence exists. Reconcile by exact session/command match and retain direct observed result metadata.`
+- `status`: `done`

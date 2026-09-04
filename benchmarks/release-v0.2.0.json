@@ -31,14 +31,15 @@
     "allAutomatedGatesPassed": true
   },
   "productionShapedCase": {
-    "caseHash": "de089ec502bbff04557c2b1bdc9c5ad2cbb1c5b1e9dd0b4eff3861e2da0d2463",
+    "caseHash": "55a635f831d9aa4da22d1eedafe581f93e8403fa9c7e0b09a2cbc56097f1e8a9",
     "sources": 9,
-    "sourceRecords": 54924,
+    "sourceRecords": 55179,
     "warnings": 0,
     "artifacts": 189,
-    "validations": 514,
+    "toolExecutions": 8528,
+    "validations": 515,
     "deepIntegrityPassed": true,
-    "caseBytes": 609566934,
+    "caseBytes": 614385105,
     "caseFiles": 56,
     "largeBlobFiles": 34
   }
