@@ -52,7 +52,6 @@ test("schema v3 graph traversal explains result, artifact, and validation relati
   assert.equal(pathResult.path[0].edgeType, "RESULT_OF");
   assert.equal((await verifyCaseIntegrity(result.caseDir)).passed, true);
 });
-
 test("graph traversal is cycle-safe and bounded", async (t) => {
   const root = temporary(t, "afh-graph-cycle-");
   const result = await auditSession(fixture, {
@@ -81,4 +80,3 @@ test("graph traversal is cycle-safe and bounded", async (t) => {
   assert.throws(() => graphNeighbors(result.caseDir, a, { hops: 9 }), /hops/i);
   assert.throws(() => graphPath(result.caseDir, a, b, { maxHops: 9 }), /maxHops/i);
 });
-

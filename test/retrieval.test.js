@@ -69,7 +69,6 @@ test("legacy lexical query remains an array while explicit retrieval modes are e
   assert.ok(lexical.results[0].explanation.lexicalRank >= 1);
   assert.equal(lexical.receipt.semanticProjection, null);
 });
-
 test("semantic and hybrid recover paraphrases without degrading exact retrieval", async (t) => {
   const { audit } = await makeCase(t);
   const embeddingProvider = provider();
@@ -137,4 +136,3 @@ test("negative retrieval distinguishes complete from incomplete coverage", async
   assert.equal(uncertain.assessment.status, "INCONCLUSIVE_COVERAGE");
   assert.ok(uncertain.assessment.gaps.some((gap) => /unparsed/i.test(gap)));
 });
-

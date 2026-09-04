@@ -54,4 +54,3 @@ PostgreSQL/pgvector, Qdrant, Neo4j, and similar services violate the normal-use 
 - Published sqlite-vec packages also cover macOS x64/arm64 and Linux arm64, but those targets remain declared compatible-by-package rather than release-tested until CI evidence exists.
 - sqlite-vec 0.1.x is pre-1.0. AFH records the exact extension version and validates the rebuildable projection; the case ledger remains usable if the extension is unavailable.
 - Model weights are sensitive operational dependencies but contain no case data. Embeddings and chunks are case-sensitive derivatives and inherit the case's private handling rules.
-

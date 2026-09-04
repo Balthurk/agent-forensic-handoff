@@ -129,4 +129,3 @@ Exit: all acceptance conditions pass, release and active installation match, rep
 - No semantic inference is written back as direct evidence.
 - No in-place migration of v0.1/v0.2 cases.
 - No claim that a negative search proves universal absence.
-
