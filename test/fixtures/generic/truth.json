@@ -1,0 +1,15 @@
+{
+  "name": "generic-mixed",
+  "sessionId": "generic-fixture-001",
+  "critical": {
+    "eventKinds": ["message.user", "tool.requested", "tool.completed", "forensic.unparsed_record", "message.agent"],
+    "actorKinds": ["HUMAN_USER", "PRIMARY_AGENT", "TOOL"],
+    "toolStatuses": {"FAILED": 1},
+    "artifacts": [],
+    "decisions": [],
+    "timelinePairs": [["message.user", "tool.requested"], ["tool.requested", "tool.completed"]],
+    "externalMinimum": 0,
+    "unparsed": 1,
+    "hotTerms": ["migration failure", "do not rerun deploy", "FAILED"]
+  }
+}

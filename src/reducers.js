@@ -1,0 +1,218 @@
+import { EPISTEMIC } from "./constants.js";
+import { shortHash, stableStringify } from "./util.js";
+
+function refsForEvent(db, eventId) {
+  return db.all("SELECT uri FROM evidence_ref WHERE event_id=$id ORDER BY id", { id: eventId }).map((row) => row.uri);
+}
+
+export function reduceCase(db) {
+  const messages = db.all(`SELECT * FROM event WHERE canonical=1 AND kind IN ('message.user','message.agent')
+    ORDER BY COALESCE(observed_at,''), source_id, record_ordinal, subordinal`);
+  const preferredMission = messages.find((event) => {
+    if (event.kind !== "message.user" || !event.input_preview?.trim()) return false;
+    try { return JSON.parse(event.metadata_json).userVisible === true; } catch { return false; }
+  }) ?? messages.find((event) => event.kind === "message.user" && event.input_preview?.trim());
+
+  if (preferredMission) {
+    const refs = refsForEvent(db, preferredMission.id);
+    db.insertClaim({
+      id: `clm-${shortHash(["mission", preferredMission.id])}`,
+      subject: "mission",
+      predicate: "original_request",
+      object: stableStringify({ text: preferredMission.input_preview }),
+      epistemic: EPISTEMIC.DIRECT,
+      rule: "first-user-visible-message",
+      contradiction: null,
+      event: preferredMission.id,
+      refs: stableStringify(refs),
+      current: 1,
+    });
+  }
+
+  let priority = 1000;
+  for (const message of messages.filter((event) => event.kind === "message.user" && event.input_preview?.trim())) {
+    const text = message.input_preview.trim();
+    db.insertTask({
+      id: `tsk-${shortHash([message.id, text])}`,
+      text,
+      state: "REQUESTED",
+      priority: priority--,
+      requestedEvent: message.id,
+      lastEvent: message.id,
+      verification: null,
+      epistemic: EPISTEMIC.DIRECT,
+    });
+  }
+
+  const decisionPattern = /^(?:decision|decisi[oó]n|chosen approach|enfoque elegido)\s*:\s*(.+)$/gim;
+  for (const message of messages) {
+    const text = message.input_preview ?? "";
+    let match;
+    while ((match = decisionPattern.exec(text))) {
+      const decisionText = match[1].trim();
+      db.insertDecision({
+        id: `dec-${shortHash([message.id, match.index, decisionText])}`,
+        problem: null,
+        alternatives: "[]",
+        decision: decisionText,
+        rationale: null,
+        consequences: "[]",
+        status: "ACTIVE_UNVERIFIED",
+        event: message.id,
+        epistemic: EPISTEMIC.DIRECT,
+      });
+    }
+  }
+
+  const completionPattern = /(?:^|\n)\s*(?:done|completed|finished|terminado|completado|finalizado)\b[:\s-]*(.{0,400})/gim;
+  for (const message of messages.filter((event) => event.kind === "message.agent")) {
+    const text = message.input_preview ?? "";
+    let match;
+    while ((match = completionPattern.exec(text))) {
+      const report = (match[1] || "completion reported").trim();
+      db.insertClaim({
+        id: `clm-${shortHash(["reported-completion", message.id, match.index])}`,
+        subject: "prior_agent",
+        predicate: "reported_completion",
+        object: stableStringify({ text: report }),
+        epistemic: EPISTEMIC.DIRECT,
+        rule: "explicit-completion-language; claim is about the report, not verified completion",
+        contradiction: null,
+        event: message.id,
+        refs: stableStringify(refsForEvent(db, message.id)),
+        current: 1,
+      });
+    }
+  }
+
+  advanceRequestedTasks(db);
+  pairToolEdges(db);
+  detectReportedStateContradictions(db);
+}
+
+function advanceRequestedTasks(db) {
+  const events = db.all(`SELECT * FROM event WHERE canonical=1
+    ORDER BY COALESCE(observed_at,''),source_id,record_ordinal,subordinal`);
+  const index = new Map(events.map((event, i) => [event.id, i]));
+  const tasks = db.all("SELECT * FROM task WHERE state='REQUESTED' ORDER BY priority DESC,id");
+  for (const task of tasks) {
+    const start = index.get(task.requested_event_id);
+    if (start == null) continue;
+    const request = events[start];
+    let end = events.length;
+    for (let i = start + 1; i < events.length; i += 1) {
+      if (events[i].session_id === request.session_id && events[i].kind === "message.user") { end = i; break; }
+    }
+    const activity = events.slice(start + 1, end).filter((event) =>
+      event.session_id === request.session_id && ["tool.requested", "filesystem.patch", "mcp.completed"].includes(event.kind));
+    if (!activity.length) continue;
+    const latest = activity.at(-1);
+    db.run("UPDATE task SET state='ATTEMPTED',last_event_id=$event,epistemic_status=$epistemic WHERE id=$id", {
+      id: task.id, event: latest.id, epistemic: EPISTEMIC.INFERRED,
+    });
+  }
+}
+
+function detectReportedStateContradictions(db) {
+  const ordered = db.all(`SELECT id,session_id FROM event WHERE canonical=1
+    ORDER BY COALESCE(observed_at,''),source_id,record_ordinal,subordinal`);
+  const order = new Map(ordered.map((event, i) => [event.id, i]));
+  const reports = db.all("SELECT * FROM claim WHERE predicate='reported_completion' ORDER BY id");
+  const failed = db.all("SELECT * FROM tool_execution WHERE status IN ('FAILED','INCOMPLETE') ORDER BY id");
+  const completed = db.all("SELECT * FROM tool_execution WHERE status='COMPLETED' ORDER BY id");
+
+  for (const report of reports) {
+    const reportEvent = db.get("SELECT * FROM event WHERE id=$id", { id: report.source_event_id });
+    if (!reportEvent) continue;
+    const reportText = JSON.parse(report.object_json || "{}").text || "";
+    for (const tool of failed) {
+      const failureEventId = tool.result_event_id || tool.call_event_id;
+      const failureEvent = failureEventId ? db.get("SELECT * FROM event WHERE id=$id", { id: failureEventId }) : null;
+      if (!failureEvent || failureEvent.session_id !== reportEvent.session_id) continue;
+      if ((order.get(failureEvent.id) ?? Infinity) >= (order.get(reportEvent.id) ?? -1)) continue;
+      if (!lexicallyRelated(reportText, `${tool.tool_name} ${tool.command_text || ""}`)) continue;
+      const superseded = completed.some((success) => {
+        if (success.invocation_fingerprint !== tool.invocation_fingerprint) return false;
+        const successId = success.result_event_id || success.call_event_id;
+        const successEvent = successId ? db.get("SELECT id,session_id FROM event WHERE id=$id", { id: successId }) : null;
+        const successOrder = successEvent ? order.get(successEvent.id) : null;
+        return successEvent?.session_id === reportEvent.session_id && successOrder > order.get(failureEvent.id) && successOrder < order.get(reportEvent.id);
+      });
+      if (superseded) continue;
+      const refs = [...new Set([...refsForEvent(db, reportEvent.id), ...refsForEvent(db, failureEvent.id)])];
+      db.insertClaim({
+        id: `clm-${shortHash(["completion-contradiction", report.id, tool.id])}`,
+        subject: "completion_state",
+        predicate: "reported_vs_observed",
+        object: stableStringify({ reportedText: reportText, conflictingTool: tool.tool_name, conflictingStatus: tool.status }),
+        epistemic: EPISTEMIC.CONTRADICTED,
+        rule: "lexically-related completion report after failed/incomplete tool with no later matching success",
+        contradiction: stableStringify([reportEvent.id, failureEvent.id]),
+        event: reportEvent.id,
+        refs: stableStringify(refs),
+        current: 1,
+      });
+    }
+  }
+}
+
+function lexicallyRelated(left, right) {
+  const stems = (value) => new Set(String(value).toLowerCase().match(/[a-z0-9_-]{4,}/g)?.map((token) =>
+    token.replace(/(?:ments?|ations?|ions?|ing|ed|es|s)$/i, "")).filter((token) => token.length >= 4) ?? []);
+  const a = stems(left);
+  const b = stems(right);
+  for (const token of a) if (b.has(token)) return true;
+  return false;
+}
+
+function pairToolEdges(db) {
+  const tools = db.all("SELECT * FROM tool_execution WHERE call_event_id IS NOT NULL AND result_event_id IS NOT NULL ORDER BY id");
+  for (const tool of tools) {
+    db.run(`INSERT OR IGNORE INTO event_edge
+      (from_event_id,to_event_id,edge_type,grade,rule_id,epistemic_status)
+      VALUES ($from,$to,'RESULT_OF','EXPLICIT','shared-call-id',$epistemic)`, {
+      from: tool.call_event_id, to: tool.result_event_id, epistemic: EPISTEMIC.DIRECT,
+    });
+  }
+}
+
+export function computeCaseMetrics(db) {
+  const one = (sql) => Number(db.get(sql)?.n ?? 0);
+  const first = db.get("SELECT MIN(observed_at) AS value FROM event WHERE observed_at IS NOT NULL")?.value ?? null;
+  const last = db.get("SELECT MAX(observed_at) AS value FROM event WHERE observed_at IS NOT NULL")?.value ?? null;
+  return {
+    sessions: one("SELECT COUNT(*) n FROM session"),
+    sources: one("SELECT COUNT(*) n FROM source"),
+    sourceRecords: one("SELECT COUNT(*) n FROM source_record"),
+    parsedRecords: one("SELECT COUNT(*) n FROM source_record WHERE parse_status='PARSED'"),
+    unparsedRecords: one("SELECT COUNT(*) n FROM source_record WHERE parse_status!='PARSED'"),
+    events: one("SELECT COUNT(*) n FROM event"),
+    canonicalEvents: one("SELECT COUNT(*) n FROM event WHERE canonical=1"),
+    duplicateEvents: one("SELECT COUNT(*) n FROM event WHERE canonical=0"),
+    tools: one("SELECT COUNT(*) n FROM tool_execution"),
+    failedTools: one("SELECT COUNT(*) n FROM tool_execution WHERE status='FAILED'"),
+    incompleteTools: one("SELECT COUNT(*) n FROM tool_execution WHERE result_event_id IS NULL"),
+    artifacts: one("SELECT COUNT(*) n FROM artifact"),
+    missingArtifacts: one("SELECT COUNT(*) n FROM artifact WHERE current_status='MISSING'"),
+    actors: one("SELECT COUNT(*) n FROM actor"),
+    externalInterventions: one("SELECT COUNT(*) n FROM event WHERE canonical=1 AND (kind LIKE 'external.%' OR kind LIKE 'mcp.%')"),
+    decisions: one("SELECT COUNT(*) n FROM decision_record"),
+    tasks: one("SELECT COUNT(*) n FROM task"),
+    validations: one("SELECT COUNT(*) n FROM validation"),
+    contradictions: one("SELECT COUNT(*) n FROM claim WHERE epistemic_status='CONTRADICTED'"),
+    secretFindings: one("SELECT COUNT(*) n FROM secret_finding"),
+    warnings: one("SELECT COUNT(*) n FROM parse_warning"),
+    firstObservedAt: first,
+    lastObservedAt: last,
+    durationMs: first && last ? Math.max(0, new Date(last) - new Date(first)) : null,
+  };
+}
+
+export function loopGroups(db) {
+  return db.all(`SELECT invocation_fingerprint, tool_name, COUNT(*) AS attempts,
+    SUM(CASE WHEN status='FAILED' THEN 1 ELSE 0 END) AS failures,
+    MIN(started_at) AS first_at, MAX(COALESCE(ended_at,started_at)) AS last_at,
+    MAX(status) AS terminal_status
+    FROM tool_execution GROUP BY invocation_fingerprint,tool_name HAVING COUNT(*) >= 3
+    ORDER BY attempts DESC, tool_name`);
+}

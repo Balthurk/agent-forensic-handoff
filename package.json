@@ -1,0 +1,57 @@
+{
+  "name": "agent-forensic-handoff",
+  "version": "0.1.0",
+  "description": "Evidence-backed forensic reconstruction and context hydration for agent sessions.",
+  "type": "module",
+  "bin": {
+    "afh": "./bin/afh.js"
+  },
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "skills",
+    "docs",
+    "benchmarks",
+    "schemas",
+    "scripts",
+    "test/fixtures",
+    "LICENSE",
+    "README.md",
+    "SECURITY.md"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "benchmark": "node ./bin/afh.js benchmark",
+    "doctor": "node ./bin/afh.js doctor",
+    "validate:skill": "node ./scripts/validate-skill.mjs",
+    "check": "node --check ./bin/afh.js && node --check ./src/cli.js && node --test",
+    "release:check": "npm run check && npm run validate:skill && npm run benchmark"
+  },
+  "engines": {
+    "node": ">=22.15"
+  },
+  "keywords": [
+    "agent",
+    "codex",
+    "claude-code",
+    "antigravity",
+    "session-replay",
+    "forensics",
+    "handoff",
+    "provenance",
+    "context-engineering"
+  ],
+  "author": "Balthurk",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Balthurk/agent-forensic-handoff.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Balthurk/agent-forensic-handoff/issues"
+  },
+  "homepage": "https://github.com/Balthurk/agent-forensic-handoff#readme"
+}
