@@ -69,3 +69,13 @@ The local million-record release profile passed with 1,000,002/1,000,002 records
 ## Subsequent plan
 
 The prioritized implementation and acceptance plan is in [improvement-plan-v0.2.0.md](improvement-plan-v0.2.0.md). Remaining P2 work should focus on signed/encrypted portable bundles, explicit harness-version compatibility, fuzz/property corpora, macOS release coverage, and repeated blinded continuation trials. None should weaken parse accounting, source resolvability, fail-closed integrity, or the no-historical-execution boundary.
+
+## Production activation
+
+Commit `f2912c2828593342484dd36c1b09b87092378c56` passed the GitHub Actions Node 22/24 matrix. The tested tarball (`sha1 38a47469579a6bc89b8dc71936cb00a5717f74f1`) was installed into an isolated prefix, then staged beside the global package and activated by same-parent rename. The stable launchers remained in place. Global `afh --version`, `doctor`, fixture audit, tool-ledger inspection, real-case verification, and skill validation passed after activation.
+
+Active paths:
+
+- CLI package: `C:\Users\Usuario\AppData\Roaming\npm\node_modules\agent-forensic-handoff`
+- Codex skill: `C:\Users\Usuario\.codex\skills\agent-forensic-handoff`
+- v0.1 CLI rollback: `C:\Users\Usuario\AppData\Roaming\npm\node_modules\.agent-forensic-handoff.backup-v0.1.0-20260904`

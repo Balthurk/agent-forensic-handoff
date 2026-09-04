@@ -94,3 +94,16 @@ Append-only step-level trace for project-affecting Codex work.
 - `evidence_result`: `3,058/4,393 command observations matched existing wrapper executions and were enriched rather than duplicated; unmatched observations became ledger rows. Final case: 55,179/55,179 parsed, 8,528 tools, 189 artifacts, 515 validations, 0 warnings; deep integrity PASS; 614,385,105 bytes, 56 files.`
 - `decision`: `Do not accept a receipt that reports zero tools when direct CommandExecution evidence exists. Reconcile by exact session/command match and retain direct observed result metadata.`
 - `status`: `done`
+
+### TRACE-2026-09-04-007
+
+- `timestamp`: `2026-09-04T13:25:05+02:00`
+- `task_id`: `TASK-2026-09-04-001`
+- `agent_session`: `Codex`
+- `project_root`: `C:\T\agent-forensic-handoff-improvement-20260904`
+- `phase`: `production-activation`
+- `action_type`: `remote-publish-and-staged-global-swap`
+- `target`: `origin/main, global npm package, and global Codex skill`
+- `evidence_result`: `Commit f2912c2828593342484dd36c1b09b87092378c56 is on origin/main and GitHub CI passed Node 22/24. Package tree comparison was 58/58 files equal. Global CLI reports 0.2.0; doctor PASS on blocking checks; skill replacement reports REPLACED_ATOMICALLY and quick_validate PASS. A fresh global fixture case contains one reconciled completed command and passes deep integrity.`
+- `decision`: `Retain the v0.1 package directory as rollback evidence. Treat the absent Claude home as a non-blocking doctor warning because Codex is the requested production target.`
+- `status`: `done`
