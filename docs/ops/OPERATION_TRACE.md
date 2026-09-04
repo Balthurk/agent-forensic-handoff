@@ -107,3 +107,16 @@ Append-only step-level trace for project-affecting Codex work.
 - `evidence_result`: `Commit f2912c2828593342484dd36c1b09b87092378c56 is on origin/main and GitHub CI passed Node 22/24. Package tree comparison was 58/58 files equal. Global CLI reports 0.2.0; doctor PASS on blocking checks; skill replacement reports REPLACED_ATOMICALLY and quick_validate PASS. A fresh global fixture case contains one reconciled completed command and passes deep integrity.`
 - `decision`: `Retain the v0.1 package directory as rollback evidence. Treat the absent Claude home as a non-blocking doctor warning because Codex is the requested production target.`
 - `status`: `done`
+
+### TRACE-2026-09-04-008
+
+- `timestamp`: `2026-09-04T15:28:04+02:00`
+- `task_id`: `TASK-2026-09-04-001`
+- `agent_session`: `Codex`
+- `project_root`: `C:\T\agent-forensic-handoff-improvement-20260904`
+- `phase`: `release-maintenance`
+- `action_type`: `dependency-modernization`
+- `target`: `.github/workflows/ci.yml`
+- `evidence_result`: `GitHub's release API reports actions/checkout v7.0.1 and actions/setup-node v7.0.0 as the latest stable releases. CI now follows the v7 major channels instead of the Node 20-based v4 channels.`
+- `decision`: `Require a clean remote Node 22/24 matrix after this change before creating the immutable v0.2.0 release tag.`
+- `status`: `done`
