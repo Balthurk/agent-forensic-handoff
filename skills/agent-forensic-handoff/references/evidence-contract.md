@@ -13,6 +13,8 @@
 
 Do not turn model confidence into a numeric probability. Do not upgrade temporal adjacency into causation.
 
+Semantic cosine similarity and hybrid fusion scores rank candidates only. They cannot upgrade an epistemic state, establish corroboration, or prove absence. Graph traversal inherits the grade, named rule, epistemic status, and evidence event of every edge; a path is explainable navigation, not independent proof.
+
 ## Stable references
 
 An evidence URI has the form:
@@ -34,6 +36,8 @@ The source hash identifies the original captured source locator. Canonical evide
 Normalized event input/output hashes bind projections to the value represented in the source record; AFH does not duplicate those full transcript values as blobs. Derived artifact content or diffs are stored in the `content_blob` registry, inline in SQLite below the configured threshold or as a content-addressed file above it.
 
 Before relying on a case, `afh verify-case` must pass its database, manifest, source/record, derived-blob, metric, and hydration checks. Verification detects tampering but does not authenticate the original producer.
+
+A semantic projection is a rebuildable private derivative bound to the case hash, source snapshot hash, exact local model revision/digest, runtime, dimensions, dtype, pooling, normalization, redaction, and chunking. Its manifest, SQLite hash, chunks, vectors, mappings, sqlite-vec index, evidence links, and model snapshot must verify before semantic reliance. Cold evidence remains authoritative.
 
 ## Claims
 

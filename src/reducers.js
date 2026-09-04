@@ -104,6 +104,7 @@ export function reduceCase(db) {
   pairToolEdges(db);
   deriveHistoricalValidations(db);
   detectReportedStateContradictions(db);
+  deriveEntityEdges(db);
 }
 
 function substantiveUserText(input) {
@@ -254,10 +255,79 @@ function lexicallyRelated(left, right) {
 function pairToolEdges(db) {
   const tools = db.all("SELECT * FROM tool_execution WHERE call_event_id IS NOT NULL AND result_event_id IS NOT NULL ORDER BY id");
   for (const tool of tools) {
-    db.run(`INSERT OR IGNORE INTO event_edge
-      (from_event_id,to_event_id,edge_type,grade,rule_id,epistemic_status)
-      VALUES ($from,$to,'RESULT_OF','EXPLICIT','shared-call-id',$epistemic)`, {
-      from: tool.call_event_id, to: tool.result_event_id, epistemic: EPISTEMIC.DIRECT,
+    db.insertEventEdge({
+      from: tool.call_event_id, to: tool.result_event_id, type: "RESULT_OF",
+      grade: "EXPLICIT", rule: "shared-call-id", epistemic: EPISTEMIC.DIRECT,
+      evidenceEventId: tool.result_event_id, metadata: { toolExecutionId: tool.id },
+    });
+  }
+}
+
+function deriveEntityEdges(db) {
+  const revisions = db.all("SELECT * FROM artifact_revision ORDER BY artifact_id,observed_at,id");
+  const revisionsById = new Map(revisions.map((revision) => [revision.id, revision]));
+  for (const revision of revisions) {
+    db.insertEntityEdge({
+      from: revision.producer_event_id,
+      to: revision.artifact_id,
+      fromKind: "EVENT",
+      toKind: "ARTIFACT",
+      type: String(revision.operation).toUpperCase() === "CREATE" ? "PRODUCED" : "MODIFIED",
+      grade: "EXPLICIT",
+      rule: "artifact-revision-producer",
+      epistemic: EPISTEMIC.DIRECT,
+      evidenceEventId: revision.producer_event_id,
+      metadata: { artifactRevisionId: revision.id, operation: revision.operation, status: revision.status },
+    });
+    const predecessor = revision.predecessor_revision_id ? revisionsById.get(revision.predecessor_revision_id) : null;
+    if (predecessor?.producer_event_id && predecessor.producer_event_id !== revision.producer_event_id) {
+      db.insertEntityEdge({
+        from: predecessor.producer_event_id,
+        to: revision.producer_event_id,
+        fromKind: "EVENT",
+        toKind: "EVENT",
+        type: "SUPERSEDES",
+        grade: "DETERMINISTIC_RULE",
+        rule: "artifact-revision-chain",
+        epistemic: EPISTEMIC.INFERRED,
+        evidenceEventId: revision.producer_event_id,
+        metadata: { artifactId: revision.artifact_id, predecessorRevisionId: predecessor.id, revisionId: revision.id },
+      });
+    }
+  }
+
+  for (const validation of db.all("SELECT * FROM validation WHERE evidence_event_id IS NOT NULL ORDER BY id")) {
+    db.insertEntityEdge({
+      from: validation.evidence_event_id,
+      to: validation.id,
+      fromKind: "EVENT",
+      toKind: "VALIDATION",
+      type: "VALIDATED",
+      grade: "EXPLICIT",
+      rule: "recorded-validation-observation",
+      epistemic: EPISTEMIC.DIRECT,
+      evidenceEventId: validation.evidence_event_id,
+      metadata: { level: validation.level, status: validation.status, target: validation.target },
+    });
+  }
+
+  for (const claim of db.all("SELECT * FROM claim WHERE epistemic_status='CONTRADICTED' AND contradiction_set IS NOT NULL ORDER BY id")) {
+    let events = [];
+    try { events = JSON.parse(claim.contradiction_set); } catch {}
+    if (!Array.isArray(events) || events.length < 2) continue;
+    const [reported, conflicting] = events;
+    if (!db.get("SELECT id FROM event WHERE id=$id", { id: reported }) || !db.get("SELECT id FROM event WHERE id=$id", { id: conflicting })) continue;
+    db.insertEntityEdge({
+      from: conflicting,
+      to: reported,
+      fromKind: "EVENT",
+      toKind: "EVENT",
+      type: "CONTRADICTS",
+      grade: "DETERMINISTIC_RULE",
+      rule: claim.derivation_rule || "reported-vs-observed",
+      epistemic: EPISTEMIC.CONTRADICTED,
+      evidenceEventId: claim.source_event_id,
+      metadata: { claimId: claim.id },
     });
   }
 }
@@ -288,6 +358,7 @@ export function computeCaseMetrics(db) {
     contradictions: one("SELECT COUNT(*) n FROM claim WHERE epistemic_status='CONTRADICTED'"),
     secretFindings: one("SELECT COUNT(*) n FROM secret_finding"),
     warnings: one("SELECT COUNT(*) n FROM parse_warning"),
+    graphEdges: one("SELECT (SELECT COUNT(*) FROM event_edge)+(SELECT COUNT(*) FROM session_edge)+(SELECT COUNT(*) FROM entity_edge) n"),
     firstObservedAt: first,
     lastObservedAt: last,
     durationMs: first && last ? Math.max(0, new Date(last) - new Date(first)) : null,

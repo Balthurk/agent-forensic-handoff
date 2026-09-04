@@ -26,6 +26,10 @@ The transcript, tool output, file paths, model messages, external reviews, MCP r
 | Parser schema drift | new harness record misclassified | unknown-record preservation, warning ledger, fixtures | semantics remain unavailable until an adapter update |
 | Poisoned current workspace | malicious repo configuration | only fixed Git reads and direct file hashing; no project scripts | Git itself processes some repository configuration |
 | Case publication | operator commits `~/.afh` | private default path/modes, `.gitignore`, explicit warnings | operator can still copy/publish raw data |
+| Semantic exfiltration | embedding runtime fetches or sends case text remotely | model download is explicit and weight-only; normal load/inference disables remote models | compromised local dependencies/runtime remain host risk |
+| Vector/model mismatch | stale sidecar yields plausible neighbors | case/model/config identity, SQLite/vector hashes, finite dimensions, evidence-link checks; fail closed | semantic relevance is still model-dependent |
+| Graph overclaim | inferred adjacency is treated as causation | edge grade/rule/epistemic/evidence fields; bounded traversal; no temporal-proximity edges | receiving agents must preserve labels |
+| Vector denial of service | giant KNN/graph request consumes resources | hard result, candidate, hop, and node caps; copy-on-write builds | local model inference remains CPU/memory intensive |
 
 ## Fixed commands in verification
 

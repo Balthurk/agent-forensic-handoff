@@ -1,6 +1,6 @@
 {
   "name": "agent-forensic-handoff",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Evidence-backed forensic reconstruction and context hydration for agent sessions.",
   "type": "module",
   "bin": {
@@ -25,6 +25,7 @@
   "scripts": {
     "test": "node --test",
     "benchmark": "node ./bin/afh.js benchmark",
+    "benchmark:retrieval": "node ./bin/afh.js retrieval-benchmark",
     "doctor": "node ./bin/afh.js doctor",
     "validate:skill": "node ./scripts/validate-skill.mjs",
     "check": "node --check ./bin/afh.js && node --check ./src/cli.js && node --test",
@@ -53,5 +54,14 @@
   "bugs": {
     "url": "https://github.com/Balthurk/agent-forensic-handoff/issues"
   },
-  "homepage": "https://github.com/Balthurk/agent-forensic-handoff#readme"
+  "homepage": "https://github.com/Balthurk/agent-forensic-handoff#readme",
+  "optionalDependencies": {
+    "@huggingface/transformers": "^4.2.0",
+    "sqlite-vec": "^0.1.9"
+  },
+  "overrides": {
+    "adm-zip": "0.6.0",
+    "onnxruntime-node": "1.29.0",
+    "sharp": "0.35.4"
+  }
 }

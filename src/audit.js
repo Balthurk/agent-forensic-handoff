@@ -10,6 +10,7 @@ import { reduceCase, computeCaseMetrics } from "./reducers.js";
 import { verifyCurrentState } from "./verify.js";
 import { renderCase } from "./render.js";
 import { atomicWrite, ensureDir, hashFile, preview, safeJson, sha256, shortHash, stableStringify, slug } from "./util.js";
+import { computeGraphIdentity } from "./graph.js";
 
 export async function auditSession(identifier, options = {}) {
   const config = {
@@ -155,12 +156,14 @@ export async function auditSession(identifier, options = {}) {
     const completedAt = new Date().toISOString();
     db.finishRun(runId, { completedAt, status: "COMPLETE", ...counters });
     const metrics = computeCaseMetrics(db);
+    const graphIdentity = computeGraphIdentity(db);
     const manifest = {
       schemaVersion: SCHEMA_VERSION,
       toolVersion: AFH_VERSION,
       status: "COMPLETE",
       caseHash,
       sourceSnapshotHash: snapshotHash,
+      graphIdentity,
       requestedIdentifier: resolution.requestedIdentifier,
       rootNativeId: resolution.rootNativeId,
       harness: resolution.harness,

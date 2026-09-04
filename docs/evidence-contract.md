@@ -40,6 +40,8 @@ Hot and warm views contain bounded projections:
 - derived content that is not independently addressable in a source record is stored as a hash-verified SQLite or file blob;
 - original records remain cold evidence.
 
+Optional semantic projections contain only redacted event-preview chunks and deduplicated local vectors. They are bound to the case and exact model/config identity, are independently hash-verified, and remain rebuildable. They never replace source records or normalized ledger evidence.
+
 Redaction is defense in depth, not a guarantee that every secret format is detected. The entire case remains sensitive.
 
 ## Epistemic status
@@ -54,6 +56,8 @@ Redaction is defense in depth, not a guarantee that every secret format is detec
 | `UNAVAILABLE` | Evidence was never persisted, retained, or accessible |
 
 Statuses describe evidence, not model certainty. Direct evidence can prove that an agent *said* “complete”; it does not prove completion. Current verification can corroborate a file hash but does not reconstruct how unobserved intermediate content evolved.
+
+Cosine similarity, RRF fusion values, and graph proximity are retrieval explanations, not epistemic confidence. A retrieved claim still has only the status and evidence its ledger record supports.
 
 ## Tool evidence
 
@@ -77,4 +81,4 @@ Every decoded line receives a `source_record` row. Valid but unsupported records
 
 ## Integrity boundary
 
-`afh verify-case` checks SQLite integrity, schema and manifest agreement, source hashes and lengths, record byte ranges and hashes, derived blobs, metrics, and the hydration-pack hash without modifying the case. The format detects accidental or local post-case tampering; it is not a digital signature and does not establish who originally produced a source. Portable signing and encrypted bundles are future capabilities, not implied by v0.2.
+`afh verify-case` checks SQLite integrity, schema and manifest agreement, source hashes and lengths, record byte ranges and hashes, derived blobs, graph identity/endpoints/evidence, metrics, the hydration-pack hash, and any in-case semantic projection without modifying the case. `afh verify-projection` applies the sidecar checks directly. The format detects accidental or local post-case tampering; it is not a digital signature and does not establish who originally produced a source. Portable signing and encrypted bundles are future capabilities, not implied by v0.3.

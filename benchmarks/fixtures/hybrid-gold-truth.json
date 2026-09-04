@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "hybrid-gold-v1",
+  "exactLimit": 5,
+  "semanticLimit": 25,
+  "exact": [
+    { "query": "GX-PARSER-041", "marker": "GX-PARSER-041", "split": "validation" },
+    { "query": "GX-DELEGATE-052", "marker": "GX-DELEGATE-052", "split": "validation" },
+    { "query": "GX-POSTGRES-063", "marker": "GX-POSTGRES-063", "split": "test" },
+    { "query": "GX-ROTATE-074", "marker": "GX-ROTATE-074", "split": "test" },
+    { "query": "GX-CACHE-085", "marker": "GX-CACHE-085", "split": "test" },
+    { "query": "GX-BUDGET-096", "marker": "GX-BUDGET-096", "split": "test" }
+  ],
+  "semantic": [
+    { "query": "conversation reader timed out while processing a huge dialogue archive", "marker": "GX-PARSER-041", "split": "validation" },
+    { "query": "se encargó el trabajo a otro agente y devolvió pruebas", "marker": "GX-DELEGATE-052", "split": "validation" },
+    { "query": "la base de datos agotó conexiones durante el pico", "marker": "GX-POSTGRES-063", "split": "test" },
+    { "query": "cambia la clave filtrada y revoca la anterior", "marker": "GX-ROTATE-074", "split": "test" },
+    { "query": "refresh outdated lookup data and then validate the new results", "marker": "GX-CACHE-085", "split": "test" },
+    { "query": "el paquete no cabía en el límite de contexto y hubo que resumirlo", "marker": "GX-BUDGET-096", "split": "test" }
+  ],
+  "negativeQuery": "ZXQ-VIOLET-SUBMARINE-999 an impossible synthetic control",
+  "graph": { "fromKind": "tool.requested", "toKind": "tool.completed", "edgeType": "RESULT_OF" }
+}

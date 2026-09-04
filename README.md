@@ -5,7 +5,7 @@
 
 Evidence-backed reconstruction and progressive context hydration for historical agent sessions.
 
-Agent Forensic Handoff (`afh`) turns persisted session evidence into a deterministic case: a normalized timeline, actor and tool ledgers, artifact provenance, current-state checks, a bounded successor context, and resolvable links back to the original records.
+Agent Forensic Handoff (`afh`) turns persisted session evidence into a deterministic case: a normalized timeline, actor and tool ledgers, artifact provenance, an evidence-backed graph, current-state checks, a bounded successor context, and resolvable links back to the original records. Optional local embeddings add multilingual semantic and hybrid retrieval without making vector similarity an authority.
 
 It is deliberately **not** a chat summarizer. It never claims to recover events a harness did not persist.
 
@@ -19,6 +19,8 @@ Given a native session ID or transcript path, `afh`:
 - correlates calls and results, failures, retries, compaction, subagents, MCP activity, and file changes;
 - follows exact successful Codex delegation/fork results to acquire bounded causal child sessions, including standalone project tasks;
 - stores immutable evidence plus a queryable SQLite case;
+- builds provenance-bearing `RESULT_OF`, `PRODUCED`, `MODIFIED`, `VALIDATED`, `SUPERSEDES`, and `CONTRADICTS` graph edges only from explicit or named deterministic rules;
+- optionally builds a private, copy-on-write sqlite-vec projection from redacted event previews for multilingual semantic search;
 - separates reported state from current, read-only verification;
 - labels conclusions as `DIRECT_EVIDENCE`, `CORROBORATED`, `INFERRED`, `UNCERTAIN`, `CONTRADICTED`, or `UNAVAILABLE`;
 - generates hot, warm, and cold context so a successor can continue without ingesting the full transcript.
@@ -31,11 +33,12 @@ flowchart TD
     D --> E["Hot successor context"]
     D --> F["Warm ledgers and indexed queries"]
     D --> G["Cold immutable evidence"]
+    D --> I["Optional local semantic projection"]
 ```
 
 ## Install
 
-Requirements: Node.js 22.15 or newer. No runtime npm dependencies are required.
+Requirements: Node.js 22.15 or newer. The core audit and lexical retrieval path uses only Node built-ins. The package installs optional local semantic dependencies; if they are unavailable, core auditing remains usable and semantic modes report `UNAVAILABLE`.
 
 ```bash
 npm install -g github:Balthurk/agent-forensic-handoff
@@ -83,10 +86,24 @@ The command prints a short human receipt and creates a private case under `~/.af
 ```bash
 afh hydrate ~/.afh/cases/<session>/<case> --budget 6000
 afh query ~/.afh/cases/<session>/<case> "parser timeout"
+afh graph neighbors ~/.afh/cases/<session>/<case> evt-... --hops 1
 afh show ~/.afh/cases/<session>/<case> evt-...
 afh evidence ~/.afh/cases/<session>/<case> 'afh://evidence/sha256/...'
 afh verify-case ~/.afh/cases/<session>/<case>
 ```
+
+Lexical lookup remains the default and preserves the v0.2 result shape. To enable fully local semantic retrieval, explicitly install the pinned default model and build a rebuildable sidecar:
+
+```bash
+afh semantic-model fetch --allow-download
+afh semantic-index ~/.afh/cases/<session>/<case>
+afh query ~/.afh/cases/<session>/<case> "the reader timed out on a huge dialogue" --mode semantic --explain
+afh query ~/.afh/cases/<session>/<case> "delegated repair evidence" --mode hybrid --graph-hops 1 --explain
+```
+
+Normal indexing and queries disable remote model loading. The one explicit fetch downloads model weights only; AFH never sends transcript text to a model host. Semantic and hybrid requests never fall back silently. Add `--allow-lexical-fallback` only when that behavior is acceptable. Similarity and fusion values are retrieval scores, not truth confidence.
+
+The first index of a large case is an explicit CPU-intensive batch operation. The default uses memory-bounded embedding batches and reports progress to stderr; the case and lexical queries remain usable until the verified sidecar is atomically activated.
 
 `afh evidence` intentionally returns raw, untrusted historical content. Projections are redacted; cold evidence is not guaranteed to be. `afh verify-case` performs a read-only integrity audit of the database, source accounting, hashes, blobs, metrics, and hydration pack; use `--quick` to omit the per-record deep pass.
 
@@ -108,6 +125,10 @@ case/
 │   ├── external-influences.md
 │   ├── validations.md
 │   └── warnings.md
+├── projections/               # optional rebuildable semantic sidecars
+│   └── sem-.../
+│       ├── projection.json    # case/model/config identity and integrity metadata
+│       └── semantic.sqlite    # redacted chunks, deduplicated vectors, sqlite-vec index
 └── evidence/                  # cold canonical sources and large derived blobs
 ```
 
@@ -115,7 +136,7 @@ Every event points to an `afh://evidence/sha256/.../record/...#bytes=...` locato
 
 ## Harness support
 
-| Harness | Session discovery | Normalization in v0.2 | Status |
+| Harness | Session discovery | Normalization in v0.3 | Status |
 |---|---|---|---|
 | Codex | `CODEX_HOME` state databases, session rollouts, archived rollouts, explicit paths | messages, tools/results, shell outcomes, patches, compaction, MCP, subagents, token events, parent/child edges where persisted | Primary |
 | Claude Code | `~/.claude/projects`, explicit paths | messages, `tool_use`/`tool_result`, summaries/compaction, file-history snapshots | Supported baseline |
@@ -141,6 +162,12 @@ The default benchmark includes Codex, Claude Code, malformed generic records, co
 npm run benchmark
 ```
 
+The separate hybrid gold set measures exact recall, multilingual paraphrase recall, graph paths, evidence resolution, safe negative states, latency, and sidecar size with the real local model:
+
+```bash
+afh retrieval-benchmark --out /private/benchmark/path
+```
+
 The benchmark reports factual recall, precision, unsupported-claim rate, artifact provenance accuracy, timeline accuracy, actor attribution, context coverage, evidence resolvability, parse accounting, idempotence, throughput, and hot/source token ratio. Fresh-agent continuation is a separate blinded protocol because pretending to measure it in-process would be misleading; see [docs/benchmark.md](docs/benchmark.md).
 
 ## Security boundary
@@ -150,6 +177,8 @@ The benchmark reports factual recall, precision, unsupported-claim rate, artifac
 - Symlink transcript inputs are refused unless explicitly acknowledged.
 - Total acquired source size, per-source decompressed size, record size, child count, and compression ratio are bounded.
 - Common credentials are redacted from hot/warm projections.
+- Semantic chunks are derived only from already-redacted event previews, remain private, and are bound to an exact case/model/config identity.
+- Model downloads require an explicit flag; normal inference is local and remote model access is disabled.
 - Raw cases are private by default and ignored by Git.
 - Unknown, malformed, truncated, or missing evidence is surfaced explicitly.
 
@@ -174,6 +203,7 @@ No retrospective system can recover hidden chain-of-thought, unpersisted streami
 npm test
 npm run validate:skill
 npm run benchmark
+npm run benchmark:retrieval -- --out /private/benchmark/path
 npm pack --dry-run
 ```
 
