@@ -198,3 +198,29 @@ Append-only step-level trace for project-affecting Codex work.
 - `evidence_result`: `Three original schema-v1 cases passed v0.3 quick verification and retained identical file count, byte count, and latest timestamp. The 10,002-record median was 1,431 ms versus v0.2 1,860 ms; the million profile passed 1,000,002/1,000,002 at 6,447 records/s. Real-model gold gates were 100% exact/semantic/hybrid recall, graph and evidence resolution, with zero false absences. Node 22.23.2 and 24.15.0 passed; real Node 22 embeddings were finite 384D. release:check, both skill validators, npm audit, license inventory, package dry-run, isolated tarball smoke and staged skill smoke passed. Secret scan matched only the explicit fake token fixture.`
 - `decision`: `Proceed to commit and remote CI. Do not alter global v0.2 until the exact pushed commit passes the Node 22/24 matrix.`
 - `status`: `done`
+
+### TRACE-2026-09-04-015
+
+- `timestamp`: `2026-09-04T18:03:00+02:00`
+- `task_id`: `TASK-2026-09-04-002`
+- `agent_session`: `Codex`
+- `project_root`: `C:\T\agent-forensic-handoff-improvement-20260904`
+- `phase`: `execution`
+- `action_type`: `remote-publish-and-production-activation`
+- `target`: `PR #1, origin/main, v0.3.0 release, global CLI/model/skill, and retained v0.2 rollback`
+- `evidence_result`: `PR #1 passed GitHub CI on Node 22/24 and merged as c513a21465dc92423d8d6160da7dd6785a40a983. Main CI run 33892549791 passed both jobs. The exact commit was tagged v0.3.0 and released with tarball SHA-256 13095b078ae1553d7e0921a9e0320a298586349cbb0179538ab6542abb0ebd50. The local model snapshot was copied through a digest-equal staging directory. The prepared 479,582,007-byte self-contained package replaced v0.2 by bounded renames; the Codex skill reported REPLACED_ATOMICALLY. Global version, blocking doctor checks, real-model gold, fresh audit/index/hybrid query, RESULT_OF path, exact evidence, deep integrity, skill validation, and three legacy-case quick checks passed.`
+- `decision`: `Keep the pre-swap v0.2 package at C:\Users\Usuario\AppData\Roaming\npm\node_modules\.agent-forensic-handoff.backup-v0.2.0-before-v0.3.0-20260904 plus the two earlier retained backups. Keep the verified global model separate from cases. Mark v0.3.0 active only after every post-swap check passed.`
+- `status`: `done`
+
+### TRACE-2026-09-04-016
+
+- `timestamp`: `2026-09-04T18:03:00+02:00`
+- `task_id`: `TASK-2026-09-04-002`
+- `agent_session`: `Codex`
+- `project_root`: `C:\T\agent-forensic-handoff-improvement-20260904`
+- `phase`: `closeout`
+- `action_type`: `trace-and-delivery`
+- `target`: `TASK_LEDGER, BEST_PRACTICES, SKILL_IMPROVEMENT_LOG, release evidence, and final user handoff`
+- `evidence_result`: `The implementation plan, technology decision, evaluation, release benchmark, operation traces, skill-learning entry, best practices, and task ledger are complete. No original case file changed; mutable cases/indexes/probes/packages remained under C:\T except the explicitly activated global package, model, and Codex skill.`
+- `decision`: `Deliver v0.3.0 as the stable active release with documented first-build/cold-start and coverage limits; retain rollback artifacts and propose no hidden migration of legacy cases.`
+- `status`: `done`
