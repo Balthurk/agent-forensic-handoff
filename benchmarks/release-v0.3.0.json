@@ -1,0 +1,91 @@
+{
+  "version": "0.3.0",
+  "date": "2026-09-04",
+  "environment": {
+    "platform": "win32",
+    "architecture": "x64",
+    "node": "24.15.0",
+    "transformers": "4.2.0",
+    "sqliteVec": "0.1.9",
+    "model": "Xenova/paraphrase-multilingual-MiniLM-L12-v2@2c4055b12046f11709e9df2c122e59ffbdc2f900",
+    "dtype": "q8",
+    "dimensions": 384
+  },
+  "sameMachineComparison": {
+    "records": 10002,
+    "v0_2_0": {
+      "runsElapsedMs": [1860, 2031, 1692],
+      "medianElapsedMs": 1860,
+      "medianRecordsPerSecond": 5377
+    },
+    "v0_3_0": {
+      "runsElapsedMs": [1504, 1431, 1423],
+      "medianElapsedMs": 1431,
+      "medianRecordsPerSecond": 6990,
+      "medianElapsedRegressionVsV020": -0.2306
+    }
+  },
+  "millionRecordProfile": {
+    "requestedNoiseRecords": 1000000,
+    "parsedSourceRecords": 1000002,
+    "elapsedMs": 155104,
+    "recordsPerSecond": 6447,
+    "parseAccounting": true,
+    "hotTokenEstimate": 592,
+    "sourceTokenEstimate": 32222297,
+    "hotToSourceTokenRatio": 0.000018372371156531764,
+    "allAutomatedGatesPassed": true
+  },
+  "hybridGoldProfile": {
+    "exactRecallAt5": 1,
+    "hybridExactRecallAt5": 1,
+    "lexicalParaphraseRecallAt25": 0,
+    "semanticParaphraseRecallAt25": 1,
+    "hybridParaphraseRecallAt25": 1,
+    "hybridImprovementOverLexical": 1,
+    "graphAccuracy": 1,
+    "evidenceRefResolvability": 1,
+    "falseAbsenceCount": 0,
+    "providerColdLoadMs": 2704.77,
+    "fullSemanticBuildMs": 1340.41,
+    "semanticQueryP50Ms": 240.94,
+    "hybridQueryP50Ms": 231.9,
+    "allAutomatedGatesPassed": true
+  },
+  "productionShapedProfile": {
+    "sourceRecords": 57071,
+    "parsedRecords": 57071,
+    "parserWarnings": 0,
+    "sources": 9,
+    "sessions": 48,
+    "toolExecutions": 8903,
+    "artifacts": 189,
+    "validations": 526,
+    "graphEdges": 10234,
+    "sourceCoverageWarnings": 39,
+    "coreCaseBytes": 634114115,
+    "auditWithoutEmbeddingsMs": 64413,
+    "semanticEligibleEvents": 26381,
+    "semanticChunks": 27165,
+    "uniqueEmbeddings": 21832,
+    "deduplicatedOccurrences": 5333,
+    "semanticBuildMs": 1751299,
+    "semanticProjectionBytes": 125344518,
+    "deepProjectionVerificationMs": 21756,
+    "deepWholeCaseVerificationMs": 27004,
+    "lexicalQueryMs": 103,
+    "coldSemanticQueryMs": 4430,
+    "coldHybridQueryMs": 4541,
+    "warmSemanticQueryMs": [1520, 1320],
+    "warmHybridQueryMs": 1492,
+    "deepIntegrityPassed": true,
+    "selectedEvidenceResolvable": true,
+    "coverageWarningsPreserved": true
+  },
+  "rejectedProbe": {
+    "batchSize": 64,
+    "observedWorkingSetBytes": 4655480832,
+    "outcome": "REJECTED_BEFORE_RELEASE",
+    "correction": "default batch size 16 plus 16000-character batch budget and progress reporting"
+  }
+}

@@ -3,4 +3,9 @@ export { readHotContext, searchCase, showEvent, readEvidence, loadManifest } fro
 export { resolveSession, inspectSource } from "./discovery.js";
 export { installSkill } from "./install.js";
 export { verifyCaseIntegrity } from "./integrity.js";
+export { graphNeighbors, graphPath, computeGraphIdentity } from "./graph.js";
+export { buildSemanticIndex, semanticSearch, verifySemanticProjection, findSemanticProjection } from "./semantic.js";
+export { createTransformersProvider, fetchSemanticModel, semanticModelStatus, DEFAULT_SEMANTIC_MODEL, KNOWN_SEMANTIC_MODELS, SemanticUnavailableError } from "./semantic-model.js";
+export { queryCase } from "./retrieval.js";
+export { runRetrievalBenchmark } from "./retrieval-benchmark.js";
 export { EPISTEMIC, TASK_STATES, ACTOR_KINDS, ARTIFACT_STATES } from "./constants.js";

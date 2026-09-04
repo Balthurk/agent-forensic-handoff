@@ -120,10 +120,34 @@ export class CaseDatabase {
 
   insertSessionEdge(edge) {
     this.run(`INSERT OR IGNORE INTO session_edge
-      (parent_session_id,child_session_id,edge_type,epistemic_status,evidence_event_id)
-      VALUES ($parent,$child,$type,$epistemic,$event)`, {
+      (parent_session_id,child_session_id,edge_type,grade,rule_id,epistemic_status,evidence_event_id,metadata_json)
+      VALUES ($parent,$child,$type,$grade,$rule,$epistemic,$event,$metadata)`, {
       parent: edge.parent, child: edge.child, type: edge.type,
+      grade: edge.grade ?? "EXPLICIT", rule: edge.rule ?? null,
       epistemic: edge.epistemic, event: edge.eventId ?? null,
+      metadata: stableStringify(edge.metadata ?? {}),
+    });
+  }
+
+  insertEventEdge(edge) {
+    this.run(`INSERT OR IGNORE INTO event_edge
+      (from_event_id,to_event_id,edge_type,grade,rule_id,epistemic_status,evidence_event_id,metadata_json)
+      VALUES ($from,$to,$type,$grade,$rule,$epistemic,$event,$metadata)`, {
+      from: edge.from, to: edge.to, type: edge.type, grade: edge.grade,
+      rule: edge.rule ?? null, epistemic: edge.epistemic,
+      event: edge.evidenceEventId ?? null, metadata: stableStringify(edge.metadata ?? {}),
+    });
+  }
+
+  insertEntityEdge(edge) {
+    this.run(`INSERT OR IGNORE INTO entity_edge
+      (from_node_id,to_node_id,from_node_kind,to_node_kind,edge_type,grade,rule_id,
+       epistemic_status,evidence_event_id,metadata_json)
+      VALUES ($from,$to,$fromKind,$toKind,$type,$grade,$rule,$epistemic,$event,$metadata)`, {
+      from: edge.from, to: edge.to, fromKind: edge.fromKind, toKind: edge.toKind,
+      type: edge.type, grade: edge.grade, rule: edge.rule ?? "",
+      epistemic: edge.epistemic, event: edge.evidenceEventId ?? null,
+      metadata: stableStringify(edge.metadata ?? {}),
     });
   }
 

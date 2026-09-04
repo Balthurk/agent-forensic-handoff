@@ -120,3 +120,81 @@ Append-only step-level trace for project-affecting Codex work.
 - `evidence_result`: `GitHub's release API reports actions/checkout v7.0.1 and actions/setup-node v7.0.0 as the latest stable releases. CI now follows the v7 major channels instead of the Node 20-based v4 channels.`
 - `decision`: `Require a clean remote Node 22/24 matrix after this change before creating the immutable v0.2.0 release tag.`
 - `status`: `done`
+
+### TRACE-2026-09-04-009
+
+- `timestamp`: `2026-09-04T16:20:50+02:00`
+- `task_id`: `TASK-2026-09-04-002`
+- `agent_session`: `Codex`
+- `project_root`: `C:\T\agent-forensic-handoff-improvement-20260904`
+- `phase`: `intake`
+- `action_type`: `decision`
+- `target`: `hybrid lexical, semantic, and graph retrieval release after v0.2.0`
+- `evidence_result`: `Repository is clean at tagged commit ac049c1093a632da9c3cc47e6bcf0faf8249ed74 on main. Existing v0.1/v0.2 cases under C:\Users\Usuario\.afh\cases remain outside the write set. Mutable semantic indexes, copies, benchmarks, tamper cases, package staging, and deployment smokes are limited to C:\T.`
+- `decision`: `Keep lexical query compatibility and v0.2.0 globally active until local embeddings, hybrid quality, graph traversal, integrity, scale, packaging, remote CI, and post-deploy gates all pass. SQLite remains authoritative; semantic and graph materializations are rebuildable projections.`
+- `status`: `done`
+
+### TRACE-2026-09-04-010
+
+- `timestamp`: `2026-09-04T16:31:00+02:00`
+- `task_id`: `TASK-2026-09-04-002`
+- `agent_session`: `Codex`
+- `project_root`: `C:\T\agent-forensic-handoff-improvement-20260904`
+- `phase`: `planning`
+- `action_type`: `read-and-decision`
+- `target`: `local embedding model, provider runtime, vector index, schema and release plan`
+- `evidence_result`: `Official package/repository metadata and isolated Windows probes established Transformers.js 4.2.0, sqlite-vec 0.1.9, node:sqlite extension loading, finite normalized 384D vectors, and explicit offline snapshot loading. A synthetic cross-language probe favored multilingual MiniLM over all-MiniLM; observed size and cold-start costs are documented in docs/vector-runtime-decision-v0.3.0.md.`
+- `decision`: `Implement v0.3.0 with lexical default preserved, explicit offline-only local semantic projections, multilingual MiniLM as default, sqlite-vec sidecars, schema-v3 evidence-bearing graph edges, deterministic RRF, bounded cycle-safe traversal, and no silent fallback. Follow the gated phases in docs/improvement-plan-v0.3.0.md.`
+- `status`: `done`
+
+### TRACE-2026-09-04-011
+
+- `timestamp`: `2026-09-04T17:55:00+02:00`
+- `task_id`: `TASK-2026-09-04-002`
+- `agent_session`: `Codex`
+- `project_root`: `C:\T\agent-forensic-handoff-improvement-20260904`
+- `phase`: `execution`
+- `action_type`: `edit-and-test`
+- `target`: `schema v3 graph, semantic projection, hybrid retrieval, filters, receipts, CLI, doctor, documentation, and synthetic gold set`
+- `evidence_result`: `Implemented evidence-bearing RESULT_OF/PRODUCED/MODIFIED/VALIDATED/SUPERSEDES/CONTRADICTS edges; local Transformers.js/sqlite-vec sidecars; exact/semantic/hybrid retrieval; explicit fallback; safe negative states; projection integrity; model status/fetch; versioned hybrid benchmark. Unit and integration tests reached 29 PASS plus one intentional Windows symlink SKIP.`
+- `decision`: `Keep cold evidence and the structured ledger authoritative. Treat vectors and graph traversal as rebuildable explainable retrieval projections; never convert scores or adjacency into truth confidence.`
+- `status`: `done`
+
+### TRACE-2026-09-04-012
+
+- `timestamp`: `2026-09-04T17:55:00+02:00`
+- `task_id`: `TASK-2026-09-04-002`
+- `agent_session`: `Codex`
+- `project_root`: `C:\T\agent-forensic-handoff-improvement-20260904`
+- `phase`: `verification`
+- `action_type`: `blocker-and-correction`
+- `target`: `KNN relevance, semantic dependency audit, large-batch memory, and query-time integrity overhead`
+- `evidence_result`: `KNN returned unrelated nearest rows until a 0.15 default similarity floor was added. npm audit initially exposed four high advisories; patched compatible overrides reduced this to zero and the real model remained functional. A 64-item long-text batch used about 4.66 GB and made unacceptable progress; its C:\T-only process was stopped before release. A full-DB plus per-row query verifier caused redundant work.`
+- `decision`: `Use batch 16 plus a 16,000-character budget and progress output. Quick semantic verification relies on the complete SQLite SHA-256 plus structural/count invariants; deep mode retains every row/vector/link/index-byte check. Never silently fall back from a failed semantic projection.`
+- `status`: `done`
+
+### TRACE-2026-09-04-013
+
+- `timestamp`: `2026-09-04T17:55:00+02:00`
+- `task_id`: `TASK-2026-09-04-002`
+- `agent_session`: `Codex`
+- `project_root`: `C:\T\agent-forensic-handoff-improvement-20260904`
+- `phase`: `verification`
+- `action_type`: `production-shaped-validation`
+- `target`: `isolated schema-v3 reingest and full local semantic index of the original thread family`
+- `evidence_result`: `57,071/57,071 records parsed from 9 sources; 8,903 tools, 189 artifacts, 526 validations and 10,234 graph edges. The 634,114,115-byte core case exposed 39 bounded child-coverage warnings. The full semantic build created 27,165 chunks and 21,832 unique embeddings in 1,751,299 ms, deduplicated 5,333 occurrences, and produced a 125,344,518-byte sidecar. Deep projection and whole-case verification passed in 21,756 ms and 27,004 ms. Warm large-case queries improved to 1.32-1.52 s after quick-verifier optimization; every selected result resolved to evidence and retained the 39 gaps.`
+- `decision`: `Document the roughly 29.2-minute first-build cost as an optional preparation job, keep it off the audit/hydrate path, and retain explicit coverage gaps in every assessment.`
+- `status`: `done`
+
+### TRACE-2026-09-04-014
+
+- `timestamp`: `2026-09-04T17:55:00+02:00`
+- `task_id`: `TASK-2026-09-04-002`
+- `agent_session`: `Codex`
+- `project_root`: `C:\T\agent-forensic-handoff-improvement-20260904`
+- `phase`: `verification`
+- `action_type`: `release-candidate-verification`
+- `target`: `compatibility, scale, retrieval quality, supply chain, tarball, and staged skill`
+- `evidence_result`: `Three original schema-v1 cases passed v0.3 quick verification and retained identical file count, byte count, and latest timestamp. The 10,002-record median was 1,431 ms versus v0.2 1,860 ms; the million profile passed 1,000,002/1,000,002 at 6,447 records/s. Real-model gold gates were 100% exact/semantic/hybrid recall, graph and evidence resolution, with zero false absences. Node 22.23.2 and 24.15.0 passed; real Node 22 embeddings were finite 384D. release:check, both skill validators, npm audit, license inventory, package dry-run, isolated tarball smoke and staged skill smoke passed. Secret scan matched only the explicit fake token fixture.`
+- `decision`: `Proceed to commit and remote CI. Do not alter global v0.2 until the exact pushed commit passes the Node 22/24 matrix.`
+- `status`: `done`

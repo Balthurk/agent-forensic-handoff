@@ -63,8 +63,11 @@ CREATE TABLE IF NOT EXISTS session_edge (
   parent_session_id TEXT NOT NULL,
   child_session_id TEXT NOT NULL,
   edge_type TEXT NOT NULL,
+  grade TEXT NOT NULL DEFAULT 'EXPLICIT',
+  rule_id TEXT,
   epistemic_status TEXT NOT NULL,
   evidence_event_id TEXT,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY(parent_session_id, child_session_id, edge_type)
 );
 
@@ -126,8 +129,27 @@ CREATE TABLE IF NOT EXISTS event_edge (
   grade TEXT NOT NULL,
   rule_id TEXT,
   epistemic_status TEXT NOT NULL,
+  evidence_event_id TEXT REFERENCES event(id),
+  metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY(from_event_id, to_event_id, edge_type)
 );
+
+CREATE TABLE IF NOT EXISTS entity_edge (
+  from_node_id TEXT NOT NULL,
+  to_node_id TEXT NOT NULL,
+  from_node_kind TEXT NOT NULL,
+  to_node_kind TEXT NOT NULL,
+  edge_type TEXT NOT NULL,
+  grade TEXT NOT NULL,
+  rule_id TEXT NOT NULL DEFAULT '',
+  epistemic_status TEXT NOT NULL,
+  evidence_event_id TEXT REFERENCES event(id),
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  PRIMARY KEY(from_node_id, to_node_id, edge_type, rule_id)
+);
+
+CREATE INDEX IF NOT EXISTS entity_edge_from_idx ON entity_edge(from_node_id,edge_type);
+CREATE INDEX IF NOT EXISTS entity_edge_to_idx ON entity_edge(to_node_id,edge_type);
 
 CREATE TABLE IF NOT EXISTS evidence_ref (
   id TEXT PRIMARY KEY,

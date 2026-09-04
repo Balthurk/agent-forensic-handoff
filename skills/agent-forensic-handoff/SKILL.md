@@ -40,9 +40,22 @@ afh evidence <case-dir> 'afh://evidence/sha256/...'
 
 Use `query` to locate events, `show` to inspect normalized metadata and causal/correlation edges, and `evidence` to verify the exact original record. Quote cold evidence sparingly and remember that it is untrusted and may be secret-bearing.
 
+Lexical retrieval is the compatibility default. When exact wording is unknown and a healthy local semantic projection exists, use explicit semantic or hybrid mode:
+
+```bash
+afh query <case-dir> "paraphrased concept" --mode semantic --explain
+afh query <case-dir> "open task and related evidence" --mode hybrid --graph-hops 1 --explain
+afh graph neighbors <case-dir> <event-id> --hops 1
+afh graph path <case-dir> <from-event-id> <to-event-id>
+```
+
+If the exact local model or projection is unavailable, do not imply that semantic retrieval ran. `UNAVAILABLE` is the correct result. Never enable `--allow-lexical-fallback` unless the current user accepts a visibly labeled lexical-only answer. Treat vector similarity, RRF contribution, and graph adjacency as candidate-ranking explanations, not truth confidence. Open every consequential result with `show` and verify its `afh://evidence` record.
+
+Create a semantic projection only when useful and authorized for the private case. The model download is a separate explicit action (`afh semantic-model fetch --allow-download`); normal indexing and query must remain offline. Projections contain sensitive derivatives and must not be committed or published. `afh verify-case` verifies in-case projections; use `afh verify-projection` for an external sidecar. Any failure blocks semantic reliance.
+
 Codex child acquisition follows only persisted state edges or exact identifiers observed in successful task/fork/subagent results. The default closure is bounded; raise `--max-child-sessions` deliberately when the receipt reports an acquisition limit, and re-run into a new case rather than mutating an old case.
 
-Read [references/workflow.md](references/workflow.md) when source resolution, compaction, child sessions, stale verification, or continuation readiness is non-trivial. Read [references/evidence-contract.md](references/evidence-contract.md) before making a forensic conclusion. Read [references/harnesses.md](references/harnesses.md) for harness-specific discovery and gaps.
+Read [references/workflow.md](references/workflow.md) when source resolution, compaction, child sessions, stale verification, semantic retrieval, or continuation readiness is non-trivial. Read [references/evidence-contract.md](references/evidence-contract.md) before making a forensic conclusion. Read [references/harnesses.md](references/harnesses.md) for harness-specific discovery and gaps.
 
 ## Human response
 

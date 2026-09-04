@@ -16,6 +16,8 @@ flowchart TD
     E --> D["Deterministic reducers"]
     D --> V["Read-only state verification"]
     V --> H["Hot / warm / cold views"]
+    E --> G["Evidence-backed entity graph"]
+    E --> S["Optional redacted semantic sidecar"]
 ```
 
 1. **Resolve.** An exact ID or path resolves to one or more source files and explicit session edges. Ambiguity fails closed.
@@ -23,7 +25,8 @@ flowchart TD
 3. **Normalize.** Harness adapters emit typed events, actors, sessions, call IDs, artifacts, timestamps, and evidence pointers. Invalid and unknown records become first-class forensic events.
 4. **Reduce.** Rule-based joins build tool executions, explicit correlation edges, mission/task claims, decisions with explicit markers, retry fingerprints, and artifact revision chains.
 5. **Verify.** `V0` observes Git metadata and referenced file hashes. `V1` additionally inventories common project configuration. Neither runs project code.
-6. **Render.** A bounded hot context supports immediate continuation; warm ledgers support focused inspection; cold evidence provides exact source records.
+6. **Project.** Schema-v3 reducers create conservative evidence-bearing graph edges. An optional copy-on-write sidecar stores redacted preview chunks and deduplicated local embeddings bound to an exact case/model/config identity.
+7. **Render.** A bounded hot context supports immediate continuation; warm ledgers support focused inspection; cold evidence provides exact source records.
 
 ## Why SQLite and content-addressed evidence
 
@@ -39,6 +42,7 @@ The database stores projections, normalized value hashes, and references. Full t
 | `session` / `session_edge` | Native session topology | parent, child, fork/spawn evidence |
 | `actor` | Attribution | user, agent, subagent, tool, MCP, hook, automation, CI, external service |
 | `event` / `event_edge` | Ordered observable occurrences | source record, actor, call/turn IDs, explicit result edges |
+| `entity_edge` | Cross-entity provenance graph | typed endpoints, named rule, grade, epistemic status, evidence event |
 | `evidence_ref` | Backward traceability | stable URI, record hash, optional JSON pointer |
 | `tool_execution` | Correlated command/tool ledger | request, result, status, exit, semantic extract, fingerprint |
 | `artifact` / `artifact_revision` | Provenance and current status | producing event, predecessor, content/diff hash |
@@ -53,7 +57,13 @@ The normative SQL is [src/schema.sql](../src/schema.sql); the public event inter
 
 Ordering uses explicit timestamps where present and stable `(source_id, record_ordinal, subordinal)` order otherwise. Timestamp precision is retained. Concurrent events with equal/absent timestamps are not given a fabricated total causal order.
 
-Current v0.2 causal edges remain intentionally sparse: call/result pairs use shared native call IDs; session topology uses state-store edges or exact native IDs returned by successful `create_thread`, `fork_thread`, or observed subagent-start records. Temporal proximity is available for inspection but is not stored as fact. Later inference may add edges only with a named rule and non-direct epistemic status.
+Schema-v3 causal edges remain intentionally sparse: call/result pairs use shared native call IDs; session topology uses state-store edges or exact native IDs returned by successful `create_thread`, `fork_thread`, or observed subagent-start records. Artifact production/modification, validation, supersession, and contradiction edges carry their rule, grade, epistemic state, and evidence event. Temporal proximity is available for inspection but is not stored as fact. Traversal is cycle-safe and bounded by hop/node limits.
+
+## Hybrid retrieval projection
+
+FTS5 remains the exact, deterministic default. The optional semantic layer uses local Transformers.js embeddings and sqlite-vec in a separate SQLite sidecar. It embeds only already-redacted event preview text, deduplicates identical content hashes, maps every occurrence back to an event/evidence URI, and never writes semantic inference into the authoritative case ledger. Normal inference disables remote model access.
+
+Semantic mode performs cosine KNN with an explicit minimum similarity. Hybrid mode combines lexical and vector ranks using deterministic reciprocal-rank fusion and may add bounded graph neighbors. Receipts expose the effective mode, query hash, filters, case/projection/model identity, coverage, candidate counts, graph expansion, result IDs, and explicit fallback. Scores are retrieval relevance only.
 
 ## Adapter boundary
 
@@ -74,9 +84,9 @@ Event, actor, revision, claim, and evidence IDs derive from normalized identitie
 
 A case is also a time-scoped verification snapshot. If the workspace changes later, its historical validation does not magically refresh. Re-audit into a new explicit case directory or perform current read-only checks before continuation; never rewrite the old observation as though it happened earlier.
 
-## Deliberate omissions in v0.2
+## Deliberate omissions in v0.3
 
-- no cloud service, vector database, or mandatory MCP server;
+- no cloud service, remote embedding provider, standalone vector database, or mandatory MCP server;
 - no LLM parsing/enrichment in the factual path;
 - no automatic App Server launch;
 - no execution-capable verification level;

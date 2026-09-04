@@ -37,9 +37,12 @@ Otherwise continue with the gaps explicitly represented.
 
 - **Hot:** `hot-context.md`, normally at most 6,000 estimated tokens. Mission, current state, open work, active decisions, live artifacts, failures, external influences, unknowns, next safe action.
 - **Warm:** focused ledgers in `views/` and FTS queries. Use for phase-level reconstruction.
+- **Semantic:** optional redacted local sidecar for paraphrases or cross-language concepts. Require a passing projection check and disclose model/projection identity and coverage.
 - **Cold:** canonical source records plus content-addressed derived blobs. Event input/output values are recovered from the registered source record; retrieve only exact records required to verify a claim.
 
 If hot context reaches its budget, that is a retrieval instruction, not permission to omit uncertainty.
+
+Start lexical for identifiers, hashes, paths, exact errors, and quoted phrases. Use semantic mode when vocabulary differs. Use hybrid mode when both exact anchors and conceptual recall matter, then traverse only bounded evidence-backed graph neighbors. A semantic miss on incomplete capture is `INCONCLUSIVE_COVERAGE`, not proof of absence. A missing/corrupt projection or mismatched model is `UNAVAILABLE`; do not hide it with an implicit fallback.
 
 ## 5. Continue safely
 

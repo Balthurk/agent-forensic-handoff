@@ -20,6 +20,10 @@ The [v0.2.0 release profile](../benchmarks/release-v0.2.0.json) adds a same-mach
 
 A separate [blinded successor smoke trial](../benchmarks/blinded-v0.1.0.md) passed 1/1. It is published as evidence that the end-to-end continuation path works, but is explicitly insufficient to claim the multi-trial `>=90%` continuation acceptance gate.
 
+v0.3 adds a separate, versioned synthetic hybrid gold set. Run `afh retrieval-benchmark --out <private-path>` after explicitly installing the local model. It measures exact and multilingual paraphrase recall, lexical-to-hybrid improvement, evidence resolution, graph path accuracy, negative-state safety, model/build/query latency, and sidecar size. It never downloads a model unless `--allow-model-download` is explicit.
+
+The [v0.3.0 release profile](../benchmarks/release-v0.3.0.json) records the same-machine core regression, million-record run, real-model hybrid gold set, and production-shaped large-case measurements. Interpretation and residual limits are in [evaluation-v0.3.0.md](evaluation-v0.3.0.md).
+
 ## Current fixture families
 
 | Fixture | Difficult cases represented |
@@ -29,6 +33,7 @@ A separate [blinded successor smoke trial](../benchmarks/blinded-v0.1.0.md) pass
 | `claude-basic` | structured tool blocks, edit provenance, file-history snapshot, summary/compaction, current hash check |
 | `generic-mixed` | failed deployment, contradictory completion report, invalid JSON retained and counted |
 | generated giant stream | high-volume irrelevant token events, bounded hot context, streaming throughput |
+| `hybrid-gold-v1` | exact markers, English/Spanish paraphrases, unrelated distractors, result graph, safe negative controls |
 
 Additional harness versions must add fixtures before adapter logic changes.
 
@@ -48,6 +53,11 @@ Additional harness versions must add fixtures before adapter logic changes.
 | Idempotence | same sources/config reuse same case hash | `100%` |
 | Compression | hot estimated tokens divided by source estimated tokens | target `<= 20%` on realistic/giant sessions |
 | Continuation success | fresh agent completes blinded task correctly | target `>= 90%` |
+| Exact retrieval recall@5 | exact markers returned by lexical and hybrid | `100%` |
+| Semantic paraphrase recall@25 | gold paraphrases recovered by local vector and hybrid modes | `>= 90%` |
+| Hybrid improvement | hybrid paraphrase recall minus lexical paraphrase recall | `>= 25 percentage points` |
+| Graph path accuracy | expected evidence-bearing fixture path recovered | `100%` |
+| False absence count | incomplete/unavailable coverage mislabeled as absence | `0` |
 
 Tiny fixtures have fixed hot-context overhead, so their compression ratios are reported but not gated. Compression acceptance uses realistic or generated giant sessions.
 

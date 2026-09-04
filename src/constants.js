@@ -1,5 +1,5 @@
-export const AFH_VERSION = "0.2.0";
-export const SCHEMA_VERSION = 2;
+export const AFH_VERSION = "0.3.0";
+export const SCHEMA_VERSION = 3;
 
 export const EPISTEMIC = Object.freeze({
   DIRECT: "DIRECT_EVIDENCE",
@@ -66,6 +66,9 @@ export const DEFAULTS = Object.freeze({
   maxChildSessions: 32,
   inlineBlobBytes: 16 * 1024,
   verificationLevel: "V0",
+  graphHops: 1,
+  maxGraphHops: 8,
+  maxGraphNodes: 250,
 });
 
 export const SECRET_PATTERNS = Object.freeze([
