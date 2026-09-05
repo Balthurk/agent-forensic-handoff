@@ -55,14 +55,22 @@ Lenguaje ambiguo no permite clasificación completa automática; receipt expone 
 Entry:
 - Complete 14-change package reviewed with no material gaps.
 - Scope authorization active; one writer; applicable snapshot review and schema/OpenSpec validation.
-- Every earlier sequential change GREEN on applicable candidate; 01 has no predecessor GREEN requirement.
+- Every earlier acceptance milestone is MILESTONE_GREEN with its exact due obligations; future owner integrations remain DEFERRED_NOT_RUN.01 has no predecessor.
 - Concrete test harness and immutable fixture/oracle available; absent API labeled NOT_IMPLEMENTED.
 
 Exit:
-- All listed scenarios and inherited checks pass with correct evidence class; no skip/unavailable/mechanical substituted.
+- All CHANGE_EXIT obligations due at this milestone (including incoming integrations) pass their complete oracles and evidence classes. Later owner scenarios remain explicitly DEFERRED_NOT_RUN, mandatory at their assigned milestone. No diagnostic GREEN substitutes for acceptance.
 - Legacy baseline remains green; source/case inventories unchanged; new API responses meet schema and relational invariants.
 - Evidence resolves to actual candidate/inputs; semantic review satisfactory and work trace appended.
 
 ## TDD contracts
 
 23 scenarios in specification/contracts.json. Each names fixture/digest, preconditions, exact command, oracle and evidence class. API absence is NOT_IMPLEMENTED; syntax/import/environment failure is mechanical, never behavioral RED. Existing baseline green tests stay green. Follow TESTING.md to materialize any CONTRACT_ONLY harness before production edits; changing that harness must not weaken the frozen oracle.
+
+## Acceptance milestone 5
+
+Due full acceptance: AFH-05-T01, AFH-05-T02, AFH-05-T03, AFH-05-T04, AFH-05-T06, AFH-05-T07, AFH-05-T08, AFH-05-T09, AFH-05-T12, AFH-05-T13, AFH-05-T14, AFH-05-T15, AFH-05-T17, AFH-05-T18, AFH-05-T20, AFH-05-T21, AFH-05-T22, AFH-05-T23.
+
+Owned obligations deferred (not GREEN): AFH-05-T05 -> 7 CHANGE_EXIT, AFH-05-T10 -> 7 CHANGE_EXIT, AFH-05-T11 -> 7 CHANGE_EXIT, AFH-05-T16 -> 7 CHANGE_EXIT, AFH-05-T19 -> 7 CHANGE_EXIT.
+
+Implementation order is unchanged. Consumers are implemented only in their owning change; incoming integration tests execute here through their original acceptance entrypoints and unchanged oracles. A diagnostic GREEN cannot satisfy full acceptance.

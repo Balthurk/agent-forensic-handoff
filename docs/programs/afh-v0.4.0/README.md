@@ -57,3 +57,5 @@ node specification/validate-package.mjs
 ```
 
 Documentación primaria consultada el 2026-09-05: [OpenSpec 1.12.0](https://github.com/Fission-AI/OpenSpec/tree/v1.12.0), [referencia CLI](https://github.com/Fission-AI/OpenSpec/blob/v1.12.0/docs/cli.md) y [esquema spec-driven](https://github.com/Fission-AI/OpenSpec/blob/v1.12.0/schemas/spec-driven/schema.yaml). El CLI comprueba estructura; los contratos y pruebas adicionales de AFH comprueban precisión y comportamiento.
+
+La asignación canónica de aceptación sigue la disponibilidad real de consumidores: los hitos de implementación01–14 se conservan y las integraciones posteriores permanecen obligatorias/pendientes. Ver TESTING y las tablas generadas. Los probes de baseline declaran cobertura diagnóstica y no sustituyen el harness de aceptación completa.

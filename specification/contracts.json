@@ -835,6 +835,18 @@
       "kind": "APPROVED_DIAGNOSIS",
       "description": "Effective runtime inventory includes untracked owned files and detects instability before/after run",
       "ref": "docs/programs/afh-v0.4.0/TESTING.md"
+    },
+    {
+      "id": "F1",
+      "kind": "APPROVED_DIAGNOSIS",
+      "description": "Acceptance milestones follow actual consumer availability; all deferred integrations remain mandatory through release.",
+      "ref": "docs/programs/afh-v0.4.0/TESTING.md"
+    },
+    {
+      "id": "F2",
+      "kind": "APPROVED_DIAGNOSIS",
+      "description": "Baseline diagnostic coverage is explicit and cannot close complete acceptance; identity, decision content/actor/provenance assertions are tested.",
+      "ref": "docs/programs/afh-v0.4.0/TESTING.md"
     }
   ],
   "recommendations": [
@@ -1141,13 +1153,16 @@
       "entry_criteria": [
         "Complete 14-change package reviewed with no material gaps.",
         "Scope authorization active; one writer; applicable snapshot review and schema/OpenSpec validation.",
-        "Every earlier sequential change GREEN on applicable candidate; 01 has no predecessor GREEN requirement.",
+        "Every earlier acceptance milestone is MILESTONE_GREEN with its exact due obligations; future owner integrations remain DEFERRED_NOT_RUN.01 has no predecessor.",
         "Concrete test harness and immutable fixture/oracle available; absent API labeled NOT_IMPLEMENTED."
       ],
       "exit_criteria": [
-        "All listed scenarios and inherited checks pass with correct evidence class; no skip/unavailable/mechanical substituted.",
+        "All CHANGE_EXIT obligations due at this milestone (including incoming integrations) pass their complete oracles and evidence classes. Later owner scenarios remain explicitly DEFERRED_NOT_RUN, mandatory at their assigned milestone. No diagnostic GREEN substitutes for acceptance.",
         "Legacy baseline remains green; source/case inventories unchanged; new API responses meet schema and relational invariants.",
         "Evidence resolves to actual candidate/inputs; semantic review satisfactory and work trace appended."
+      ],
+      "execution_defaults": [
+        "capability.native-identity"
       ]
     },
     {
@@ -1191,13 +1206,16 @@
       "entry_criteria": [
         "Complete 14-change package reviewed with no material gaps.",
         "Scope authorization active; one writer; applicable snapshot review and schema/OpenSpec validation.",
-        "Every earlier sequential change GREEN on applicable candidate; 01 has no predecessor GREEN requirement.",
+        "Every earlier acceptance milestone is MILESTONE_GREEN with its exact due obligations; future owner integrations remain DEFERRED_NOT_RUN.01 has no predecessor.",
         "Concrete test harness and immutable fixture/oracle available; absent API labeled NOT_IMPLEMENTED."
       ],
       "exit_criteria": [
-        "All listed scenarios and inherited checks pass with correct evidence class; no skip/unavailable/mechanical substituted.",
+        "All CHANGE_EXIT obligations due at this milestone (including incoming integrations) pass their complete oracles and evidence classes. Later owner scenarios remain explicitly DEFERRED_NOT_RUN, mandatory at their assigned milestone. No diagnostic GREEN substitutes for acceptance.",
         "Legacy baseline remains green; source/case inventories unchanged; new API responses meet schema and relational invariants.",
         "Evidence resolves to actual candidate/inputs; semantic review satisfactory and work trace appended."
+      ],
+      "execution_defaults": [
+        "capability.incremental-archive"
       ]
     },
     {
@@ -1242,13 +1260,16 @@
       "entry_criteria": [
         "Complete 14-change package reviewed with no material gaps.",
         "Scope authorization active; one writer; applicable snapshot review and schema/OpenSpec validation.",
-        "Every earlier sequential change GREEN on applicable candidate; 01 has no predecessor GREEN requirement.",
+        "Every earlier acceptance milestone is MILESTONE_GREEN with its exact due obligations; future owner integrations remain DEFERRED_NOT_RUN.01 has no predecessor.",
         "Concrete test harness and immutable fixture/oracle available; absent API labeled NOT_IMPLEMENTED."
       ],
       "exit_criteria": [
-        "All listed scenarios and inherited checks pass with correct evidence class; no skip/unavailable/mechanical substituted.",
+        "All CHANGE_EXIT obligations due at this milestone (including incoming integrations) pass their complete oracles and evidence classes. Later owner scenarios remain explicitly DEFERRED_NOT_RUN, mandatory at their assigned milestone. No diagnostic GREEN substitutes for acceptance.",
         "Legacy baseline remains green; source/case inventories unchanged; new API responses meet schema and relational invariants.",
         "Evidence resolves to actual candidate/inputs; semantic review satisfactory and work trace appended."
+      ],
+      "execution_defaults": [
+        "capability.occurrence-ledger"
       ]
     },
     {
@@ -1289,19 +1310,22 @@
         "persistence": "Temporal revisions y relation revisions append-only con commit_seq común. Proyecciones de intervalo son derivadas; current legacy solo vista. Direcciones RESULT_OF=result→call y SUPERSEDES=new→old; conversión legacy documentada en receipt. Índices por assertion/branch/recorded_seq y extremos/time/scope.",
         "compatibility": "Casos schema1-3 siguen leídos según semántica histórica y aliases; nueva proyección v4 declara conversiones y límites. No mutar source/git objects ni reescribir revisiones rechazadas.",
         "recovery": "Crash durante batch temporal debe exponer a1/b1 o a2/b2, nunca frontera mixta. Clock regression bloquea nueva publicación; no retrodatar conocimiento. Readers paralelos mantienen su corte durante publicación.",
-        "integration": "Selector único suministra 05/06/07/09. Grafo Plata cubre entidades no promovidas; Oro selecciona vistas sin alterar edges originales. Utilidad agrega execution→artifact revision→validation→task criterion.",
+        "integration": "Selector único suministra 05/06/07/09. Grafo Plata cubre entidades no promovidas; Oro selecciona vistas sin alterar edges originales. Utilidad agrega execution→artifact revision→validation→task criterion. Core temporal assertions use temporal.select directly at04; public query/context consumers are only accepted when available per acceptance_policy. The interfaces list describes integration surfaces, not permission to implement a future consumer early.",
         "risks": "Times unknown/open o relojes no comparables producen incertidumbre. Edge inferida puede ser útil para descubrimiento pero no corroboración independiente. Un patch sin preimage no acredita bytes finales."
       },
       "entry_criteria": [
         "Complete 14-change package reviewed with no material gaps.",
         "Scope authorization active; one writer; applicable snapshot review and schema/OpenSpec validation.",
-        "Every earlier sequential change GREEN on applicable candidate; 01 has no predecessor GREEN requirement.",
+        "Every earlier acceptance milestone is MILESTONE_GREEN with its exact due obligations; future owner integrations remain DEFERRED_NOT_RUN.01 has no predecessor.",
         "Concrete test harness and immutable fixture/oracle available; absent API labeled NOT_IMPLEMENTED."
       ],
       "exit_criteria": [
-        "All listed scenarios and inherited checks pass with correct evidence class; no skip/unavailable/mechanical substituted.",
+        "All CHANGE_EXIT obligations due at this milestone (including incoming integrations) pass their complete oracles and evidence classes. Later owner scenarios remain explicitly DEFERRED_NOT_RUN, mandatory at their assigned milestone. No diagnostic GREEN substitutes for acceptance.",
         "Legacy baseline remains green; source/case inventories unchanged; new API responses meet schema and relational invariants.",
         "Evidence resolves to actual candidate/inputs; semantic review satisfactory and work trace appended."
+      ],
+      "execution_defaults": [
+        "capability.temporal-provenance"
       ]
     },
     {
@@ -1349,13 +1373,16 @@
       "entry_criteria": [
         "Complete 14-change package reviewed with no material gaps.",
         "Scope authorization active; one writer; applicable snapshot review and schema/OpenSpec validation.",
-        "Every earlier sequential change GREEN on applicable candidate; 01 has no predecessor GREEN requirement.",
+        "Every earlier acceptance milestone is MILESTONE_GREEN with its exact due obligations; future owner integrations remain DEFERRED_NOT_RUN.01 has no predecessor.",
         "Concrete test harness and immutable fixture/oracle available; absent API labeled NOT_IMPLEMENTED."
       ],
       "exit_criteria": [
-        "All listed scenarios and inherited checks pass with correct evidence class; no skip/unavailable/mechanical substituted.",
+        "All CHANGE_EXIT obligations due at this milestone (including incoming integrations) pass their complete oracles and evidence classes. Later owner scenarios remain explicitly DEFERRED_NOT_RUN, mandatory at their assigned milestone. No diagnostic GREEN substitutes for acceptance.",
         "Legacy baseline remains green; source/case inventories unchanged; new API responses meet schema and relational invariants.",
         "Evidence resolves to actual candidate/inputs; semantic review satisfactory and work trace appended."
+      ],
+      "execution_defaults": [
+        "capability.governed-context"
       ]
     },
     {
@@ -1402,13 +1429,16 @@
       "entry_criteria": [
         "Complete 14-change package reviewed with no material gaps.",
         "Scope authorization active; one writer; applicable snapshot review and schema/OpenSpec validation.",
-        "Every earlier sequential change GREEN on applicable candidate; 01 has no predecessor GREEN requirement.",
+        "Every earlier acceptance milestone is MILESTONE_GREEN with its exact due obligations; future owner integrations remain DEFERRED_NOT_RUN.01 has no predecessor.",
         "Concrete test harness and immutable fixture/oracle available; absent API labeled NOT_IMPLEMENTED."
       ],
       "exit_criteria": [
-        "All listed scenarios and inherited checks pass with correct evidence class; no skip/unavailable/mechanical substituted.",
+        "All CHANGE_EXIT obligations due at this milestone (including incoming integrations) pass their complete oracles and evidence classes. Later owner scenarios remain explicitly DEFERRED_NOT_RUN, mandatory at their assigned milestone. No diagnostic GREEN substitutes for acceptance.",
         "Legacy baseline remains green; source/case inventories unchanged; new API responses meet schema and relational invariants.",
         "Evidence resolves to actual candidate/inputs; semantic review satisfactory and work trace appended."
+      ],
+      "execution_defaults": [
+        "capability.layered-semantics"
       ]
     },
     {
@@ -1460,13 +1490,16 @@
       "entry_criteria": [
         "Complete 14-change package reviewed with no material gaps.",
         "Scope authorization active; one writer; applicable snapshot review and schema/OpenSpec validation.",
-        "Every earlier sequential change GREEN on applicable candidate; 01 has no predecessor GREEN requirement.",
+        "Every earlier acceptance milestone is MILESTONE_GREEN with its exact due obligations; future owner integrations remain DEFERRED_NOT_RUN.01 has no predecessor.",
         "Concrete test harness and immutable fixture/oracle available; absent API labeled NOT_IMPLEMENTED."
       ],
       "exit_criteria": [
-        "All listed scenarios and inherited checks pass with correct evidence class; no skip/unavailable/mechanical substituted.",
+        "All CHANGE_EXIT obligations due at this milestone (including incoming integrations) pass their complete oracles and evidence classes. Later owner scenarios remain explicitly DEFERRED_NOT_RUN, mandatory at their assigned milestone. No diagnostic GREEN substitutes for acceptance.",
         "Legacy baseline remains green; source/case inventories unchanged; new API responses meet schema and relational invariants.",
         "Evidence resolves to actual candidate/inputs; semantic review satisfactory and work trace appended."
+      ],
+      "execution_defaults": [
+        "capability.contextual-retrieval"
       ]
     },
     {
@@ -1518,13 +1551,16 @@
       "entry_criteria": [
         "Complete 14-change package reviewed with no material gaps.",
         "Scope authorization active; one writer; applicable snapshot review and schema/OpenSpec validation.",
-        "Every earlier sequential change GREEN on applicable candidate; 01 has no predecessor GREEN requirement.",
+        "Every earlier acceptance milestone is MILESTONE_GREEN with its exact due obligations; future owner integrations remain DEFERRED_NOT_RUN.01 has no predecessor.",
         "Concrete test harness and immutable fixture/oracle available; absent API labeled NOT_IMPLEMENTED."
       ],
       "exit_criteria": [
-        "All listed scenarios and inherited checks pass with correct evidence class; no skip/unavailable/mechanical substituted.",
+        "All CHANGE_EXIT obligations due at this milestone (including incoming integrations) pass their complete oracles and evidence classes. Later owner scenarios remain explicitly DEFERRED_NOT_RUN, mandatory at their assigned milestone. No diagnostic GREEN substitutes for acceptance.",
         "Legacy baseline remains green; source/case inventories unchanged; new API responses meet schema and relational invariants.",
         "Evidence resolves to actual candidate/inputs; semantic review satisfactory and work trace appended."
+      ],
+      "execution_defaults": [
+        "capability.observable-performance"
       ]
     },
     {
@@ -1569,13 +1605,16 @@
       "entry_criteria": [
         "Complete 14-change package reviewed with no material gaps.",
         "Scope authorization active; one writer; applicable snapshot review and schema/OpenSpec validation.",
-        "Every earlier sequential change GREEN on applicable candidate; 01 has no predecessor GREEN requirement.",
+        "Every earlier acceptance milestone is MILESTONE_GREEN with its exact due obligations; future owner integrations remain DEFERRED_NOT_RUN.01 has no predecessor.",
         "Concrete test harness and immutable fixture/oracle available; absent API labeled NOT_IMPLEMENTED."
       ],
       "exit_criteria": [
-        "All listed scenarios and inherited checks pass with correct evidence class; no skip/unavailable/mechanical substituted.",
+        "All CHANGE_EXIT obligations due at this milestone (including incoming integrations) pass their complete oracles and evidence classes. Later owner scenarios remain explicitly DEFERRED_NOT_RUN, mandatory at their assigned milestone. No diagnostic GREEN substitutes for acceptance.",
         "Legacy baseline remains green; source/case inventories unchanged; new API responses meet schema and relational invariants.",
         "Evidence resolves to actual candidate/inputs; semantic review satisfactory and work trace appended."
+      ],
+      "execution_defaults": [
+        "capability.resident-reader"
       ]
     },
     {
@@ -1625,13 +1664,16 @@
       "entry_criteria": [
         "Complete 14-change package reviewed with no material gaps.",
         "Scope authorization active; one writer; applicable snapshot review and schema/OpenSpec validation.",
-        "Every earlier sequential change GREEN on applicable candidate; 01 has no predecessor GREEN requirement.",
+        "Every earlier acceptance milestone is MILESTONE_GREEN with its exact due obligations; future owner integrations remain DEFERRED_NOT_RUN.01 has no predecessor.",
         "Concrete test harness and immutable fixture/oracle available; absent API labeled NOT_IMPLEMENTED."
       ],
       "exit_criteria": [
-        "All listed scenarios and inherited checks pass with correct evidence class; no skip/unavailable/mechanical substituted.",
+        "All CHANGE_EXIT obligations due at this milestone (including incoming integrations) pass their complete oracles and evidence classes. Later owner scenarios remain explicitly DEFERRED_NOT_RUN, mandatory at their assigned milestone. No diagnostic GREEN substitutes for acceptance.",
         "Legacy baseline remains green; source/case inventories unchanged; new API responses meet schema and relational invariants.",
         "Evidence resolves to actual candidate/inputs; semantic review satisfactory and work trace appended."
+      ],
+      "execution_defaults": [
+        "capability.compatibility-matrix"
       ]
     },
     {
@@ -1676,13 +1718,16 @@
       "entry_criteria": [
         "Complete 14-change package reviewed with no material gaps.",
         "Scope authorization active; one writer; applicable snapshot review and schema/OpenSpec validation.",
-        "Every earlier sequential change GREEN on applicable candidate; 01 has no predecessor GREEN requirement.",
+        "Every earlier acceptance milestone is MILESTONE_GREEN with its exact due obligations; future owner integrations remain DEFERRED_NOT_RUN.01 has no predecessor.",
         "Concrete test harness and immutable fixture/oracle available; absent API labeled NOT_IMPLEMENTED."
       ],
       "exit_criteria": [
-        "All listed scenarios and inherited checks pass with correct evidence class; no skip/unavailable/mechanical substituted.",
+        "All CHANGE_EXIT obligations due at this milestone (including incoming integrations) pass their complete oracles and evidence classes. Later owner scenarios remain explicitly DEFERRED_NOT_RUN, mandatory at their assigned milestone. No diagnostic GREEN substitutes for acceptance.",
         "Legacy baseline remains green; source/case inventories unchanged; new API responses meet schema and relational invariants.",
         "Evidence resolves to actual candidate/inputs; semantic review satisfactory and work trace appended."
+      ],
+      "execution_defaults": [
+        "capability.portable-bundles"
       ]
     },
     {
@@ -1729,13 +1774,16 @@
       "entry_criteria": [
         "Complete 14-change package reviewed with no material gaps.",
         "Scope authorization active; one writer; applicable snapshot review and schema/OpenSpec validation.",
-        "Every earlier sequential change GREEN on applicable candidate; 01 has no predecessor GREEN requirement.",
+        "Every earlier acceptance milestone is MILESTONE_GREEN with its exact due obligations; future owner integrations remain DEFERRED_NOT_RUN.01 has no predecessor.",
         "Concrete test harness and immutable fixture/oracle available; absent API labeled NOT_IMPLEMENTED."
       ],
       "exit_criteria": [
-        "All listed scenarios and inherited checks pass with correct evidence class; no skip/unavailable/mechanical substituted.",
+        "All CHANGE_EXIT obligations due at this milestone (including incoming integrations) pass their complete oracles and evidence classes. Later owner scenarios remain explicitly DEFERRED_NOT_RUN, mandatory at their assigned milestone. No diagnostic GREEN substitutes for acceptance.",
         "Legacy baseline remains green; source/case inventories unchanged; new API responses meet schema and relational invariants.",
         "Evidence resolves to actual candidate/inputs; semantic review satisfactory and work trace appended."
+      ],
+      "execution_defaults": [
+        "capability.prospective-capture"
       ]
     },
     {
@@ -1788,13 +1836,16 @@
       "entry_criteria": [
         "Complete 14-change package reviewed with no material gaps.",
         "Scope authorization active; one writer; applicable snapshot review and schema/OpenSpec validation.",
-        "Every earlier sequential change GREEN on applicable candidate; 01 has no predecessor GREEN requirement.",
+        "Every earlier acceptance milestone is MILESTONE_GREEN with its exact due obligations; future owner integrations remain DEFERRED_NOT_RUN.01 has no predecessor.",
         "Concrete test harness and immutable fixture/oracle available; absent API labeled NOT_IMPLEMENTED."
       ],
       "exit_criteria": [
-        "All listed scenarios and inherited checks pass with correct evidence class; no skip/unavailable/mechanical substituted.",
+        "All CHANGE_EXIT obligations due at this milestone (including incoming integrations) pass their complete oracles and evidence classes. Later owner scenarios remain explicitly DEFERRED_NOT_RUN, mandatory at their assigned milestone. No diagnostic GREEN substitutes for acceptance.",
         "Legacy baseline remains green; source/case inventories unchanged; new API responses meet schema and relational invariants.",
         "Evidence resolves to actual candidate/inputs; semantic review satisfactory and work trace appended."
+      ],
+      "execution_defaults": [
+        "capability.continuity-evaluation"
       ]
     },
     {
@@ -1847,19 +1898,22 @@
         "persistence": "Release-evidence referencia paquete OpenSpec/commit candidato/CI10/13/trials/artefactos/installer receipts exactos. Artefactos públicos contienen solo código/docs/fixtures revisados, nunca fuentes privadas/keys/node_modules de tooling. Cada instalación usa prefix y CODEX_HOME nuevos bajo RUN; inventario de instalación activa before/after se compara sin escribirla. Mantener release0.3.0 accesible y procedimiento de selección explícita de versión.",
         "compatibility": "Actualizar engine/skill/docs/CLI help juntos: local archive, medallion, scope/history, counts, semantic explicit, capture opt-in, bundles/resident y limitaciones. Preservar formatos y comandos legados; migraciones solo a nuevos archivos con alias. Requerida instalación desde tgz y GitHub descargado en cinco targets de10; no nueva publicación npm ni global install.",
         "recovery": "Antes de promover, fallo deja draft diagnosticable, no borra activos previos. Después de publicar, defecto material pausa promoción/uso y marca release con advisory descriptivo; no reescribir tag ni reemplazar tgz firmado. Nuevo patch requiere nueva identidad/CI. Rollback selecciona0.3.0 en instalación aislada y verifica smoke/old cases; no downgrade destructivo de archivo4.",
-        "integration": "Gate derivado de revisiones y receipts exactos01–13 más checks14. CI usa fixtures públicos y permisos mínimos. Whole-program spec/review válida y autorización vigente por alcance; cambio de bytes invalida evidencia afectada sin pedir otra aprobación rutinaria. Ejecutar publicación solo desde la tarea de implementación autorizada por coordinador.",
+        "integration": "Gate derivado de revisiones y receipts exactos01–13 más checks14. CI usa fixtures públicos y permisos mínimos. Whole-program spec/review válida y autorización vigente por alcance; cambio de bytes invalida evidencia afectada sin pedir otra aprobación rutinaria. Ejecutar publicación solo desde la tarea de implementación autorizada por coordinador. Release readiness requires every CHANGE_EXIT integration; only the two frozen published-artifact/final-close scenarios require POST_PUBLICATION completion. See acceptance_policy and generated tasks.",
         "risks": "Tooling de GitHub/attestation debe fijar versión real y workflow digest; disponibilidad/credenciales ausentes son UNAVAILABLE y bloquean publicación, sin inventar firma. Auditoría criptográfica del bundle es revisión específica requerida11; ni esta especificación ni firma supply-chain la sustituyen."
       },
       "entry_criteria": [
         "Complete 14-change package reviewed with no material gaps.",
         "Scope authorization active; one writer; applicable snapshot review and schema/OpenSpec validation.",
-        "Every earlier sequential change GREEN on applicable candidate; 01 has no predecessor GREEN requirement.",
+        "Every earlier acceptance milestone is MILESTONE_GREEN with its exact due obligations; future owner integrations remain DEFERRED_NOT_RUN.01 has no predecessor.",
         "Concrete test harness and immutable fixture/oracle available; absent API labeled NOT_IMPLEMENTED."
       ],
       "exit_criteria": [
-        "All listed scenarios and inherited checks pass with correct evidence class; no skip/unavailable/mechanical substituted.",
+        "All CHANGE_EXIT obligations due at this milestone (including incoming integrations) pass their complete oracles and evidence classes. Later owner scenarios remain explicitly DEFERRED_NOT_RUN, mandatory at their assigned milestone. No diagnostic GREEN substitutes for acceptance.",
         "Legacy baseline remains green; source/case inventories unchanged; new API responses meet schema and relational invariants.",
         "Evidence resolves to actual candidate/inputs; semantic review satisfactory and work trace appended."
+      ],
+      "execution_defaults": [
+        "capability.assured-release"
       ]
     }
   ],
@@ -1951,7 +2005,8 @@
         "U03",
         "U37",
         "R2",
-        "M5"
+        "M5",
+        "F2"
       ],
       "scenario_ids": [
         "AFH-01-T18",
@@ -3169,7 +3224,8 @@
         "U36",
         "U38",
         "R3",
-        "R6"
+        "R6",
+        "F1"
       ],
       "scenario_ids": [
         "AFH-14-T01",
@@ -3331,7 +3387,31 @@
       "paired_with": [
         "AFH-01-T02",
         "AFH-01-T03"
-      ]
+      ],
+      "probe_contract": {
+        "role": "BASELINE_DIAGNOSTIC",
+        "can_accept_scenario": false,
+        "checked_expectations": [
+          "event_session",
+          "grouping"
+        ],
+        "remaining_expectations": [],
+        "remaining_obligations": [
+          "Run the complete frozen fixture/oracle through the acceptance harness at its assigned milestone.",
+          "Verify all inherited identity, content, provenance, preservation and interface checks; the diagnostic covers only the explicitly listed observations."
+        ],
+        "acceptance_entrypoint": {
+          "kind": "API",
+          "command": "node",
+          "args": [
+            "--test",
+            "--test-name-pattern=AFH-01-T01",
+            "test/acceptance/afh-01.test.mjs"
+          ],
+          "cwd": "$CHECKOUT",
+          "availability": "CONTRACT_ONLY"
+        }
+      }
     },
     {
       "id": "AFH-01-T02",
@@ -3395,7 +3475,14 @@
       "paired_with": [
         "AFH-01-T01",
         "AFH-01-T03"
-      ]
+      ],
+      "execution_requires": [
+        "archive.ingest",
+        "association.record",
+        "scope.resolve"
+      ],
+      "execution_note": "Identity normalization is implemented in01; these archive/scope protocol integrations require the writer and dispatcher from02.",
+      "acceptance_milestone": 2
     },
     {
       "id": "AFH-01-T03",
@@ -3523,7 +3610,14 @@
       "paired_with": [
         "AFH-01-T05",
         "AFH-01-T06"
-      ]
+      ],
+      "execution_requires": [
+        "archive.ingest",
+        "association.record",
+        "scope.resolve"
+      ],
+      "execution_note": "Identity normalization is implemented in01; these archive/scope protocol integrations require the writer and dispatcher from02.",
+      "acceptance_milestone": 2
     },
     {
       "id": "AFH-01-T05",
@@ -3587,7 +3681,14 @@
       "paired_with": [
         "AFH-01-T04",
         "AFH-01-T06"
-      ]
+      ],
+      "execution_requires": [
+        "archive.ingest",
+        "association.record",
+        "scope.resolve"
+      ],
+      "execution_note": "Identity normalization is implemented in01; these archive/scope protocol integrations require the writer and dispatcher from02.",
+      "acceptance_milestone": 2
     },
     {
       "id": "AFH-01-T06",
@@ -3651,7 +3752,14 @@
       "paired_with": [
         "AFH-01-T04",
         "AFH-01-T05"
-      ]
+      ],
+      "execution_requires": [
+        "archive.ingest",
+        "association.record",
+        "scope.resolve"
+      ],
+      "execution_note": "Identity normalization is implemented in01; these archive/scope protocol integrations require the writer and dispatcher from02.",
+      "acceptance_milestone": 2
     },
     {
       "id": "AFH-01-T07",
@@ -3715,7 +3823,13 @@
       "paired_with": [
         "AFH-01-T08",
         "AFH-01-T09"
-      ]
+      ],
+      "execution_requires": [
+        "association.record",
+        "context.build"
+      ],
+      "execution_note": "Two-worktree identity is owned by01; the required context consumer becomes available in07.",
+      "acceptance_milestone": 7
     },
     {
       "id": "AFH-01-T08",
@@ -3779,7 +3893,14 @@
       "paired_with": [
         "AFH-01-T07",
         "AFH-01-T09"
-      ]
+      ],
+      "execution_requires": [
+        "archive.ingest",
+        "association.record",
+        "scope.resolve"
+      ],
+      "execution_note": "Identity normalization is implemented in01; these archive/scope protocol integrations require the writer and dispatcher from02.",
+      "acceptance_milestone": 2
     },
     {
       "id": "AFH-01-T09",
@@ -3843,7 +3964,14 @@
       "paired_with": [
         "AFH-01-T07",
         "AFH-01-T08"
-      ]
+      ],
+      "execution_requires": [
+        "archive.ingest",
+        "association.record",
+        "scope.resolve"
+      ],
+      "execution_note": "Identity normalization is implemented in01; these archive/scope protocol integrations require the writer and dispatcher from02.",
+      "acceptance_milestone": 2
     },
     {
       "id": "AFH-01-T10",
@@ -3909,7 +4037,13 @@
         "AFH-01-T12",
         "AFH-01-T13",
         "AFH-01-T14"
-      ]
+      ],
+      "execution_requires": [
+        "association.record",
+        "temporal.select"
+      ],
+      "execution_note": "Association identity remains01; bitemporal correction/selection is accepted with the real shared selector at04.",
+      "acceptance_milestone": 4
     },
     {
       "id": "AFH-01-T11",
@@ -3975,7 +4109,13 @@
         "AFH-01-T12",
         "AFH-01-T13",
         "AFH-01-T14"
-      ]
+      ],
+      "execution_requires": [
+        "association.record",
+        "temporal.select"
+      ],
+      "execution_note": "Association identity remains01; bitemporal correction/selection is accepted with the real shared selector at04.",
+      "acceptance_milestone": 4
     },
     {
       "id": "AFH-01-T12",
@@ -4041,7 +4181,13 @@
         "AFH-01-T11",
         "AFH-01-T13",
         "AFH-01-T14"
-      ]
+      ],
+      "execution_requires": [
+        "association.record",
+        "temporal.select"
+      ],
+      "execution_note": "Association identity remains01; bitemporal correction/selection is accepted with the real shared selector at04.",
+      "acceptance_milestone": 4
     },
     {
       "id": "AFH-01-T13",
@@ -4107,7 +4253,14 @@
         "AFH-01-T11",
         "AFH-01-T12",
         "AFH-01-T14"
-      ]
+      ],
+      "execution_requires": [
+        "archive.ingest",
+        "association.record",
+        "scope.resolve"
+      ],
+      "execution_note": "Identity normalization is implemented in01; these archive/scope protocol integrations require the writer and dispatcher from02.",
+      "acceptance_milestone": 2
     },
     {
       "id": "AFH-01-T14",
@@ -4173,7 +4326,13 @@
         "AFH-01-T11",
         "AFH-01-T12",
         "AFH-01-T13"
-      ]
+      ],
+      "execution_requires": [
+        "association.record",
+        "temporal.select"
+      ],
+      "execution_note": "Association identity remains01; bitemporal correction/selection is accepted with the real shared selector at04.",
+      "acceptance_milestone": 4
     },
     {
       "id": "AFH-01-T15",
@@ -4237,7 +4396,13 @@
       "paired_with": [
         "AFH-01-T16",
         "AFH-01-T17"
-      ]
+      ],
+      "execution_requires": [
+        "scope.resolve",
+        "query"
+      ],
+      "execution_note": "Group/period query integration requires the real query planner from07.",
+      "acceptance_milestone": 7
     },
     {
       "id": "AFH-01-T16",
@@ -4301,7 +4466,14 @@
       "paired_with": [
         "AFH-01-T15",
         "AFH-01-T17"
-      ]
+      ],
+      "execution_requires": [
+        "archive.ingest",
+        "association.record",
+        "scope.resolve"
+      ],
+      "execution_note": "Identity normalization is implemented in01; these archive/scope protocol integrations require the writer and dispatcher from02.",
+      "acceptance_milestone": 2
     },
     {
       "id": "AFH-01-T17",
@@ -4365,7 +4537,14 @@
       "paired_with": [
         "AFH-01-T15",
         "AFH-01-T16"
-      ]
+      ],
+      "execution_requires": [
+        "archive.ingest",
+        "association.record",
+        "scope.resolve"
+      ],
+      "execution_note": "Identity normalization is implemented in01; these archive/scope protocol integrations require the writer and dispatcher from02.",
+      "acceptance_milestone": 2
     },
     {
       "id": "AFH-01-T18",
@@ -4431,7 +4610,14 @@
         "AFH-01-T20",
         "AFH-01-T21",
         "AFH-01-T22"
-      ]
+      ],
+      "execution_requires": [
+        "archive.ingest",
+        "association.record",
+        "scope.resolve"
+      ],
+      "execution_note": "Identity normalization is implemented in01; these archive/scope protocol integrations require the writer and dispatcher from02.",
+      "acceptance_milestone": 2
     },
     {
       "id": "AFH-01-T19",
@@ -4563,7 +4749,14 @@
         "AFH-01-T19",
         "AFH-01-T21",
         "AFH-01-T22"
-      ]
+      ],
+      "execution_requires": [
+        "archive.ingest",
+        "association.record",
+        "scope.resolve"
+      ],
+      "execution_note": "Identity normalization is implemented in01; these archive/scope protocol integrations require the writer and dispatcher from02.",
+      "acceptance_milestone": 2
     },
     {
       "id": "AFH-02-T01",
@@ -4820,7 +5013,13 @@
         "AFH-02-T05",
         "AFH-02-T06",
         "AFH-02-T07"
-      ]
+      ],
+      "execution_requires": [
+        "archive.ingest",
+        "ledger.occurrences"
+      ],
+      "execution_note": "Incremental storage is implemented in02; stable/new occurrence cardinality is verified against the real ledger in03.",
+      "acceptance_milestone": 3
     },
     {
       "id": "AFH-02-T05",
@@ -5015,7 +5214,13 @@
         "AFH-02-T04",
         "AFH-02-T05",
         "AFH-02-T06"
-      ]
+      ],
+      "execution_requires": [
+        "archive.ingest",
+        "ledger.occurrences"
+      ],
+      "execution_note": "Incremental storage is implemented in02; stable/new occurrence cardinality is verified against the real ledger in03.",
+      "acceptance_milestone": 3
     },
     {
       "id": "AFH-02-T08",
@@ -5919,7 +6124,34 @@
       "paired_with": [
         "AFH-03-T02",
         "AFH-03-T03"
-      ]
+      ],
+      "probe_contract": {
+        "role": "BASELINE_DIAGNOSTIC",
+        "can_accept_scenario": false,
+        "checked_expectations": [
+          "occurrences"
+        ],
+        "remaining_expectations": [
+          "failed",
+          "completed",
+          "representations"
+        ],
+        "remaining_obligations": [
+          "Run the complete frozen fixture/oracle through the acceptance harness at its assigned milestone.",
+          "Verify all inherited identity, content, provenance, preservation and interface checks; the diagnostic covers only the explicitly listed observations."
+        ],
+        "acceptance_entrypoint": {
+          "kind": "API",
+          "command": "node",
+          "args": [
+            "--test",
+            "--test-name-pattern=AFH-03-T01",
+            "test/acceptance/afh-03.test.mjs"
+          ],
+          "cwd": "$CHECKOUT",
+          "availability": "CONTRACT_ONLY"
+        }
+      }
     },
     {
       "id": "AFH-03-T02",
@@ -6049,7 +6281,32 @@
       "paired_with": [
         "AFH-03-T01",
         "AFH-03-T02"
-      ]
+      ],
+      "probe_contract": {
+        "role": "BASELINE_DIAGNOSTIC",
+        "can_accept_scenario": false,
+        "checked_expectations": [
+          "canonical_messages"
+        ],
+        "remaining_expectations": [
+          "representations"
+        ],
+        "remaining_obligations": [
+          "Run the complete frozen fixture/oracle through the acceptance harness at its assigned milestone.",
+          "Verify all inherited identity, content, provenance, preservation and interface checks; the diagnostic covers only the explicitly listed observations."
+        ],
+        "acceptance_entrypoint": {
+          "kind": "API",
+          "command": "node",
+          "args": [
+            "--test",
+            "--test-name-pattern=AFH-03-T03",
+            "test/acceptance/afh-03.test.mjs"
+          ],
+          "cwd": "$CHECKOUT",
+          "availability": "CONTRACT_ONLY"
+        }
+      }
     },
     {
       "id": "AFH-03-T04",
@@ -6115,7 +6372,33 @@
       "paired_with": [
         "AFH-03-T05",
         "AFH-03-T06"
-      ]
+      ],
+      "probe_contract": {
+        "role": "BASELINE_DIAGNOSTIC",
+        "can_accept_scenario": false,
+        "checked_expectations": [
+          "executions"
+        ],
+        "remaining_expectations": [
+          "results_per_session",
+          "cross_session_links"
+        ],
+        "remaining_obligations": [
+          "Run the complete frozen fixture/oracle through the acceptance harness at its assigned milestone.",
+          "Verify all inherited identity, content, provenance, preservation and interface checks; the diagnostic covers only the explicitly listed observations."
+        ],
+        "acceptance_entrypoint": {
+          "kind": "API",
+          "command": "node",
+          "args": [
+            "--test",
+            "--test-name-pattern=AFH-03-T04",
+            "test/acceptance/afh-03.test.mjs"
+          ],
+          "cwd": "$CHECKOUT",
+          "availability": "CONTRACT_ONLY"
+        }
+      }
     },
     {
       "id": "AFH-03-T05",
@@ -6308,7 +6591,35 @@
       ],
       "paired_with": [
         "AFH-03-T08"
-      ]
+      ],
+      "probe_contract": {
+        "role": "BASELINE_DIAGNOSTIC",
+        "can_accept_scenario": false,
+        "checked_expectations": [
+          "validations",
+          "outcome",
+          "pass_count",
+          "evidence_refs_gte"
+        ],
+        "remaining_expectations": [
+          "same_occurrence"
+        ],
+        "remaining_obligations": [
+          "Run the complete frozen fixture/oracle through the acceptance harness at its assigned milestone.",
+          "Verify all inherited identity, content, provenance, preservation and interface checks; the diagnostic covers only the explicitly listed observations."
+        ],
+        "acceptance_entrypoint": {
+          "kind": "API",
+          "command": "node",
+          "args": [
+            "--test",
+            "--test-name-pattern=AFH-03-T07",
+            "test/acceptance/afh-03.test.mjs"
+          ],
+          "cwd": "$CHECKOUT",
+          "availability": "CONTRACT_ONLY"
+        }
+      }
     },
     {
       "id": "AFH-03-T08",
@@ -6438,7 +6749,31 @@
         "AFH-03-T10",
         "AFH-03-T11",
         "AFH-03-T22"
-      ]
+      ],
+      "probe_contract": {
+        "role": "BASELINE_DIAGNOSTIC",
+        "can_accept_scenario": false,
+        "checked_expectations": [
+          "attempts",
+          "terminal_status"
+        ],
+        "remaining_expectations": [],
+        "remaining_obligations": [
+          "Run the complete frozen fixture/oracle through the acceptance harness at its assigned milestone.",
+          "Verify all inherited identity, content, provenance, preservation and interface checks; the diagnostic covers only the explicitly listed observations."
+        ],
+        "acceptance_entrypoint": {
+          "kind": "API",
+          "command": "node",
+          "args": [
+            "--test",
+            "--test-name-pattern=AFH-03-T09",
+            "test/acceptance/afh-03.test.mjs"
+          ],
+          "cwd": "$CHECKOUT",
+          "availability": "CONTRACT_ONLY"
+        }
+      }
     },
     {
       "id": "AFH-03-T10",
@@ -6568,7 +6903,13 @@
         "AFH-03-T09",
         "AFH-03-T10",
         "AFH-03-T22"
-      ]
+      ],
+      "execution_requires": [
+        "stats",
+        "temporal.select"
+      ],
+      "execution_note": "Counts/lifecycle core is03; historical time filtering is integrated with04.",
+      "acceptance_milestone": 4
     },
     {
       "id": "AFH-03-T12",
@@ -6890,7 +7231,13 @@
         "AFH-03-T15",
         "AFH-03-T17",
         "AFH-03-T18"
-      ]
+      ],
+      "execution_requires": [
+        "stats",
+        "temporal.select"
+      ],
+      "execution_note": "Counts/lifecycle core is03; historical time filtering is integrated with04.",
+      "acceptance_milestone": 4
     },
     {
       "id": "AFH-03-T17",
@@ -7148,7 +7495,13 @@
       "paired_with": [
         "AFH-03-T19",
         "AFH-03-T21"
-      ]
+      ],
+      "execution_requires": [
+        "archive.ingest",
+        "semantic.build"
+      ],
+      "execution_note": "Opaque reasoning preservation is03; exclusion from both normalized and semantic indices must wait for06.",
+      "acceptance_milestone": 6
     },
     {
       "id": "AFH-03-T21",
@@ -7754,7 +8107,33 @@
       "paired_with": [
         "AFH-04-T08",
         "AFH-04-T09"
-      ]
+      ],
+      "probe_contract": {
+        "role": "BASELINE_DIAGNOSTIC",
+        "can_accept_scenario": false,
+        "checked_expectations": [
+          "contradictions"
+        ],
+        "remaining_expectations": [
+          "failure_retained",
+          "superseded"
+        ],
+        "remaining_obligations": [
+          "Run the complete frozen fixture/oracle through the acceptance harness at its assigned milestone.",
+          "Verify all inherited identity, content, provenance, preservation and interface checks; the diagnostic covers only the explicitly listed observations."
+        ],
+        "acceptance_entrypoint": {
+          "kind": "API",
+          "command": "node",
+          "args": [
+            "--test",
+            "--test-name-pattern=AFH-04-T07",
+            "test/acceptance/afh-04.test.mjs"
+          ],
+          "cwd": "$CHECKOUT",
+          "availability": "CONTRACT_ONLY"
+        }
+      }
     },
     {
       "id": "AFH-04-T08",
@@ -8428,7 +8807,16 @@
       "paired_with": [
         "AFH-04-T18",
         "AFH-04-T19"
-      ]
+      ],
+      "execution_requires": [
+        "temporal.select",
+        "graph.neighbors",
+        "gold.view",
+        "query",
+        "context.build"
+      ],
+      "execution_note": "All five consumers in the frozen fixture must execute six cuts; Gold is05 and query/context07, so the unchanged integration oracle is due at07.",
+      "acceptance_milestone": 7
     },
     {
       "id": "AFH-04-T18",
@@ -8703,7 +9091,34 @@
         "AFH-05-T21",
         "AFH-05-T22",
         "AFH-05-T23"
-      ]
+      ],
+      "probe_contract": {
+        "role": "BASELINE_DIAGNOSTIC",
+        "can_accept_scenario": false,
+        "checked_expectations": [
+          "assignments",
+          "text_in_hot",
+          "recipient",
+          "origin_status",
+          "resolvable_transmission_refs_gte"
+        ],
+        "remaining_expectations": [],
+        "remaining_obligations": [
+          "Run the complete frozen fixture/oracle through the acceptance harness at its assigned milestone.",
+          "Verify all inherited identity, content, provenance, preservation and interface checks; the diagnostic covers only the explicitly listed observations."
+        ],
+        "acceptance_entrypoint": {
+          "kind": "API",
+          "command": "node",
+          "args": [
+            "--test",
+            "--test-name-pattern=AFH-05-T01",
+            "test/acceptance/afh-05.test.mjs"
+          ],
+          "cwd": "$CHECKOUT",
+          "availability": "CONTRACT_ONLY"
+        }
+      }
     },
     {
       "id": "AFH-05-T02",
@@ -8835,7 +9250,32 @@
       "paired_with": [
         "AFH-05-T04",
         "AFH-05-T20"
-      ]
+      ],
+      "probe_contract": {
+        "role": "BASELINE_DIAGNOSTIC",
+        "can_accept_scenario": false,
+        "checked_expectations": [
+          "candidates_gte",
+          "decision_text_exact",
+          "source_actor"
+        ],
+        "remaining_expectations": [],
+        "remaining_obligations": [
+          "Run the complete frozen fixture/oracle through the acceptance harness at its assigned milestone.",
+          "Verify all inherited identity, content, provenance, preservation and interface checks; the diagnostic covers only the explicitly listed observations."
+        ],
+        "acceptance_entrypoint": {
+          "kind": "API",
+          "command": "node",
+          "args": [
+            "--test",
+            "--test-name-pattern=AFH-05-T03",
+            "test/acceptance/afh-05.test.mjs"
+          ],
+          "cwd": "$CHECKOUT",
+          "availability": "CONTRACT_ONLY"
+        }
+      }
     },
     {
       "id": "AFH-05-T04",
@@ -8963,7 +9403,15 @@
       "paired_with": [
         "AFH-05-T06",
         "AFH-05-T07"
-      ]
+      ],
+      "execution_requires": [
+        "intent.extract",
+        "gold.view",
+        "query",
+        "context.build"
+      ],
+      "execution_note": "Intent/Gold core is05; these explicit query/context/pack consumers are integrated at07.",
+      "acceptance_milestone": 7
     },
     {
       "id": "AFH-05-T06",
@@ -9283,7 +9731,15 @@
       "paired_with": [
         "AFH-05-T08",
         "AFH-05-T09"
-      ]
+      ],
+      "execution_requires": [
+        "intent.extract",
+        "gold.view",
+        "query",
+        "context.build"
+      ],
+      "execution_note": "Intent/Gold core is05; these explicit query/context/pack consumers are integrated at07.",
+      "acceptance_milestone": 7
     },
     {
       "id": "AFH-05-T11",
@@ -9348,7 +9804,15 @@
         "AFH-05-T12",
         "AFH-05-T13",
         "AFH-05-T14"
-      ]
+      ],
+      "execution_requires": [
+        "intent.extract",
+        "gold.view",
+        "query",
+        "context.build"
+      ],
+      "execution_note": "Intent/Gold core is05; these explicit query/context/pack consumers are integrated at07.",
+      "acceptance_milestone": 7
     },
     {
       "id": "AFH-05-T12",
@@ -9607,7 +10071,12 @@
       "paired_with": [
         "AFH-05-T16",
         "AFH-05-T17"
-      ]
+      ],
+      "execution_requires": [
+        "intent.extract",
+        "gold.view"
+      ],
+      "execution_note": "Both structured fixture consumers are owned by05; the shared temporal selector is available from04."
     },
     {
       "id": "AFH-05-T16",
@@ -9671,7 +10140,15 @@
       "paired_with": [
         "AFH-05-T15",
         "AFH-05-T17"
-      ]
+      ],
+      "execution_requires": [
+        "intent.extract",
+        "gold.view",
+        "query",
+        "context.build"
+      ],
+      "execution_note": "Intent/Gold core is05; these explicit query/context/pack consumers are integrated at07.",
+      "acceptance_milestone": 7
     },
     {
       "id": "AFH-05-T17",
@@ -9861,7 +10338,15 @@
       ],
       "paired_with": [
         "AFH-05-T18"
-      ]
+      ],
+      "execution_requires": [
+        "intent.extract",
+        "gold.view",
+        "query",
+        "context.build"
+      ],
+      "execution_note": "Intent/Gold core is05; these explicit query/context/pack consumers are integrated at07.",
+      "acceptance_milestone": 7
     },
     {
       "id": "AFH-05-T20",
@@ -9992,7 +10477,14 @@
       "paired_with": [
         "AFH-06-T02",
         "AFH-06-T03"
-      ]
+      ],
+      "execution_requires": [
+        "semantic.build",
+        "semantic.verify",
+        "query"
+      ],
+      "execution_note": "Index construction/reuse remains06; user-facing semantic/hybrid/time/snapshot query acceptance uses the actual planner at07.",
+      "acceptance_milestone": 7
     },
     {
       "id": "AFH-06-T02",
@@ -10126,7 +10618,14 @@
       "paired_with": [
         "AFH-06-T01",
         "AFH-06-T02"
-      ]
+      ],
+      "execution_requires": [
+        "semantic.build",
+        "semantic.verify",
+        "query"
+      ],
+      "execution_note": "Index construction/reuse remains06; user-facing semantic/hybrid/time/snapshot query acceptance uses the actual planner at07.",
+      "acceptance_milestone": 7
     },
     {
       "id": "AFH-06-T04",
@@ -10529,7 +11028,14 @@
       "paired_with": [
         "AFH-06-T07",
         "AFH-06-T08"
-      ]
+      ],
+      "execution_requires": [
+        "semantic.build",
+        "semantic.verify",
+        "query"
+      ],
+      "execution_note": "Index construction/reuse remains06; user-facing semantic/hybrid/time/snapshot query acceptance uses the actual planner at07.",
+      "acceptance_milestone": 7
     },
     {
       "id": "AFH-06-T10",
@@ -11005,7 +11511,14 @@
         "AFH-06-T14",
         "AFH-06-T15",
         "AFH-06-T17"
-      ]
+      ],
+      "execution_requires": [
+        "semantic.build",
+        "semantic.verify",
+        "query"
+      ],
+      "execution_note": "Index construction/reuse remains06; user-facing semantic/hybrid/time/snapshot query acceptance uses the actual planner at07.",
+      "acceptance_milestone": 7
     },
     {
       "id": "AFH-06-T17",
@@ -11073,7 +11586,14 @@
         "AFH-06-T14",
         "AFH-06-T15",
         "AFH-06-T16"
-      ]
+      ],
+      "execution_requires": [
+        "semantic.build",
+        "semantic.verify",
+        "query"
+      ],
+      "execution_note": "Index construction/reuse remains06; user-facing semantic/hybrid/time/snapshot query acceptance uses the actual planner at07.",
+      "acceptance_milestone": 7
     },
     {
       "id": "AFH-06-T18",
@@ -11141,7 +11661,14 @@
       "paired_with": [
         "AFH-06-T19",
         "AFH-06-T20"
-      ]
+      ],
+      "execution_requires": [
+        "semantic.build",
+        "semantic.verify",
+        "query"
+      ],
+      "execution_note": "Index construction/reuse remains06; user-facing semantic/hybrid/time/snapshot query acceptance uses the actual planner at07.",
+      "acceptance_milestone": 7
     },
     {
       "id": "AFH-06-T19",
@@ -12688,7 +13215,31 @@
       "paired_with": [
         "AFH-08-T02",
         "AFH-08-T03"
-      ]
+      ],
+      "probe_contract": {
+        "role": "BASELINE_DIAGNOSTIC",
+        "can_accept_scenario": false,
+        "checked_expectations": [
+          "normalization_event",
+          "elapsed_ms_finite"
+        ],
+        "remaining_expectations": [],
+        "remaining_obligations": [
+          "Run the complete frozen fixture/oracle through the acceptance harness at its assigned milestone.",
+          "Verify all inherited identity, content, provenance, preservation and interface checks; the diagnostic covers only the explicitly listed observations."
+        ],
+        "acceptance_entrypoint": {
+          "kind": "API",
+          "command": "node",
+          "args": [
+            "--test",
+            "--test-name-pattern=AFH-08-T01",
+            "test/acceptance/afh-08.test.mjs"
+          ],
+          "cwd": "$CHECKOUT",
+          "availability": "CONTRACT_ONLY"
+        }
+      }
     },
     {
       "id": "AFH-08-T02",
@@ -13049,7 +13600,14 @@
       "paired_with": [
         "AFH-08-T08",
         "AFH-08-T09"
-      ]
+      ],
+      "execution_requires": [
+        "progress.observe",
+        "semantic.build",
+        "resident.query"
+      ],
+      "execution_note": "Performance instrumentation is08; comparison with a real resident requires09 and cannot use a substitute.",
+      "acceptance_milestone": 9
     },
     {
       "id": "AFH-08-T08",
@@ -20759,7 +21317,14 @@
         "AFH-14-T18",
         "AFH-14-T19",
         "AFH-14-T20"
-      ]
+      ],
+      "execution_requires": [
+        "release.publish",
+        "release.verify_published"
+      ],
+      "execution_note": "These unchanged outcomes require publication to have occurred; they are mandatory post-publication completion checks, not prerequisites for the publication action itself.",
+      "acceptance_milestone": 14,
+      "acceptance_stage": "POST_PUBLICATION"
     },
     {
       "id": "AFH-14-T18",
@@ -20963,7 +21528,14 @@
         "AFH-14-T17",
         "AFH-14-T18",
         "AFH-14-T19"
-      ]
+      ],
+      "execution_requires": [
+        "release.publish",
+        "release.verify_published"
+      ],
+      "execution_note": "These unchanged outcomes require publication to have occurred; they are mandatory post-publication completion checks, not prerequisites for the publication action itself.",
+      "acceptance_milestone": 14,
+      "acceptance_stage": "POST_PUBLICATION"
     },
     {
       "id": "AFH-04-T21",
@@ -21035,7 +21607,11 @@
         "AFH-04-T23",
         "AFH-04-T24",
         "AFH-04-T25"
-      ]
+      ],
+      "execution_requires": [
+        "package.checks"
+      ],
+      "execution_note": "Executable specification checker; no product consumer is claimed."
     },
     {
       "id": "AFH-04-T22",
@@ -21107,7 +21683,11 @@
         "AFH-04-T23",
         "AFH-04-T24",
         "AFH-04-T25"
-      ]
+      ],
+      "execution_requires": [
+        "package.checks"
+      ],
+      "execution_note": "Executable specification checker; no product consumer is claimed."
     },
     {
       "id": "AFH-04-T23",
@@ -21179,7 +21759,11 @@
         "AFH-04-T22",
         "AFH-04-T24",
         "AFH-04-T25"
-      ]
+      ],
+      "execution_requires": [
+        "package.checks"
+      ],
+      "execution_note": "Executable specification checker; no product consumer is claimed."
     },
     {
       "id": "AFH-04-T24",
@@ -21251,7 +21835,11 @@
         "AFH-04-T22",
         "AFH-04-T23",
         "AFH-04-T25"
-      ]
+      ],
+      "execution_requires": [
+        "package.checks"
+      ],
+      "execution_note": "Executable specification checker; no product consumer is claimed."
     },
     {
       "id": "AFH-04-T25",
@@ -21323,7 +21911,11 @@
         "AFH-04-T22",
         "AFH-04-T23",
         "AFH-04-T24"
-      ]
+      ],
+      "execution_requires": [
+        "package.checks"
+      ],
+      "execution_note": "Executable specification checker; no product consumer is claimed."
     },
     {
       "id": "AFH-05-T21",
@@ -21389,7 +21981,11 @@
         "AFH-05-T02",
         "AFH-05-T22",
         "AFH-05-T23"
-      ]
+      ],
+      "execution_requires": [
+        "package.checks"
+      ],
+      "execution_note": "Executable specification checker; no product consumer is claimed."
     },
     {
       "id": "AFH-05-T22",
@@ -21455,7 +22051,11 @@
         "AFH-05-T02",
         "AFH-05-T21",
         "AFH-05-T23"
-      ]
+      ],
+      "execution_requires": [
+        "package.checks"
+      ],
+      "execution_note": "Executable specification checker; no product consumer is claimed."
     },
     {
       "id": "AFH-05-T23",
@@ -21521,7 +22121,11 @@
         "AFH-05-T02",
         "AFH-05-T21",
         "AFH-05-T22"
-      ]
+      ],
+      "execution_requires": [
+        "package.checks"
+      ],
+      "execution_note": "Executable specification checker; no product consumer is claimed."
     },
     {
       "id": "AFH-07-T21",
@@ -21594,7 +22198,11 @@
         "AFH-07-T25",
         "AFH-07-T26",
         "AFH-07-T27"
-      ]
+      ],
+      "execution_requires": [
+        "package.checks"
+      ],
+      "execution_note": "Executable specification checker; no product consumer is claimed."
     },
     {
       "id": "AFH-07-T22",
@@ -21667,7 +22275,11 @@
         "AFH-07-T25",
         "AFH-07-T26",
         "AFH-07-T27"
-      ]
+      ],
+      "execution_requires": [
+        "package.checks"
+      ],
+      "execution_note": "Executable specification checker; no product consumer is claimed."
     },
     {
       "id": "AFH-07-T23",
@@ -21740,7 +22352,11 @@
         "AFH-07-T25",
         "AFH-07-T26",
         "AFH-07-T27"
-      ]
+      ],
+      "execution_requires": [
+        "package.checks"
+      ],
+      "execution_note": "Executable specification checker; no product consumer is claimed."
     },
     {
       "id": "AFH-07-T24",
@@ -21813,7 +22429,11 @@
         "AFH-07-T25",
         "AFH-07-T26",
         "AFH-07-T27"
-      ]
+      ],
+      "execution_requires": [
+        "package.checks"
+      ],
+      "execution_note": "Executable specification checker; no product consumer is claimed."
     },
     {
       "id": "AFH-07-T25",
@@ -21886,7 +22506,11 @@
         "AFH-07-T24",
         "AFH-07-T26",
         "AFH-07-T27"
-      ]
+      ],
+      "execution_requires": [
+        "package.checks"
+      ],
+      "execution_note": "Executable specification checker; no product consumer is claimed."
     },
     {
       "id": "AFH-07-T26",
@@ -21959,7 +22583,11 @@
         "AFH-07-T24",
         "AFH-07-T25",
         "AFH-07-T27"
-      ]
+      ],
+      "execution_requires": [
+        "package.checks"
+      ],
+      "execution_note": "Executable specification checker; no product consumer is claimed."
     },
     {
       "id": "AFH-07-T27",
@@ -22032,7 +22660,11 @@
         "AFH-07-T24",
         "AFH-07-T25",
         "AFH-07-T26"
-      ]
+      ],
+      "execution_requires": [
+        "package.checks"
+      ],
+      "execution_note": "Executable specification checker; no product consumer is claimed."
     },
     {
       "id": "AFH-01-T21",
@@ -22098,7 +22730,11 @@
         "AFH-01-T19",
         "AFH-01-T20",
         "AFH-01-T22"
-      ]
+      ],
+      "execution_requires": [
+        "package.checks"
+      ],
+      "execution_note": "Executable specification checker; no product consumer is claimed."
     },
     {
       "id": "AFH-01-T22",
@@ -22164,7 +22800,11 @@
         "AFH-01-T19",
         "AFH-01-T20",
         "AFH-01-T21"
-      ]
+      ],
+      "execution_requires": [
+        "package.checks"
+      ],
+      "execution_note": "Executable specification checker; no product consumer is claimed."
     },
     {
       "id": "AFH-11-T19",
@@ -22234,5 +22874,249 @@
         "AFH-11-T12"
       ]
     }
-  ]
+  ],
+  "acceptance_policy": {
+    "default_milestone": "OWNER_CHANGE",
+    "default_stage": "CHANGE_EXIT",
+    "final_milestone": 14,
+    "operation_ownership": {
+      "capability.native-identity": {
+        "available_at": 1,
+        "component": "native-identity"
+      },
+      "capability.incremental-archive": {
+        "available_at": 2,
+        "component": "incremental-archive"
+      },
+      "capability.occurrence-ledger": {
+        "available_at": 3,
+        "component": "occurrence-ledger"
+      },
+      "capability.temporal-provenance": {
+        "available_at": 4,
+        "component": "temporal-provenance"
+      },
+      "capability.governed-context": {
+        "available_at": 5,
+        "component": "governed-context"
+      },
+      "capability.layered-semantics": {
+        "available_at": 6,
+        "component": "layered-semantics"
+      },
+      "capability.contextual-retrieval": {
+        "available_at": 7,
+        "component": "contextual-retrieval"
+      },
+      "capability.observable-performance": {
+        "available_at": 8,
+        "component": "observable-performance"
+      },
+      "capability.resident-reader": {
+        "available_at": 9,
+        "component": "resident-reader"
+      },
+      "capability.compatibility-matrix": {
+        "available_at": 10,
+        "component": "compatibility-matrix"
+      },
+      "capability.portable-bundles": {
+        "available_at": 11,
+        "component": "portable-bundles"
+      },
+      "capability.prospective-capture": {
+        "available_at": 12,
+        "component": "prospective-capture"
+      },
+      "capability.continuity-evaluation": {
+        "available_at": 13,
+        "component": "continuity-evaluation"
+      },
+      "capability.assured-release": {
+        "available_at": 14,
+        "component": "assured-release"
+      },
+      "legacy.audit": {
+        "available_at": 0,
+        "component": "existing-baseline-or-package"
+      },
+      "legacy.show": {
+        "available_at": 0,
+        "component": "existing-baseline-or-package"
+      },
+      "legacy.evidence": {
+        "available_at": 0,
+        "component": "existing-baseline-or-package"
+      },
+      "package.checks": {
+        "available_at": 0,
+        "component": "existing-baseline-or-package"
+      },
+      "archive.init": {
+        "available_at": 2,
+        "component": "incremental-archive"
+      },
+      "archive.ingest": {
+        "available_at": 2,
+        "component": "incremental-archive"
+      },
+      "archive.import_case": {
+        "available_at": 2,
+        "component": "incremental-archive"
+      },
+      "archive.verify": {
+        "available_at": 2,
+        "component": "incremental-archive"
+      },
+      "archive.recover": {
+        "available_at": 2,
+        "component": "incremental-archive"
+      },
+      "evidence.read": {
+        "available_at": 2,
+        "component": "incremental-archive"
+      },
+      "association.record": {
+        "available_at": 2,
+        "component": "incremental-archive"
+      },
+      "scope.resolve": {
+        "available_at": 2,
+        "component": "incremental-archive"
+      },
+      "event.show": {
+        "available_at": 3,
+        "component": "occurrence-ledger"
+      },
+      "stats": {
+        "available_at": 3,
+        "component": "occurrence-ledger"
+      },
+      "ledger.occurrences": {
+        "available_at": 3,
+        "component": "occurrence-ledger"
+      },
+      "temporal.select": {
+        "available_at": 4,
+        "component": "temporal-provenance"
+      },
+      "graph.neighbors": {
+        "available_at": 4,
+        "component": "temporal-provenance"
+      },
+      "graph.path": {
+        "available_at": 4,
+        "component": "temporal-provenance"
+      },
+      "intent.extract": {
+        "available_at": 5,
+        "component": "governed-context"
+      },
+      "intent.review": {
+        "available_at": 5,
+        "component": "governed-context"
+      },
+      "gold.promote": {
+        "available_at": 5,
+        "component": "governed-context"
+      },
+      "gold.revise": {
+        "available_at": 5,
+        "component": "governed-context"
+      },
+      "gold.view": {
+        "available_at": 5,
+        "component": "governed-context"
+      },
+      "semantic.build": {
+        "available_at": 6,
+        "component": "layered-semantics"
+      },
+      "semantic.verify": {
+        "available_at": 6,
+        "component": "layered-semantics"
+      },
+      "query": {
+        "available_at": 7,
+        "component": "contextual-retrieval"
+      },
+      "context.build": {
+        "available_at": 7,
+        "component": "contextual-retrieval"
+      },
+      "progress.observe": {
+        "available_at": 8,
+        "component": "observable-performance"
+      },
+      "resident.start": {
+        "available_at": 9,
+        "component": "resident-reader"
+      },
+      "resident.status": {
+        "available_at": 9,
+        "component": "resident-reader"
+      },
+      "resident.stop": {
+        "available_at": 9,
+        "component": "resident-reader"
+      },
+      "resident.query": {
+        "available_at": 9,
+        "component": "resident-reader"
+      },
+      "platform.matrix": {
+        "available_at": 10,
+        "component": "compatibility-matrix"
+      },
+      "bundle.export": {
+        "available_at": 11,
+        "component": "portable-bundles"
+      },
+      "bundle.import": {
+        "available_at": 11,
+        "component": "portable-bundles"
+      },
+      "capture.init": {
+        "available_at": 12,
+        "component": "prospective-capture"
+      },
+      "capture.append": {
+        "available_at": 12,
+        "component": "prospective-capture"
+      },
+      "capture.status": {
+        "available_at": 12,
+        "component": "prospective-capture"
+      },
+      "evaluation.trials": {
+        "available_at": 13,
+        "component": "continuity-evaluation"
+      },
+      "evaluation.scale": {
+        "available_at": 13,
+        "component": "continuity-evaluation"
+      },
+      "release.prepare": {
+        "available_at": 14,
+        "component": "assured-release"
+      },
+      "release.publish": {
+        "available_at": 14,
+        "component": "assured-release"
+      },
+      "release.verify_published": {
+        "available_at": 14,
+        "component": "assured-release"
+      }
+    },
+    "fixture_consumer_operations": {
+      "ledger": "temporal.select",
+      "graph": "graph.neighbors",
+      "gold": "gold.view",
+      "query": "query",
+      "context": "context.build",
+      "association": "temporal.select",
+      "intent": "intent.extract"
+    }
+  }
 }

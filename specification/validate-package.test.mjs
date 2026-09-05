@@ -5,8 +5,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
-import { ROOT, canonical, digest, pointer, validateRegistry, validateWire, relationalWireChecks, validateNormativeExamples, generatedFiles, packageSnapshot, evaluateGate } from './validate-package.mjs';
-import { runtimeSnapshot, snapshotStability, exactTimestamp, temporalRange, temporalChecks, validateEvidencePair, validateUnresolvedAssignment } from './contract-checks.mjs';
+import { ROOT, canonical, digest, pointer, validateRegistry, validateWire, relationalWireChecks, validateNormativeExamples, generatedFiles, packageSnapshot, evaluateGate, acceptancePlan, acceptanceEvidenceProblems } from './validate-package.mjs';
+import { runtimeSnapshot, snapshotStability, exactTimestamp, temporalRange, temporalChecks, validateEvidencePair, validateUnresolvedAssignment, assertNativeIdentityObservation, assertHumanDecisionCandidates, inspectHumanDecisionCandidates } from './contract-checks.mjs';
 import { auditSession, verifyCaseIntegrity } from '../src/index.js';
 
 const registry=JSON.parse(fs.readFileSync(path.join(ROOT,'specification/contracts.json')));
@@ -154,7 +154,7 @@ test('AFH-01-T22 runtime change or removal between captures invalidates evidence
 });
 
 const snapshot='d'.repeat(64);
-const gateContext=()=>({phase:'specification',authorization_ref:{status:'ACTIVE',scope:['afh-v0.4.0'],source_ref:'synthetic-authorization-ref'},review_ref:{result:'SATISFACTORY',snapshot_sha256:snapshot,source_ref:'synthetic-review-ref',reviewer:'independent-test-reviewer',material_findings:0},evidence:['openspec','schema','package_tests','traceability','oracle_review'].map(check=>({check,result:'PASS',snapshot_sha256:snapshot,source_ref:'synthetic-'+check,mechanical_errors:0}))});
+const gateContext=()=>({phase:'specification',authorization_ref:{status:'ACTIVE',scope:['afh-v0.4.0'],source_ref:'synthetic-authorization-ref'},review_ref:{result:'SATISFACTORY',snapshot_sha256:snapshot,source_ref:'synthetic-review-ref',reviewer:'independent-test-reviewer',material_findings:0},evidence:['openspec','schema','package_tests','traceability','oracle_review'].map(check=>({check,result:check==='oracle_review'?'SATISFACTORY':'PASS',evidence_class:check==='oracle_review'?'SEMANTIC_REVIEW':'PACKAGE_VALIDATION',snapshot_sha256:snapshot,source_ref:check==='oracle_review'?'synthetic-review-ref':'synthetic-'+check,mechanical_errors:0}))});
 const gate=(context,change_id=null,r=registry)=>evaluateGate({registry:r,validation:{passed:true},snapshot_sha256:snapshot,context,change_id});
 test('gate accepts full spec and01 without requiring fourteen GREEN',()=>{const c=gateContext();assert.equal(gate(c).state,'SPECIFICATION_READY');c.writer={task_id:'test-writer',exclusive:true,write_set:registry.changes[0].write_set};assert.equal(gate(c,registry.changes[0].id).state,'IMPLEMENTATION_READY');});
 test('gate02 requires predecessor01 and exact exclusive writer',()=>{const c=gateContext();c.writer={task_id:'test-writer',exclusive:true,write_set:registry.changes[1].write_set};assert.ok(gate(c,registry.changes[1].id).blockers.some(x=>x.startsWith('PREDECESSOR_')));c.writer.exclusive=false;assert.ok(gate(c,registry.changes[1].id).blockers.includes('WRITER_OR_WRITE_SET'));});
@@ -166,3 +166,62 @@ test('gate rejects PAUSED empty package mechanical stale or fixture evidence',()
   const fixture=gateContext();Object.assign(fixture.evidence[0],{claims_real_runtime:true,runtime_class:'CONTRACT_ONLY',requires_real_model:true,provider_class:'FIXTURE'});assert.ok(gate(fixture).blockers.includes('FIXTURE_AS_REAL'));assert.ok(gate(fixture).blockers.includes('FIXTURE_AS_REAL_MODEL'));
 });
 test('canonical JSON and pointer preserve Unicode arrays and explicit null',()=>{assert.equal(canonical({b:null,a:['árbol','"',1]}),'{"a":["árbol","\\\"",1],"b":null}');assert.deepEqual(pointer({'a/b':{'~':[1,null]}},'/a~1b/~0'),[1,null]);assert.throws(()=>pointer({},'/missing'),/Unresolvable/);});
+
+test('F1 preserves all288 frozen fixture and oracle identities from audited candidate',()=>{
+  assert.equal(registry.scenarios.length,288);assert.equal(registry.requirements.length,86);
+  // Digests observed from897849 before editing; works in a shallow CI checkout too.
+  assert.equal(digest(registry.scenarios.map(s=>({id:s.id,fixture_ref:s.fixture_ref,oracle_ref:s.oracle_ref,requirement_ids:s.requirement_ids,then:s.then}))),'ba25ffa56c4b4b3b59c96db4f4f15890ced822b1e2db21746dfc7bbe556e6e9e');
+  assert.equal(digest(fs.readFileSync(path.join(ROOT,'specification/fixtures/critical-contracts.json'))),'b8f7b4aa56557b474d8f81799978c58a4db15b815d7b866d9090d34d6eb77abc');
+});
+test('F1 all scenarios resolve ownership and late integrations have exact available milestones',()=>{
+  const plan=acceptancePlan(registry);assert.equal(plan.length,288);assert.equal(new Set(plan.map(x=>x.id)).size,288);
+  assert.equal(plan.filter(x=>x.milestone>x.owner).length,35);
+  for(const [id,due]of [['AFH-04-T17',7],['AFH-08-T07',9],['AFH-01-T07',7],['AFH-01-T10',4],['AFH-03-T20',6]])assert.equal(plan.find(x=>x.id===id).milestone,due);
+  assert.equal(plan.find(x=>x.id==='AFH-01-T01').milestone,1);
+});
+test('F1 counterexamples require acceptance before real consumers exist',()=>{
+  for(const [id,wrong]of [['AFH-04-T17',4],['AFH-08-T07',8],['AFH-01-T07',1],['AFH-01-T04',1]]){const r=clone();r.scenarios.find(s=>s.id===id).acceptance_milestone=wrong;assert.throws(()=>acceptancePlan(r),/before consumer availability/);}
+  const r=clone();r.scenarios.find(s=>s.id==='AFH-04-T17').execution_requires=r.scenarios.find(s=>s.id==='AFH-04-T17').execution_requires.filter(x=>x!=='context.build');assert.throws(()=>acceptancePlan(r),/Missing fixture consumer context/);
+  const r2=clone();r2.acceptance_policy.operation_ownership['resident.query'].available_at=0;assert.throws(()=>acceptancePlan(r2),/ownership\/availability mismatch/);
+});
+test('F1 cannot hide an integration in arbitrary later or postpublication stage',()=>{
+  const r=clone();r.scenarios.find(s=>s.id==='AFH-08-T07').acceptance_milestone=14;assert.throws(()=>acceptancePlan(r),/unjustified deferral/);
+  const r2=clone();r2.scenarios.find(s=>s.id==='AFH-04-T17').acceptance_stage='POST_PUBLICATION';assert.throws(()=>acceptancePlan(r2),/cannot hide integration/);
+});
+function acceptedContext(){
+  const c=gateContext(),plan=acceptancePlan(registry);
+  c.scenario_results=registry.scenarios.map(s=>({scenario_id:s.id,status:'PASS',role:'FULL_ACCEPTANCE',oracle_sha256:s.oracle_ref.sha256,package_sha256:snapshot,candidate_commit:'e'.repeat(40),evidence_ref:'synthetic-acceptance-'+s.id,mechanical_errors:0,evidence_kind:s.evidence_kind,provider_class:s.required_checks.includes('REAL_MODEL_IDENTITY')?'REAL_LOCAL':'NONE'}));
+  c.predecessors=registry.changes.map(d=>({change_id:d.id,status:'MILESTONE_GREEN',package_sha256:snapshot,candidate_commit:'e'.repeat(40),evidence_ref:'synthetic-milestone-'+d.order,mechanical_errors:0,accepted_scenario_ids:plan.filter(s=>s.milestone===d.order&&s.stage==='CHANGE_EXIT').map(s=>s.id),deferred_scenario_ids:plan.filter(s=>s.owner===d.order&&(s.milestone>d.order||s.stage==='POST_PUBLICATION')).map(s=>s.id)}));
+  return c;
+}
+test('F1 core04 permits entry05 while its five-consumer integration remains pending',()=>{
+  const c=acceptedContext();c.scenario_results=c.scenario_results.filter(e=>acceptancePlan(registry).find(s=>s.id===e.scenario_id).milestone<=4);c.writer={task_id:'test-writer',exclusive:true,write_set:registry.changes[4].write_set};
+  const g=gate(c,registry.changes[4].id);assert.equal(g.state,'IMPLEMENTATION_READY',JSON.stringify(g.blockers));assert.ok(g.deferred_obligations.some(x=>x.scenario_id==='AFH-04-T17'&&x.milestone===7));
+  c.writer.write_set=registry.changes[7].write_set;assert.ok(gate(c,registry.changes[7].id).blockers.includes('SCENARIO_AFH-04-T17'));
+});
+test('F1 every delayed integration survives into release gate and postpublication remains mandatory',()=>{
+  const c=acceptedContext();const call=(context,release_phase)=>evaluateGate({registry,validation:{passed:true},snapshot_sha256:snapshot,context,release_phase});
+  assert.equal(call(c,'complete').state,'RELEASE_ACCEPTED');
+  for(const id of ['AFH-04-T17','AFH-08-T07']){const bad=structuredClone(c);bad.scenario_results=bad.scenario_results.filter(x=>x.scenario_id!==id);assert.ok(call(bad,'ready').blockers.includes('SCENARIO_'+id));}
+  const before=structuredClone(c);before.scenario_results=before.scenario_results.filter(x=>!['AFH-14-T17','AFH-14-T20'].includes(x.scenario_id));assert.equal(call(before,'ready').state,'RELEASE_READY');assert.ok(call(before,'complete').blockers.includes('SCENARIO_AFH-14-T17'));
+});
+test('F2 all ten diagnostics declare coverage and cannot substitute for full acceptance',()=>{
+  const probes=registry.scenarios.filter(s=>s.phase==='OBSERVED_RED');assert.equal(probes.length,10);
+  for(const s of probes){assert.equal(s.probe_contract.can_accept_scenario,false);assert.equal(s.probe_contract.role,'BASELINE_DIAGNOSTIC');assert.ok(s.probe_contract.remaining_obligations.length);const c=acceptedContext();c.scenario_results.find(x=>x.scenario_id===s.id).role='BASELINE_DIAGNOSTIC';assert.ok(acceptanceEvidenceProblems(registry,acceptancePlan(registry),c,snapshot,14,{postPublication:true}).includes('DIAGNOSTIC_CANNOT_ACCEPT_'+s.id));}
+});
+test('F2 native owner plus missing or wrong grouping fails while complete bound identity passes',()=>{
+  const expected={event_session:'synthetic-child',grouping:'synthetic-parent'},good={events:[{native_id:'synthetic-child',session_id:'ses:codex:synthetic-child'}],grouping:'synthetic-parent',metadata_provenance:true};
+  assert.doesNotThrow(()=>assertNativeIdentityObservation(good,expected));for(const grouping of [null,'wrong-parent'])assert.throws(()=>assertNativeIdentityObservation({...good,grouping},expected),/Grouping/);assert.throws(()=>assertNativeIdentityObservation({...good,metadata_provenance:false},expected),/session_meta/);
+});
+test('F2 exact human decision supports multiple candidates with real provenance and rejects unrelated actor/content',async()=>{
+  const dir=path.join(run,'f2-decisions');fs.mkdirSync(dir);const marker='Usa SQLite y conserva las decisiones anteriores.',session_id='ses:codex:decision-source';
+  const source=path.join(dir,'source.jsonl');fs.writeFileSync(source,[{type:'session_meta',payload:{id:'decision-source',session_id:'decision-source'}},...['user','assistant'].map((role,i)=>({type:'response_item',payload:{type:'message',id:'m'+i,role,content:[{type:role==='user'?'input_text':'output_text',text:marker}]}}))].map(JSON.stringify).join('\n')+'\n');
+  const a=await auditSession(source,{harness:'codex',caseDir:path.join(dir,'case'),workspace:dir,includeChildren:false});assert.equal((await verifyCaseIntegrity(a.caseDir)).passed,true);
+  const db=new DatabaseSync(path.join(a.caseDir,'case.sqlite'),{readOnly:true});let events;try{events=db.prepare("SELECT id,kind FROM event WHERE kind IN ('message.user','message.agent')").all();}finally{db.close();}
+  const human=events.find(e=>e.kind==='message.user'),agent=events.find(e=>e.kind==='message.agent');assert.ok(human);assert.ok(agent);
+  const candidates=[{id:'candidate-a',decision_text:marker,source_event_id:human.id},{id:'candidate-b',decision_text:marker,source_event_id:human.id}];
+  const rows=await inspectHumanDecisionCandidates(a.caseDir,{marker,session_id},candidates);assert.equal(assertHumanDecisionCandidates(rows,{marker,session_id}),2);assert.ok(rows.every(r=>r.evidence_refs.length&&r.provenance_resolved));
+  for(const candidate of [{id:'unrelated',decision_text:'Otra decisión',source_event_id:human.id},{id:'wrong-actor',decision_text:marker,source_event_id:agent.id},{id:'missing',decision_text:marker,source_event_id:'inexistente'}]){const bad=await inspectHumanDecisionCandidates(a.caseDir,{marker,session_id},[candidate]);assert.throws(()=>assertHumanDecisionCandidates(bad,{marker,session_id}),/At least one exact human/);}
+  assert.throws(()=>assertHumanDecisionCandidates([],{marker,session_id}),/At least one/);
+});
+test('F2 npm package tests cannot impersonate a global semantic oracle review',()=>{const c=gateContext();Object.assign(c.evidence.find(e=>e.check==='oracle_review'),{result:'PASS',evidence_class:'PACKAGE_VALIDATION',source_ref:'npm-check.txt'});assert.ok(gate(c).blockers.includes('EVIDENCE_ORACLE_REVIEW'));});

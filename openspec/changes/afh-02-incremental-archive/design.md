@@ -55,14 +55,22 @@ Verificar prefijo cuesta IO completo y debe contarse. Compressed append puede re
 Entry:
 - Complete 14-change package reviewed with no material gaps.
 - Scope authorization active; one writer; applicable snapshot review and schema/OpenSpec validation.
-- Every earlier sequential change GREEN on applicable candidate; 01 has no predecessor GREEN requirement.
+- Every earlier acceptance milestone is MILESTONE_GREEN with its exact due obligations; future owner integrations remain DEFERRED_NOT_RUN.01 has no predecessor.
 - Concrete test harness and immutable fixture/oracle available; absent API labeled NOT_IMPLEMENTED.
 
 Exit:
-- All listed scenarios and inherited checks pass with correct evidence class; no skip/unavailable/mechanical substituted.
+- All CHANGE_EXIT obligations due at this milestone (including incoming integrations) pass their complete oracles and evidence classes. Later owner scenarios remain explicitly DEFERRED_NOT_RUN, mandatory at their assigned milestone. No diagnostic GREEN substitutes for acceptance.
 - Legacy baseline remains green; source/case inventories unchanged; new API responses meet schema and relational invariants.
 - Evidence resolves to actual candidate/inputs; semantic review satisfactory and work trace appended.
 
 ## TDD contracts
 
 20 scenarios in specification/contracts.json. Each names fixture/digest, preconditions, exact command, oracle and evidence class. API absence is NOT_IMPLEMENTED; syntax/import/environment failure is mechanical, never behavioral RED. Existing baseline green tests stay green. Follow TESTING.md to materialize any CONTRACT_ONLY harness before production edits; changing that harness must not weaken the frozen oracle.
+
+## Acceptance milestone 2
+
+Due full acceptance: AFH-01-T02, AFH-01-T04, AFH-01-T05, AFH-01-T06, AFH-01-T08, AFH-01-T09, AFH-01-T13, AFH-01-T16, AFH-01-T17, AFH-01-T18, AFH-01-T20, AFH-02-T01, AFH-02-T02, AFH-02-T03, AFH-02-T05, AFH-02-T06, AFH-02-T08, AFH-02-T09, AFH-02-T10, AFH-02-T11, AFH-02-T12, AFH-02-T13, AFH-02-T14, AFH-02-T15, AFH-02-T16, AFH-02-T17, AFH-02-T18, AFH-02-T19, AFH-02-T20.
+
+Owned obligations deferred (not GREEN): AFH-02-T04 -> 3 CHANGE_EXIT, AFH-02-T07 -> 3 CHANGE_EXIT.
+
+Implementation order is unchanged. Consumers are implemented only in their owning change; incoming integration tests execute here through their original acceptance entrypoints and unchanged oracles. A diagnostic GREEN cannot satisfy full acceptance.

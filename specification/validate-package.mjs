@@ -101,6 +101,7 @@ export function validateRegistry(registry,{root=ROOT,checkGenerated=true}={}){
   const jsonCache=new Map();const fixtureJson=file=>{if(!jsonCache.has(file))jsonCache.set(file,readJson(file));return jsonCache.get(file);};
   check('registry-schema',()=>{const ajv=ajvInstance();const v=ajv.compile(readJson(path.join(root,'specification/contracts.schema.json')));if(!v(registry))throw new Error(ajv.errorsText(v.errors,{separator:'; '}));});
   if(errors.length)return {passed:false,errors};
+  check('acceptance-schedule',()=>{acceptancePlan(registry,{root});});
   check('required-artifacts',()=>{for(const rel of ['.gitattributes','.github/workflows/ci.yml','openspec/config.yaml','openspec/specs/legacy-case-access/spec.md','docs/programs/afh-v0.4.0/HANDOFF.md','docs/programs/afh-v0.4.0/TESTING.md','specification/contract-checks.mjs','specification/validate-package.test.mjs','specification/regression-probes.mjs','tools/specification/package-lock.json'])localPath(root,rel);});
   check('generated-view-list',()=>{if(canonical([...registry.program.generated_views].sort())!==canonical(['RECOMMENDATIONS.md','REQUIREMENTS.md','REVIEW-CHECKLIST.md'].sort()))throw new Error('declared generated views differ from renderer');});
   const maps={};
@@ -143,6 +144,11 @@ export function validateRegistry(registry,{root=ROOT,checkGenerated=true}={}){
     if(oracle.expected.error&&!registry.error_catalog.some(e=>e.code===oracle.expected.error))throw new Error('oracle error not in catalog');
     if(sc.evidence_kind==='SYNTHETIC_REAL_MODEL'&&!sc.required_checks.includes('REAL_MODEL_IDENTITY'))throw new Error('missing real model check');
     if(sc.phase==='OBSERVED_RED'&&sc.entrypoint.availability!=='EXECUTABLE')throw new Error('RED without executable probe');
+    if(sc.phase==='OBSERVED_RED'){
+      const p=sc.probe_contract;if(!p||p.can_accept_scenario!==false||p.role!=='BASELINE_DIAGNOSTIC')throw new Error('diagnostic coverage missing');
+      const keys=Object.keys(oracle.expected).sort();if(canonical([...p.checked_expectations,...p.remaining_expectations].sort())!==canonical(keys))throw new Error('diagnostic oracle coverage does not partition expected fields');
+      if(p.acceptance_entrypoint.availability!=='CONTRACT_ONLY'||p.acceptance_entrypoint.args.includes('specification/regression-probes.mjs'))throw new Error('diagnostic used as full acceptance');
+    }
     for(const ref of sc.contract_refs)docRefs.add(ref);
     if(sc.entrypoint.availability==='EXECUTABLE'){
       const entry=sc.entrypoint.args.find(x=>/\.(mjs|js)$/.test(x));if(!entry)throw new Error('missing executable script');localPath(root,entry);
@@ -159,24 +165,73 @@ export function validateRegistry(registry,{root=ROOT,checkGenerated=true}={}){
   return {passed:errors.length===0,errors,counts:{recommendations:registry.recommendations.length,changes:registry.changes.length,requirements:registry.requirements.length,scenarios:registry.scenarios.length,sources:registry.sources.length}};
 }
 
+export function acceptancePlan(registry,{root=ROOT}={}){
+  const policy=registry.acceptance_policy;if(!policy)throw new Error('Missing acceptance policy');
+  for(const [op,owner]of Object.entries(policy.operation_ownership))if(owner.available_at===0?owner.component!=='existing-baseline-or-package':!registry.changes.some(c=>c.order===owner.available_at&&c.capability===owner.component))throw new Error('Operation ownership/availability mismatch '+op);
+  const fixtures=new Map(),changes=new Map(registry.changes.map(c=>[c.id,c]));
+  const rows=registry.scenarios.map(s=>{
+    const c=changes.get(s.change_id);if(!c)throw new Error('Unknown scenario owner');
+    const ops=[...new Set([...(c.execution_defaults??[]),...(s.execution_requires??[])])];
+    if(!ops.length)throw new Error('Missing execution consumers '+s.id);
+    if(!fixtures.has(s.fixture_ref.path))fixtures.set(s.fixture_ref.path,readJson(localPath(root,s.fixture_ref.path)));
+    const fixture=pointer(fixtures.get(s.fixture_ref.path),s.fixture_ref.pointer);
+    for(const consumer of fixture.input?.consumers??[]){const op=policy.fixture_consumer_operations[consumer];if(!op)throw new Error('Unknown structured fixture consumer '+consumer);if(!ops.includes(op))throw new Error('Missing fixture consumer '+consumer+' in '+s.id);}
+    const available=ops.map(op=>{const item=policy.operation_ownership[op];if(!item)throw new Error('Unknown operation owner '+op);return item.available_at;});
+    const earliest=Math.max(c.order,...available),milestone=s.acceptance_milestone??c.order,stage=s.acceptance_stage??policy.default_stage;
+    if(milestone!==earliest)throw new Error('Acceptance before consumer availability or unjustified deferral '+s.id+': expected '+earliest+', got '+milestone);
+    if(stage==='POST_PUBLICATION'&&(c.order!==14||!ops.includes('release.verify_published')))throw new Error('Post-publication stage cannot hide integration '+s.id);
+    return {id:s.id,owner:c.order,milestone,stage,operations:ops,acceptance_entrypoint:s.probe_contract?.acceptance_entrypoint??s.entrypoint,diagnostic:s.probe_contract??null};
+  });
+  if(new Set(rows.map(x=>x.id)).size!==registry.scenarios.length||rows.some(x=>x.milestone>14))throw new Error('Acceptance obligation lost');
+  return rows;
+}
+
+export function acceptanceEvidenceProblems(registry,plan,context,snapshot_sha256,through,{postPublication=false}={}){
+  const problems=[];
+  for(const item of plan.filter(x=>x.milestone<=through&&(postPublication||x.stage==='CHANGE_EXIT'))){
+    const s=registry.scenarios.find(x=>x.id===item.id),e=context.scenario_results?.find(x=>x.scenario_id===item.id);
+    if(!e||e.status!=='PASS'||e.role!=='FULL_ACCEPTANCE'||e.oracle_sha256!==s.oracle_ref.sha256||e.package_sha256!==snapshot_sha256||!e.candidate_commit||!e.evidence_ref||e.mechanical_errors!==0||e.evidence_kind!==s.evidence_kind)problems.push('SCENARIO_'+item.id);
+    if(e?.role==='BASELINE_DIAGNOSTIC')problems.push('DIAGNOSTIC_CANNOT_ACCEPT_'+item.id);
+    if(s.required_checks.includes('REAL_MODEL_IDENTITY')&&e?.provider_class!=='REAL_LOCAL')problems.push('REAL_MODEL_REQUIRED_'+item.id);
+  }
+  return problems;
+}
+
 export function generatedFiles(r){
-  const files=new Map();const base='docs/programs/afh-v0.4.0/';
+  const files=new Map();const base='docs/programs/afh-v0.4.0/';const plan=acceptancePlan(r);
   const header=title=>'# '+title+'\n\nGenerated from specification/contracts.json by validate-package.mjs --generate. Edit the canonical registry, not this view.\n\n';
   const esc=s=>s.replaceAll('|','\\|').replaceAll('\n',' ');
   files.set(base+'RECOMMENDATIONS.md',header('Cobertura de las 22 recomendaciones')+'| ID | Origen | Decisión | Justificación | Requisitos y tests |\n|---|---|---|---|---|\n'+r.recommendations.map(x=>`| ${x.id} | ${x.origin} | ${x.decision} | ${esc(x.title+' — '+x.rationale)} | ${x.requirement_ids.join(', ')}; ${r.scenarios.filter(s=>s.requirement_ids.some(id=>x.requirement_ids.includes(id))).map(s=>s.id).join(', ')} |`).join('\n')+'\n');
   files.set(base+'REQUIREMENTS.md',header('Matriz completa de requisitos y escenarios')+'## Cláusulas de origen\n\n| ID | Tipo | Cláusula | Requisitos |\n|---|---|---|---|\n'+r.sources.map(x=>`| ${x.id} | ${x.kind} | ${esc(x.description)} | ${r.requirements.filter(q=>q.source_refs.includes(x.id)).map(q=>q.id).join(', ')} |`).join('\n')+'\n\n## Requisito → escenario → evidencia\n\n| Requisito | Cambio | Contrato | Tests | Evidencia exigida |\n|---|---|---|---|---|\n'+r.requirements.map(q=>`| ${q.id} | ${q.change_id} | ${esc(q.statement)} | ${q.scenario_ids.join(', ')} | ${[...new Set(r.scenarios.filter(s=>q.scenario_ids.includes(s.id)).map(s=>s.evidence_kind))].join(', ')} |`).join('\n')+'\n');
   files.set(base+'REVIEW-CHECKLIST.md',header('Revisión de coordinador y gates')+'## Comprobaciones automatizables\n\n- [ ] validate-package pasó sobre el digest exacto, sin referencias vacías, rotas o cíclicas.\n- [ ] OpenSpec 1.12.0 validate --all --strict pasó para todos los cambios y baseline.\n- [ ] Schemas v4 y registry, oráculos negativos, clasificación de evidencia y tests del gate pasaron.\n- [ ] Runtime/producto intacto en fase de especificación; datos públicos sintéticos y revisados.\n\n## Revisión semántica requerida\n\n- [ ] Cada requisito tiene propósito, contrato y oráculo falsable que conserva información en negativos.\n- [ ] Revisar el programa completo: R1 segmentos temporales; R2 protocolo/frame/presupuesto; R3 registro; R4 probes; R5 ownership; R6 gates y autorización persistente.\n- [ ] Confirmar las 22 decisiones y que ninguna capacidad pendiente se omitió por esfuerzo o prioridad.\n- [ ] Confirmar blind trials con independencia real, límites de cobertura y criterios medidos de release.\n- [ ] Emitir review_ref con snapshot_sha256, reviewer, source_ref resoluble, resultado SATISFACTORY o CHANGES_REQUESTED, findings y hora observada.\n\n## Secuencia y entrada por cambio\n\n| Cambio | Predecesores semánticos | Write set | Pruebas |\n|---|---|---|---|\n'+r.changes.map(c=>`| ${c.id} | ${c.depends_on.join(', ')||'ninguno'} | ${c.write_set.join(', ')} | ${r.scenarios.filter(s=>s.change_id===c.id).map(s=>s.id).join(', ')} |`).join('\n')+'\n\nSPECIFICATION_READY exige revisión semántica satisfactoria del paquete exacto. READY_FOR_COORDINATOR_REVIEW es solo entrega pendiente de esa revisión. IMPLEMENTATION_READY(01) no exige 14 GREEN; exige el paquete completo revisado y sus propios predecesores. Autorización de alcance persiste entre ediciones ordinarias: cambiar digest invalida evidencia/review afectada, no exige otra aprobación humana por sí mismo. PAUSED/revocación sí bloquean. Ver TESTING.md y la función evaluateGate.\n');
   for(const c of r.changes){
-    const dir=`openspec/changes/${c.id}/`;const qs=r.requirements.filter(q=>q.change_id===c.id);const ss=r.scenarios.filter(s=>s.change_id===c.id);
+    const dir=`openspec/changes/${c.id}/`;const qs=r.requirements.filter(q=>q.change_id===c.id);const ss=r.scenarios.filter(s=>s.change_id===c.id);const due=plan.filter(s=>s.milestone===c.order&&s.stage==='CHANGE_EXIT');const deferred=plan.filter(s=>s.owner===c.order&&(s.milestone>c.order||s.stage==='POST_PUBLICATION'));
+    const schedule='## Acceptance milestone '+c.order+'\n\nDue full acceptance: '+due.map(s=>s.id).join(', ')+'.\n\nOwned obligations deferred (not GREEN): '+(deferred.map(s=>s.id+' -> '+s.milestone+' '+s.stage).join(', ')||'none')+'.\n\nImplementation order is unchanged. Consumers are implemented only in their owning change; incoming integration tests execute here through their original acceptance entrypoints and unchanged oracles. A diagnostic GREEN cannot satisfy full acceptance.\n';
     files.set(dir+'.openspec.yaml','schema: spec-driven\n');
     files.set(dir+'proposal.md',`## Why\n\n${c.problem}\n\n${c.benefit}\n\n## What Changes\n\n${c.purpose}\n\n## Capabilities\n\n### New Capabilities\n\n- \`${c.capability}\`: ${c.purpose}\n\n### Modified Capabilities\n\nNo existing OpenSpec requirement is removed; legacy behavior remains covered by legacy-case-access. Fixes apply to new captures.\n\n## Impact\n\nInterfaces: ${c.interfaces.join(', ')}. Write set: ${c.write_set.join(', ')}. Dependencies: ${c.depends_on.join(', ')||'none'}. All shared profiles are normative: ${c.profiles.join(', ')}.\n`);
     files.set(dir+`specs/${c.capability}/spec.md`,`## Purpose\n\n${c.purpose}\n\n## ADDED Requirements\n\n`+qs.map(q=>`### Requirement: ${q.id} ${q.title}\n\n${q.statement}\n\n`+q.scenario_ids.map(id=>{const s=ss.find(x=>x.id===id);return `#### Scenario: ${s.id} ${s.title}\n- **GIVEN** ${s.given}\n- **WHEN** ${s.when}\n- **THEN** ${s.then}\n- **AND** test contract: specification/contracts.json scenario ${s.id}; oracle ${s.oracle_ref.path}#${s.oracle_ref.pointer}.\n`;}).join('\n')).join('\n'));
     files.set(dir+'design.md',`## Context\n\n${c.problem}\n\nPurpose and global integration: ${c.purpose}\n\n## Goals / Non-Goals\n\nBenefit: ${c.benefit}\n\nThis change implements only the declared interfaces and write set. No historical command execution, old-case mutation, global install, or cross-project writes.\n\n## Definitions and shared contracts\n\nGLOSSARY.md, ARCHITECTURE.md, DATA-CONTRACT.md, API-CONTRACT.md and OPERATIONS.md under docs/programs/afh-v0.4.0 are normative. Profile inheritance: ${c.profiles.join(', ')}; resolve in specification/contracts.json. Fact, claim, occurrence, representation, intent, authority, evidence, validity, promotion and closure retain those definitions.\n\n## Decisions\n\n### Algorithm and interface\n\n${c.design.algorithm}\n\nInterfaces: ${c.interfaces.join(', ')}. Exact typed producer/consumer schemas are schemas/archive-v4.schema.json; relational checks remain mandatory.\n\n### Rationale and alternatives\n\n${c.design.rationale}\n\n${c.design.alternatives}\n\n### Persistence, concurrency and idempotence\n\n${c.design.persistence}\n\n### Integration and dependencies\n\n${c.design.integration}\n\nDependencies: ${c.depends_on.join(', ')||'none'}. One writer executes the full ordered program.\n\n## Migration Plan\n\n${c.design.compatibility}\n\n${c.design.recovery}\n\nExpected write set: ${c.write_set.join(', ')}.\n\n## Risks / Trade-offs\n\n${c.design.risks}\n\n## Entry and exit\n\nEntry:\n${c.entry_criteria.map(x=>'- '+x).join('\n')}\n\nExit:\n${c.exit_criteria.map(x=>'- '+x).join('\n')}\n\n## TDD contracts\n\n${ss.length} scenarios in specification/contracts.json. Each names fixture/digest, preconditions, exact command, oracle and evidence class. API absence is NOT_IMPLEMENTED; syntax/import/environment failure is mechanical, never behavioral RED. Existing baseline green tests stay green. Follow TESTING.md to materialize any CONTRACT_ONLY harness before production edits; changing that harness must not weaken the frozen oracle.\n`);
-    const tasks=['## 1. Entry and RED','',`- [ ] 1.1 Run IMPLEMENTATION_READY for ${c.id} against current package/review/authorization; retain gate receipt and exact writer/write set.`,`- [ ] 1.2 Materialize the concrete contracts ${ss.map(x=>x.id).join(', ')} as test/acceptance/afh-${String(c.order).padStart(2,'0')}.test.mjs; validate fixtures/digests and capture baseline before product edits.`,`- [ ] 1.3 Execute node --test test/acceptance/afh-${String(c.order).padStart(2,'0')}.test.mjs; retain behavioral RED, NOT_IMPLEMENTED and mechanical failures separately, including positive preservation guards.`,'','## 2. Minimal GREEN',''];
-    qs.forEach((q,i)=>tasks.push(`- [ ] 2.${i+1} Implement ${q.id} only within the declared write set; verify ${q.scenario_ids.join(', ')} with the frozen fixture/oracle and retain actual output/evidence.`));
-    tasks.push('','## 3. Refactor, integration and exit','',`- [ ] 3.1 Refactor only after GREEN; rerun this change's ${ss.length} scenarios and applicable prior changes without weakening oracles.`,`- [ ] 3.2 Run npm run check and node specification/validate-package.mjs; verify runtime evidence, source immutability, schema/CLI compatibility and all profile checks.`,`- [ ] 3.3 Obtain per-change semantic review and acceptance receipt bound to product candidate and test inputs; mark GREEN only when every required experiment ran, no mechanical or unavailable evidence substituted.`,`- [ ] 3.4 Commit the bounded change with evidence pointers; update the append-only program trace and exact next-change gate. Archive this OpenSpec delta only after task completion and acceptance; no release until 14 completes.`, '');
+    files.set(dir+'design.md',files.get(dir+'design.md')+'\n'+schedule);
+    const commands=due.map(item=>item.id+': '+item.acceptance_entrypoint.command+' '+item.acceptance_entrypoint.args.join(' '));
+    const tasks=['## 1. Entry and due RED','',
+      '- [ ] 1.1 Evaluate IMPLEMENTATION_READY for '+c.id+' with exact package/review, writer and earlier milestone receipts.',
+      '- [ ] 1.2 Materialize only full acceptance harnesses due at this milestone; retain later contracts as DEFERRED_NOT_RUN. Incoming scenarios keep their original IDs, fixtures, paths and oracles.',
+      '- [ ] 1.3 Run the due test commands below before the affected implementation/integration edit; distinguish behavioral RED, NOT_IMPLEMENTED and mechanical failure. Baseline probes remain diagnostic.','',
+      ...commands.map(command=>'- '+command),'','## 2. Implementation and integration',''];
+    qs.forEach((q,i)=>tasks.push('- [ ] 2.'+(i+1)+' Implement '+q.id+' within this change write set. Verify its due scenarios now; preserve its later mandatory obligations in the schedule without marking them GREEN.'));
+    tasks.push('- [ ] 2.'+(qs.length+1)+' Integrate every incoming due scenario using the real consumers now available. Do not replace a future consumer with a mock or expand earlier write sets.','','## 3. Refactor and milestone exit','',
+      '- [ ] 3.1 Refactor after due GREEN and rerun due obligations plus applicable earlier regressions; do not execute deferred consumers prematurely.',
+      '- [ ] 3.2 Run npm run check, package validation, profile checks, integrity and privacy checks with exact candidate and input identity.',
+      '- [ ] 3.3 Record MILESTONE_GREEN only with FULL_ACCEPTANCE results for the exact due IDs; record the exact deferred_scenario_ids separately. A milestone receipt is not acceptance of all owner scenarios.',
+      '- [ ] 3.4 Commit the bounded implementation/integration and append evidence; evaluate the next entry against all obligations due so far. Keep this OpenSpec delta unarchived until every owned scenario, including later integrations, has passed.', '',schedule);
+    if(c.order===14)tasks.push('## 4. Publication boundary','',
+      '- [ ] 4.1 Evaluate --release-phase ready after every CHANGE_EXIT obligation across all14 owners passes. Only then perform the authorized publication action.',
+      '- [ ] 4.2 Execute AFH-14-T17 and AFH-14-T20 against published artifacts and actual final receipts; evaluate --release-phase complete. Both post-publication outcomes remain mandatory and cannot gate their own prerequisite action.','');
     files.set(dir+'tasks.md',tasks.join('\n'));
   }
+  const assignment='\n## Canonical acceptance assignment\n\nNormal scenarios inherit OWNER_CHANGE / CHANGE_EXIT. Explicit execution consumers determine the earliest valid integration milestone; no obligation is removed. Full release completion includes POST_PUBLICATION checks.\n\n| Scenario | Owner | Due milestone | Stage | Required consumers | Entrypoint coverage |\n|---|---|---|---|---|---|\n'+plan.map(s=>`| ${s.id} | ${s.owner} | ${s.milestone} | ${s.stage} | ${s.operations.join(', ')} | ${s.diagnostic?'BASELINE_DIAGNOSTIC; full acceptance contract-only':'Full declared scenario contract'} |`).join('\n')+'\n';
+  files.set(base+'REVIEW-CHECKLIST.md',files.get(base+'REVIEW-CHECKLIST.md')+assignment);
+  files.set(base+'REQUIREMENTS.md',files.get(base+'REQUIREMENTS.md')+assignment);
   return files;
 }
 
@@ -187,8 +242,9 @@ export function packageSnapshot(root=ROOT){
   for(const p of paths)visit(p);entries.sort((a,b)=>a.path.localeCompare(b.path,'en'));
   return {sha256:digest(entries),files:entries};
 }
-export function evaluateGate({registry,validation,snapshot_sha256,context,change_id=null}){
+export function evaluateGate({registry,validation,snapshot_sha256,context,change_id=null,release_phase=null}){
   const blockers=[];
+  let plan=[];try{plan=acceptancePlan(registry);}catch{blockers.push('ACCEPTANCE_SCHEDULE_INVALID');}
   if(context.phase==='PAUSED'||context.paused===true)blockers.push('PAUSED');
   if(!validation.passed||registry.changes.length!==14||registry.recommendations.length!==22||registry.scenarios.length<200)blockers.push('PACKAGE_INCOMPLETE_OR_INVALID');
   const auth=context.authorization_ref;
@@ -198,7 +254,8 @@ export function evaluateGate({registry,validation,snapshot_sha256,context,change
   if(!review||review.result!=='SATISFACTORY'||review.snapshot_sha256!==snapshot_sha256||!review.source_ref||!review.reviewer||review.material_findings!==0)blockers.push('SEMANTIC_REVIEW_PENDING_OR_STALE');
   for(const check of ['openspec','schema','package_tests','traceability','oracle_review']){
     const e=context.evidence?.find(x=>x.check===check);
-    if(!e||e.result!=='PASS'||e.snapshot_sha256!==snapshot_sha256||!e.source_ref||e.mechanical_errors!==0)blockers.push('EVIDENCE_'+check.toUpperCase());
+    const expected=check==='oracle_review'?'SATISFACTORY':'PASS';
+    if(!e||e.result!==expected||e.snapshot_sha256!==snapshot_sha256||!e.source_ref||e.mechanical_errors!==0||(check==='oracle_review'&&(e.evidence_class!=='SEMANTIC_REVIEW'||e.source_ref!==review?.source_ref)))blockers.push('EVIDENCE_'+check.toUpperCase());
     if(e?.claims_real_runtime&&e.runtime_class!=='REAL_AFH')blockers.push('FIXTURE_AS_REAL');
     if(e?.requires_real_model&&e.provider_class!=='REAL_LOCAL')blockers.push('FIXTURE_AS_REAL_MODEL');
   }
@@ -207,9 +264,17 @@ export function evaluateGate({registry,validation,snapshot_sha256,context,change
     if(!change)blockers.push('UNKNOWN_CHANGE');
     if(!context.writer||context.writer.exclusive!==true||!context.writer.task_id||canonical(context.writer.write_set)!==canonical(change?.write_set??[]))blockers.push('WRITER_OR_WRITE_SET');
     const prior=registry.changes.filter(c=>c.order<(change?.order??0));
-    for(const dep of prior){const receipt=context.predecessors?.find(p=>p.change_id===dep.id);if(!receipt||receipt.status!=='GREEN'||receipt.package_sha256!==snapshot_sha256||!receipt.candidate_commit||!receipt.evidence_ref||receipt.mechanical_errors!==0||receipt.required_tests_passed!==true)blockers.push('PREDECESSOR_'+dep.id);}
+    for(const dep of prior){
+      const receipt=context.predecessors?.find(p=>p.change_id===dep.id);
+      const due=plan.filter(s=>s.milestone===dep.order&&s.stage==='CHANGE_EXIT').map(s=>s.id).sort();
+      const deferred=plan.filter(s=>s.owner===dep.order&&(s.milestone>dep.order||s.stage==='POST_PUBLICATION')).map(s=>s.id).sort();
+      if(!receipt||receipt.status!=='MILESTONE_GREEN'||receipt.package_sha256!==snapshot_sha256||!receipt.candidate_commit||!receipt.evidence_ref||receipt.mechanical_errors!==0||canonical([...(receipt.accepted_scenario_ids??[])].sort())!==canonical(due)||canonical([...(receipt.deferred_scenario_ids??[])].sort())!==canonical(deferred))blockers.push('PREDECESSOR_'+dep.id);
+    }
+    blockers.push(...acceptanceEvidenceProblems(registry,plan,context,snapshot_sha256,(change?.order??1)-1));
   }
-  return {state:blockers.length?'BLOCKED':change_id?'IMPLEMENTATION_READY':'SPECIFICATION_READY',change_id,snapshot_sha256,blockers:[...new Set(blockers)],product_acceptance:'NOT_IMPLIED',dispatch:'NOT_PERFORMED'};
+  if(release_phase){if(change_id||!['ready','complete'].includes(release_phase))blockers.push('INVALID_RELEASE_PHASE');else blockers.push(...acceptanceEvidenceProblems(registry,plan,context,snapshot_sha256,14,{postPublication:release_phase==='complete'}));}
+  const through=release_phase?14:change_id?(registry.changes.find(c=>c.id===change_id)?.order??1)-1:0;
+  return {state:blockers.length?'BLOCKED':release_phase==='complete'?'RELEASE_ACCEPTED':release_phase==='ready'?'RELEASE_READY':change_id?'IMPLEMENTATION_READY':'SPECIFICATION_READY',change_id,snapshot_sha256,blockers:[...new Set(blockers)],deferred_obligations:plan.filter(s=>s.milestone>through||(s.stage==='POST_PUBLICATION'&&release_phase!=='complete')).map(s=>({scenario_id:s.id,milestone:s.milestone,stage:s.stage,status:'DEFERRED_NOT_RUN_UNLESS_EVIDENCED'})),product_acceptance:'NOT_IMPLIED',dispatch:'NOT_PERFORMED'};
 }
 
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
@@ -219,7 +284,7 @@ if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.ur
     const validation=validateRegistry(registry);const snapshot=packageSnapshot();
     const result={kind:'SPECIFICATION_VALIDATION',generated_at:new Date().toISOString(),...validation,snapshot_sha256:snapshot.sha256,product_acceptance:'NOT_IMPLEMENTED',state:validation.passed?'READY_FOR_SEMANTIC_REVIEW_CHECK':'INVALID',node:process.version,head:execFileSync('git',['rev-parse','HEAD'],{cwd:ROOT,encoding:'utf8'}).trim()};
     const gateIndex=args.indexOf('--gate-context');
-    if(gateIndex>=0){const ci=args.indexOf('--change');result.gate=evaluateGate({registry,validation,snapshot_sha256:snapshot.sha256,context:readJson(path.resolve(args[gateIndex+1])),change_id:ci>=0?args[ci+1]:null});}
+    if(gateIndex>=0){const ci=args.indexOf('--change'),ri=args.indexOf('--release-phase');result.gate=evaluateGate({registry,validation,snapshot_sha256:snapshot.sha256,context:readJson(path.resolve(args[gateIndex+1])),change_id:ci>=0?args[ci+1]:null,release_phase:ri>=0?args[ri+1]:null});}
     const outIndex=args.indexOf('--out');if(outIndex>=0){const file=path.resolve(args[outIndex+1]);fs.writeFileSync(file,JSON.stringify(result,null,2)+'\n',{flag:'wx'});}
     console.log(JSON.stringify(result,null,2));process.exitCode=validation.passed&&(!result.gate||result.gate.blockers.length===0)?0:1;
   }

@@ -55,14 +55,22 @@ Runtime nativo puede bloquear event loop; heartbeat supervisor indica elapsed si
 Entry:
 - Complete 14-change package reviewed with no material gaps.
 - Scope authorization active; one writer; applicable snapshot review and schema/OpenSpec validation.
-- Every earlier sequential change GREEN on applicable candidate; 01 has no predecessor GREEN requirement.
+- Every earlier acceptance milestone is MILESTONE_GREEN with its exact due obligations; future owner integrations remain DEFERRED_NOT_RUN.01 has no predecessor.
 - Concrete test harness and immutable fixture/oracle available; absent API labeled NOT_IMPLEMENTED.
 
 Exit:
-- All listed scenarios and inherited checks pass with correct evidence class; no skip/unavailable/mechanical substituted.
+- All CHANGE_EXIT obligations due at this milestone (including incoming integrations) pass their complete oracles and evidence classes. Later owner scenarios remain explicitly DEFERRED_NOT_RUN, mandatory at their assigned milestone. No diagnostic GREEN substitutes for acceptance.
 - Legacy baseline remains green; source/case inventories unchanged; new API responses meet schema and relational invariants.
 - Evidence resolves to actual candidate/inputs; semantic review satisfactory and work trace appended.
 
 ## TDD contracts
 
 18 scenarios in specification/contracts.json. Each names fixture/digest, preconditions, exact command, oracle and evidence class. API absence is NOT_IMPLEMENTED; syntax/import/environment failure is mechanical, never behavioral RED. Existing baseline green tests stay green. Follow TESTING.md to materialize any CONTRACT_ONLY harness before production edits; changing that harness must not weaken the frozen oracle.
+
+## Acceptance milestone 8
+
+Due full acceptance: AFH-08-T01, AFH-08-T02, AFH-08-T03, AFH-08-T04, AFH-08-T05, AFH-08-T06, AFH-08-T08, AFH-08-T09, AFH-08-T10, AFH-08-T11, AFH-08-T12, AFH-08-T13, AFH-08-T14, AFH-08-T15, AFH-08-T16, AFH-08-T17, AFH-08-T18.
+
+Owned obligations deferred (not GREEN): AFH-08-T07 -> 9 CHANGE_EXIT.
+
+Implementation order is unchanged. Consumers are implemented only in their owning change; incoming integration tests execute here through their original acceptance entrypoints and unchanged oracles. A diagnostic GREEN cannot satisfy full acceptance.

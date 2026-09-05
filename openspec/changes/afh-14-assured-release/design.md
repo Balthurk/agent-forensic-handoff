@@ -34,7 +34,7 @@ Release-evidence referencia paquete OpenSpec/commit candidato/CI10/13/trials/art
 
 ### Integration and dependencies
 
-Gate derivado de revisiones y receipts exactos01–13 más checks14. CI usa fixtures públicos y permisos mínimos. Whole-program spec/review válida y autorización vigente por alcance; cambio de bytes invalida evidencia afectada sin pedir otra aprobación rutinaria. Ejecutar publicación solo desde la tarea de implementación autorizada por coordinador.
+Gate derivado de revisiones y receipts exactos01–13 más checks14. CI usa fixtures públicos y permisos mínimos. Whole-program spec/review válida y autorización vigente por alcance; cambio de bytes invalida evidencia afectada sin pedir otra aprobación rutinaria. Ejecutar publicación solo desde la tarea de implementación autorizada por coordinador. Release readiness requires every CHANGE_EXIT integration; only the two frozen published-artifact/final-close scenarios require POST_PUBLICATION completion. See acceptance_policy and generated tasks.
 
 Dependencies: afh-01-native-identity, afh-02-incremental-archive, afh-03-occurrence-ledger, afh-04-temporal-provenance, afh-05-governed-context, afh-06-layered-semantics, afh-07-contextual-retrieval, afh-08-observable-performance, afh-09-resident-reader, afh-10-compatibility-matrix, afh-11-portable-bundles, afh-12-prospective-capture, afh-13-continuity-evaluation. One writer executes the full ordered program.
 
@@ -55,14 +55,22 @@ Tooling de GitHub/attestation debe fijar versión real y workflow digest; dispon
 Entry:
 - Complete 14-change package reviewed with no material gaps.
 - Scope authorization active; one writer; applicable snapshot review and schema/OpenSpec validation.
-- Every earlier sequential change GREEN on applicable candidate; 01 has no predecessor GREEN requirement.
+- Every earlier acceptance milestone is MILESTONE_GREEN with its exact due obligations; future owner integrations remain DEFERRED_NOT_RUN.01 has no predecessor.
 - Concrete test harness and immutable fixture/oracle available; absent API labeled NOT_IMPLEMENTED.
 
 Exit:
-- All listed scenarios and inherited checks pass with correct evidence class; no skip/unavailable/mechanical substituted.
+- All CHANGE_EXIT obligations due at this milestone (including incoming integrations) pass their complete oracles and evidence classes. Later owner scenarios remain explicitly DEFERRED_NOT_RUN, mandatory at their assigned milestone. No diagnostic GREEN substitutes for acceptance.
 - Legacy baseline remains green; source/case inventories unchanged; new API responses meet schema and relational invariants.
 - Evidence resolves to actual candidate/inputs; semantic review satisfactory and work trace appended.
 
 ## TDD contracts
 
 20 scenarios in specification/contracts.json. Each names fixture/digest, preconditions, exact command, oracle and evidence class. API absence is NOT_IMPLEMENTED; syntax/import/environment failure is mechanical, never behavioral RED. Existing baseline green tests stay green. Follow TESTING.md to materialize any CONTRACT_ONLY harness before production edits; changing that harness must not weaken the frozen oracle.
+
+## Acceptance milestone 14
+
+Due full acceptance: AFH-14-T01, AFH-14-T02, AFH-14-T03, AFH-14-T04, AFH-14-T05, AFH-14-T06, AFH-14-T07, AFH-14-T08, AFH-14-T09, AFH-14-T10, AFH-14-T11, AFH-14-T12, AFH-14-T13, AFH-14-T14, AFH-14-T15, AFH-14-T16, AFH-14-T18, AFH-14-T19.
+
+Owned obligations deferred (not GREEN): AFH-14-T17 -> 14 POST_PUBLICATION, AFH-14-T20 -> 14 POST_PUBLICATION.
+
+Implementation order is unchanged. Consumers are implemented only in their owning change; incoming integration tests execute here through their original acceptance entrypoints and unchanged oracles. A diagnostic GREEN cannot satisfy full acceptance.

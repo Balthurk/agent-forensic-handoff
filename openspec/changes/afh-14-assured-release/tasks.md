@@ -1,21 +1,54 @@
-## 1. Entry and RED
+## 1. Entry and due RED
 
-- [ ] 1.1 Run IMPLEMENTATION_READY for afh-14-assured-release against current package/review/authorization; retain gate receipt and exact writer/write set.
-- [ ] 1.2 Materialize the concrete contracts AFH-14-T01, AFH-14-T02, AFH-14-T03, AFH-14-T04, AFH-14-T05, AFH-14-T06, AFH-14-T07, AFH-14-T08, AFH-14-T09, AFH-14-T10, AFH-14-T11, AFH-14-T12, AFH-14-T13, AFH-14-T14, AFH-14-T15, AFH-14-T16, AFH-14-T17, AFH-14-T18, AFH-14-T19, AFH-14-T20 as test/acceptance/afh-14.test.mjs; validate fixtures/digests and capture baseline before product edits.
-- [ ] 1.3 Execute node --test test/acceptance/afh-14.test.mjs; retain behavioral RED, NOT_IMPLEMENTED and mechanical failures separately, including positive preservation guards.
+- [ ] 1.1 Evaluate IMPLEMENTATION_READY for afh-14-assured-release with exact package/review, writer and earlier milestone receipts.
+- [ ] 1.2 Materialize only full acceptance harnesses due at this milestone; retain later contracts as DEFERRED_NOT_RUN. Incoming scenarios keep their original IDs, fixtures, paths and oracles.
+- [ ] 1.3 Run the due test commands below before the affected implementation/integration edit; distinguish behavioral RED, NOT_IMPLEMENTED and mechanical failure. Baseline probes remain diagnostic.
 
-## 2. Minimal GREEN
+- AFH-14-T01: node --test --test-name-pattern=AFH-14-T01 test/acceptance/afh-14.test.mjs
+- AFH-14-T02: node --test --test-name-pattern=AFH-14-T02 test/acceptance/afh-14.test.mjs
+- AFH-14-T03: node --test --test-name-pattern=AFH-14-T03 test/acceptance/afh-14.test.mjs
+- AFH-14-T04: node --test --test-name-pattern=AFH-14-T04 test/acceptance/afh-14.test.mjs
+- AFH-14-T05: node --test --test-name-pattern=AFH-14-T05 test/acceptance/afh-14.test.mjs
+- AFH-14-T06: node --test --test-name-pattern=AFH-14-T06 test/acceptance/afh-14.test.mjs
+- AFH-14-T07: node --test --test-name-pattern=AFH-14-T07 test/acceptance/afh-14.test.mjs
+- AFH-14-T08: node --test --test-name-pattern=AFH-14-T08 test/acceptance/afh-14.test.mjs
+- AFH-14-T09: node --test --test-name-pattern=AFH-14-T09 test/acceptance/afh-14.test.mjs
+- AFH-14-T10: node --test --test-name-pattern=AFH-14-T10 test/acceptance/afh-14.test.mjs
+- AFH-14-T11: node --test --test-name-pattern=AFH-14-T11 test/acceptance/afh-14.test.mjs
+- AFH-14-T12: node --test --test-name-pattern=AFH-14-T12 test/acceptance/afh-14.test.mjs
+- AFH-14-T13: node --test --test-name-pattern=AFH-14-T13 test/acceptance/afh-14.test.mjs
+- AFH-14-T14: node --test --test-name-pattern=AFH-14-T14 test/acceptance/afh-14.test.mjs
+- AFH-14-T15: node --test --test-name-pattern=AFH-14-T15 test/acceptance/afh-14.test.mjs
+- AFH-14-T16: node --test --test-name-pattern=AFH-14-T16 test/acceptance/afh-14.test.mjs
+- AFH-14-T18: node --test --test-name-pattern=AFH-14-T18 test/acceptance/afh-14.test.mjs
+- AFH-14-T19: node --test --test-name-pattern=AFH-14-T19 test/acceptance/afh-14.test.mjs
 
-- [ ] 2.1 Implement AFH-14-R01 only within the declared write set; verify AFH-14-T01, AFH-14-T02, AFH-14-T03, AFH-14-T04 with the frozen fixture/oracle and retain actual output/evidence.
-- [ ] 2.2 Implement AFH-14-R02 only within the declared write set; verify AFH-14-T05, AFH-14-T06, AFH-14-T07 with the frozen fixture/oracle and retain actual output/evidence.
-- [ ] 2.3 Implement AFH-14-R03 only within the declared write set; verify AFH-14-T08, AFH-14-T09, AFH-14-T10 with the frozen fixture/oracle and retain actual output/evidence.
-- [ ] 2.4 Implement AFH-14-R04 only within the declared write set; verify AFH-14-T11, AFH-14-T12, AFH-14-T13 with the frozen fixture/oracle and retain actual output/evidence.
-- [ ] 2.5 Implement AFH-14-R05 only within the declared write set; verify AFH-14-T14, AFH-14-T15, AFH-14-T16 with the frozen fixture/oracle and retain actual output/evidence.
-- [ ] 2.6 Implement AFH-14-R06 only within the declared write set; verify AFH-14-T17, AFH-14-T18, AFH-14-T19, AFH-14-T20 with the frozen fixture/oracle and retain actual output/evidence.
+## 2. Implementation and integration
 
-## 3. Refactor, integration and exit
+- [ ] 2.1 Implement AFH-14-R01 within this change write set. Verify its due scenarios now; preserve its later mandatory obligations in the schedule without marking them GREEN.
+- [ ] 2.2 Implement AFH-14-R02 within this change write set. Verify its due scenarios now; preserve its later mandatory obligations in the schedule without marking them GREEN.
+- [ ] 2.3 Implement AFH-14-R03 within this change write set. Verify its due scenarios now; preserve its later mandatory obligations in the schedule without marking them GREEN.
+- [ ] 2.4 Implement AFH-14-R04 within this change write set. Verify its due scenarios now; preserve its later mandatory obligations in the schedule without marking them GREEN.
+- [ ] 2.5 Implement AFH-14-R05 within this change write set. Verify its due scenarios now; preserve its later mandatory obligations in the schedule without marking them GREEN.
+- [ ] 2.6 Implement AFH-14-R06 within this change write set. Verify its due scenarios now; preserve its later mandatory obligations in the schedule without marking them GREEN.
+- [ ] 2.7 Integrate every incoming due scenario using the real consumers now available. Do not replace a future consumer with a mock or expand earlier write sets.
 
-- [ ] 3.1 Refactor only after GREEN; rerun this change's 20 scenarios and applicable prior changes without weakening oracles.
-- [ ] 3.2 Run npm run check and node specification/validate-package.mjs; verify runtime evidence, source immutability, schema/CLI compatibility and all profile checks.
-- [ ] 3.3 Obtain per-change semantic review and acceptance receipt bound to product candidate and test inputs; mark GREEN only when every required experiment ran, no mechanical or unavailable evidence substituted.
-- [ ] 3.4 Commit the bounded change with evidence pointers; update the append-only program trace and exact next-change gate. Archive this OpenSpec delta only after task completion and acceptance; no release until 14 completes.
+## 3. Refactor and milestone exit
+
+- [ ] 3.1 Refactor after due GREEN and rerun due obligations plus applicable earlier regressions; do not execute deferred consumers prematurely.
+- [ ] 3.2 Run npm run check, package validation, profile checks, integrity and privacy checks with exact candidate and input identity.
+- [ ] 3.3 Record MILESTONE_GREEN only with FULL_ACCEPTANCE results for the exact due IDs; record the exact deferred_scenario_ids separately. A milestone receipt is not acceptance of all owner scenarios.
+- [ ] 3.4 Commit the bounded implementation/integration and append evidence; evaluate the next entry against all obligations due so far. Keep this OpenSpec delta unarchived until every owned scenario, including later integrations, has passed.
+
+## Acceptance milestone 14
+
+Due full acceptance: AFH-14-T01, AFH-14-T02, AFH-14-T03, AFH-14-T04, AFH-14-T05, AFH-14-T06, AFH-14-T07, AFH-14-T08, AFH-14-T09, AFH-14-T10, AFH-14-T11, AFH-14-T12, AFH-14-T13, AFH-14-T14, AFH-14-T15, AFH-14-T16, AFH-14-T18, AFH-14-T19.
+
+Owned obligations deferred (not GREEN): AFH-14-T17 -> 14 POST_PUBLICATION, AFH-14-T20 -> 14 POST_PUBLICATION.
+
+Implementation order is unchanged. Consumers are implemented only in their owning change; incoming integration tests execute here through their original acceptance entrypoints and unchanged oracles. A diagnostic GREEN cannot satisfy full acceptance.
+
+## 4. Publication boundary
+
+- [ ] 4.1 Evaluate --release-phase ready after every CHANGE_EXIT obligation across all14 owners passes. Only then perform the authorized publication action.
+- [ ] 4.2 Execute AFH-14-T17 and AFH-14-T20 against published artifacts and actual final receipts; evaluate --release-phase complete. Both post-publication outcomes remain mandatory and cannot gate their own prerequisite action.

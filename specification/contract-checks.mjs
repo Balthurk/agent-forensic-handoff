@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
+import assert from 'node:assert/strict';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 export function runtimeSnapshot(root) {
@@ -137,4 +138,42 @@ export async function validateUnresolvedAssignment(caseDir,claim,claimRefs,{mark
     if(claim?.authority_origin&&claim.authority_origin!=='UNKNOWN'&&claim.authority_origin!=='AGENT_ATTRIBUTED')problems.push('UNPROVEN_HUMAN_AUTHORITY');
   }finally{db.close();}
   return {passed:problems.length===0,problems:[...new Set(problems)]};
+}
+
+// F2: shared assertions exercised by both real baseline probes and adversarial package tests.
+export function assertNativeIdentityObservation(value,{event_session,grouping}){
+  assert.equal(value.events.length,1,'Expected the acquired child message to remain present');
+  assert.equal(value.events[0].native_id,event_session,'Native event owner');
+  assert.equal(value.events[0].session_id,'ses:codex:'+event_session,'Canonical legacy session alias');
+  assert.equal(value.grouping,grouping,'Grouping must be preserved separately from the native owner');
+  assert.equal(value.metadata_provenance,true,'Grouping and identity must bind to the acquired session_meta bytes');
+}
+export async function inspectNativeIdentity(caseDir,{event_session,grouping}){
+  const {readEvidence}=await import('../src/index.js');
+  const db=new DatabaseSync(path.join(caseDir,'case.sqlite'),{readOnly:true});
+  try{
+    const events=db.prepare("SELECT e.id,e.session_id,s.native_id,s.metadata_json FROM event e LEFT JOIN session s ON s.id=e.session_id WHERE e.kind='message.user'").all();
+    const metadata=events[0]?JSON.parse(events[0].metadata_json??'{}'):{};
+    const refs=db.prepare("SELECT e.session_id,r.uri FROM event e JOIN evidence_ref r ON r.event_id=e.id WHERE e.kind='session.meta'").all();
+    let resolved=false;
+    for(const ref of refs){const record=JSON.parse(readEvidence(caseDir,ref.uri).text);if(ref.session_id===events[0]?.session_id&&record.type==='session_meta'&&record.payload.id===event_session&&record.payload.session_id===grouping)resolved=true;}
+    return {events,grouping:metadata.grouping_native_id??null,metadata_provenance:resolved,evidence_refs:refs.map(r=>r.uri)};
+  }finally{db.close();}
+}
+export function assertHumanDecisionCandidates(rows,{marker,session_id}){
+  const matches=rows.filter(r=>r.decision_text===marker&&r.session_id===session_id&&r.actor_kind==='HUMAN_USER'&&r.actor_role==='user'&&r.source_kind==='message.user'&&r.provenance_resolved===true);
+  assert.ok(matches.length>=1,'At least one exact human decision candidate with resolved provenance is required');
+  return matches.length;
+}
+export async function inspectHumanDecisionCandidates(caseDir,{marker,session_id},candidateRows=null){
+  const {readEvidence}=await import('../src/index.js');
+  const db=new DatabaseSync(path.join(caseDir,'case.sqlite'),{readOnly:true});
+  try{
+    const rows=candidateRows?structuredClone(candidateRows):db.prepare('SELECT id,decision_text,source_event_id FROM decision_record').all();
+    for(const row of rows){const source=db.prepare('SELECT e.session_id,e.kind AS source_kind,a.kind AS actor_kind,a.role AS actor_role FROM event e LEFT JOIN actor a ON a.id=e.actor_id WHERE e.id=?').get(row.source_event_id);Object.assign(row,{session_id:null,source_kind:null,actor_kind:null,actor_role:null},source??{});}
+    for(const row of rows){row.provenance_resolved=false;row.evidence_refs=[];const refs=db.prepare('SELECT uri FROM evidence_ref WHERE event_id=?').all(row.source_event_id);
+      for(const ref of refs){const raw=JSON.parse(readEvidence(caseDir,ref.uri).text);const payload=raw.payload;const content=payload?.content?.map(x=>x.text??'').join('');row.evidence_refs.push(ref.uri);if(row.session_id===session_id&&payload?.role==='user'&&content===marker)row.provenance_resolved=true;}
+    }
+    return rows;
+  }finally{db.close();}
 }
