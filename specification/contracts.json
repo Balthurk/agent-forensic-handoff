@@ -3411,7 +3411,12 @@
           "cwd": "$CHECKOUT",
           "availability": "CONTRACT_ONLY"
         }
-      }
+      },
+      "execution_requires": [
+        "legacy.audit",
+        "legacy.show",
+        "legacy.evidence"
+      ]
     },
     {
       "id": "AFH-01-T02",
@@ -4683,6 +4688,9 @@
         "AFH-01-T20",
         "AFH-01-T21",
         "AFH-01-T22"
+      ],
+      "execution_requires": [
+        "legacy.audit"
       ]
     },
     {
@@ -6151,7 +6159,12 @@
           "cwd": "$CHECKOUT",
           "availability": "CONTRACT_ONLY"
         }
-      }
+      },
+      "execution_requires": [
+        "legacy.audit",
+        "legacy.show",
+        "legacy.evidence"
+      ]
     },
     {
       "id": "AFH-03-T02",
@@ -6306,7 +6319,12 @@
           "cwd": "$CHECKOUT",
           "availability": "CONTRACT_ONLY"
         }
-      }
+      },
+      "execution_requires": [
+        "legacy.audit",
+        "legacy.show",
+        "legacy.evidence"
+      ]
     },
     {
       "id": "AFH-03-T04",
@@ -6398,7 +6416,12 @@
           "cwd": "$CHECKOUT",
           "availability": "CONTRACT_ONLY"
         }
-      }
+      },
+      "execution_requires": [
+        "legacy.audit",
+        "legacy.show",
+        "legacy.evidence"
+      ]
     },
     {
       "id": "AFH-03-T05",
@@ -6619,7 +6642,12 @@
           "cwd": "$CHECKOUT",
           "availability": "CONTRACT_ONLY"
         }
-      }
+      },
+      "execution_requires": [
+        "legacy.audit",
+        "legacy.show",
+        "legacy.evidence"
+      ]
     },
     {
       "id": "AFH-03-T08",
@@ -6773,7 +6801,12 @@
           "cwd": "$CHECKOUT",
           "availability": "CONTRACT_ONLY"
         }
-      }
+      },
+      "execution_requires": [
+        "legacy.audit",
+        "legacy.show",
+        "legacy.evidence"
+      ]
     },
     {
       "id": "AFH-03-T10",
@@ -8133,7 +8166,12 @@
           "cwd": "$CHECKOUT",
           "availability": "CONTRACT_ONLY"
         }
-      }
+      },
+      "execution_requires": [
+        "legacy.audit",
+        "legacy.show",
+        "legacy.evidence"
+      ]
     },
     {
       "id": "AFH-04-T08",
@@ -9118,7 +9156,12 @@
           "cwd": "$CHECKOUT",
           "availability": "CONTRACT_ONLY"
         }
-      }
+      },
+      "execution_requires": [
+        "legacy.audit",
+        "legacy.show",
+        "legacy.evidence"
+      ]
     },
     {
       "id": "AFH-05-T02",
@@ -9275,7 +9318,12 @@
           "cwd": "$CHECKOUT",
           "availability": "CONTRACT_ONLY"
         }
-      }
+      },
+      "execution_requires": [
+        "legacy.audit",
+        "legacy.show",
+        "legacy.evidence"
+      ]
     },
     {
       "id": "AFH-05-T04",
@@ -13239,7 +13287,12 @@
           "cwd": "$CHECKOUT",
           "availability": "CONTRACT_ONLY"
         }
-      }
+      },
+      "execution_requires": [
+        "legacy.audit",
+        "legacy.show",
+        "legacy.evidence"
+      ]
     },
     {
       "id": "AFH-08-T02",
@@ -21609,7 +21662,8 @@
         "AFH-04-T25"
       ],
       "execution_requires": [
-        "package.checks"
+        "package.checks",
+        "package.temporal_wire_checks"
       ],
       "execution_note": "Executable specification checker; no product consumer is claimed."
     },
@@ -21685,7 +21739,8 @@
         "AFH-04-T25"
       ],
       "execution_requires": [
-        "package.checks"
+        "package.checks",
+        "package.temporal_wire_checks"
       ],
       "execution_note": "Executable specification checker; no product consumer is claimed."
     },
@@ -21761,7 +21816,8 @@
         "AFH-04-T25"
       ],
       "execution_requires": [
-        "package.checks"
+        "package.checks",
+        "package.temporal_wire_checks"
       ],
       "execution_note": "Executable specification checker; no product consumer is claimed."
     },
@@ -21837,7 +21893,8 @@
         "AFH-04-T25"
       ],
       "execution_requires": [
-        "package.checks"
+        "package.checks",
+        "package.temporal_wire_checks"
       ],
       "execution_note": "Executable specification checker; no product consumer is claimed."
     },
@@ -21913,7 +21970,8 @@
         "AFH-04-T24"
       ],
       "execution_requires": [
-        "package.checks"
+        "package.checks",
+        "package.temporal_wire_checks"
       ],
       "execution_note": "Executable specification checker; no product consumer is claimed."
     },
@@ -21983,7 +22041,8 @@
         "AFH-05-T23"
       ],
       "execution_requires": [
-        "package.checks"
+        "package.checks",
+        "package.provenance_checks"
       ],
       "execution_note": "Executable specification checker; no product consumer is claimed."
     },
@@ -22053,7 +22112,8 @@
         "AFH-05-T23"
       ],
       "execution_requires": [
-        "package.checks"
+        "package.checks",
+        "package.provenance_checks"
       ],
       "execution_note": "Executable specification checker; no product consumer is claimed."
     },
@@ -22123,7 +22183,8 @@
         "AFH-05-T22"
       ],
       "execution_requires": [
-        "package.checks"
+        "package.checks",
+        "package.provenance_checks"
       ],
       "execution_note": "Executable specification checker; no product consumer is claimed."
     },
@@ -22200,7 +22261,8 @@
         "AFH-07-T27"
       ],
       "execution_requires": [
-        "package.checks"
+        "package.checks",
+        "package.wire_checks"
       ],
       "execution_note": "Executable specification checker; no product consumer is claimed."
     },
@@ -22277,7 +22339,8 @@
         "AFH-07-T27"
       ],
       "execution_requires": [
-        "package.checks"
+        "package.checks",
+        "package.wire_checks"
       ],
       "execution_note": "Executable specification checker; no product consumer is claimed."
     },
@@ -22354,7 +22417,8 @@
         "AFH-07-T27"
       ],
       "execution_requires": [
-        "package.checks"
+        "package.checks",
+        "package.wire_checks"
       ],
       "execution_note": "Executable specification checker; no product consumer is claimed."
     },
@@ -22431,7 +22495,8 @@
         "AFH-07-T27"
       ],
       "execution_requires": [
-        "package.checks"
+        "package.checks",
+        "package.wire_checks"
       ],
       "execution_note": "Executable specification checker; no product consumer is claimed."
     },
@@ -22508,7 +22573,8 @@
         "AFH-07-T27"
       ],
       "execution_requires": [
-        "package.checks"
+        "package.checks",
+        "package.wire_checks"
       ],
       "execution_note": "Executable specification checker; no product consumer is claimed."
     },
@@ -22585,7 +22651,8 @@
         "AFH-07-T27"
       ],
       "execution_requires": [
-        "package.checks"
+        "package.checks",
+        "package.wire_checks"
       ],
       "execution_note": "Executable specification checker; no product consumer is claimed."
     },
@@ -22662,7 +22729,8 @@
         "AFH-07-T26"
       ],
       "execution_requires": [
-        "package.checks"
+        "package.checks",
+        "package.wire_checks"
       ],
       "execution_note": "Executable specification checker; no product consumer is claimed."
     },
@@ -22732,7 +22800,8 @@
         "AFH-01-T22"
       ],
       "execution_requires": [
-        "package.checks"
+        "package.checks",
+        "package.runtime_inventory"
       ],
       "execution_note": "Executable specification checker; no product consumer is claimed."
     },
@@ -22802,7 +22871,8 @@
         "AFH-01-T21"
       ],
       "execution_requires": [
-        "package.checks"
+        "package.checks",
+        "package.runtime_inventory"
       ],
       "execution_note": "Executable specification checker; no product consumer is claimed."
     },
@@ -23107,6 +23177,22 @@
       "release.verify_published": {
         "available_at": 14,
         "component": "assured-release"
+      },
+      "package.temporal_wire_checks": {
+        "available_at": 0,
+        "component": "existing-baseline-or-package"
+      },
+      "package.provenance_checks": {
+        "available_at": 0,
+        "component": "existing-baseline-or-package"
+      },
+      "package.wire_checks": {
+        "available_at": 0,
+        "component": "existing-baseline-or-package"
+      },
+      "package.runtime_inventory": {
+        "available_at": 0,
+        "component": "existing-baseline-or-package"
       }
     },
     "fixture_consumer_operations": {
@@ -23117,6 +23203,1251 @@
       "context": "context.build",
       "association": "temporal.select",
       "intent": "intent.extract"
+    },
+    "control_applicability": {
+      "version": "afh-controls-v1",
+      "capability_defaults": "RUNTIME_UNLESS_PACKAGE_OR_EXPLICIT_LEGACY_ONLY",
+      "interpretation_ref": "docs/programs/afh-v0.4.0/TESTING.md#aplicabilidad-de-controles-y-progreso-a1a2",
+      "operation_effects": {
+        "capability.native-identity": {
+          "effects": [
+            "IDENTITY",
+            "EVIDENCE"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "capability.incremental-archive": {
+          "effects": [
+            "WRITER_V4",
+            "WIRE_V4",
+            "SOURCE_READ",
+            "EVIDENCE",
+            "BOUNDED"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "capability.occurrence-ledger": {
+          "effects": [
+            "WRITER_V4",
+            "WIRE_V4",
+            "SOURCE_READ",
+            "EVIDENCE"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "capability.temporal-provenance": {
+          "effects": [
+            "WRITER_V4",
+            "WIRE_V4",
+            "EVIDENCE",
+            "TEMPORAL",
+            "READ_ONLY",
+            "BOUNDED"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "capability.governed-context": {
+          "effects": [
+            "WRITER_V4",
+            "WIRE_V4",
+            "EVIDENCE",
+            "TEMPORAL"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "capability.layered-semantics": {
+          "effects": [
+            "WRITER_V4",
+            "WIRE_V4",
+            "EVIDENCE",
+            "TEMPORAL",
+            "MODEL",
+            "BOUNDED"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "capability.contextual-retrieval": {
+          "effects": [
+            "WIRE_V4",
+            "EVIDENCE",
+            "TEMPORAL",
+            "MODEL",
+            "READ_ONLY",
+            "RETRIEVAL",
+            "BOUNDED"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "capability.observable-performance": {
+          "effects": [
+            "WIRE_V4",
+            "SOURCE_READ",
+            "EVIDENCE",
+            "MODEL",
+            "BOUNDED"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "capability.resident-reader": {
+          "effects": [
+            "WIRE_V4",
+            "EVIDENCE",
+            "TEMPORAL",
+            "MODEL",
+            "READ_ONLY",
+            "RETRIEVAL",
+            "BOUNDED"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "capability.compatibility-matrix": {
+          "effects": [
+            "WIRE_V4",
+            "SOURCE_READ",
+            "EVIDENCE",
+            "MODEL",
+            "BOUNDED"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "capability.portable-bundles": {
+          "effects": [
+            "WRITER_V4",
+            "WIRE_V4",
+            "SOURCE_READ",
+            "EVIDENCE",
+            "BOUNDED"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "capability.prospective-capture": {
+          "effects": [
+            "WRITER_V4",
+            "WIRE_V4",
+            "SOURCE_READ",
+            "EVIDENCE",
+            "BOUNDED"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "capability.continuity-evaluation": {
+          "effects": [
+            "WRITER_V4",
+            "WIRE_V4",
+            "SOURCE_READ",
+            "EVIDENCE",
+            "MODEL",
+            "TEMPORAL",
+            "RETRIEVAL",
+            "BOUNDED"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "capability.assured-release": {
+          "effects": [
+            "WRITER_V4",
+            "WIRE_V4",
+            "SOURCE_READ",
+            "EVIDENCE",
+            "MODEL",
+            "BOUNDED",
+            "RELEASE"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "legacy.audit": {
+          "effects": [
+            "LEGACY_V3",
+            "SOURCE_READ",
+            "EVIDENCE"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "legacy.show": {
+          "effects": [
+            "LEGACY_V3",
+            "EVIDENCE",
+            "READ_ONLY"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "legacy.evidence": {
+          "effects": [
+            "LEGACY_V3",
+            "EVIDENCE",
+            "READ_ONLY"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "package.checks": {
+          "effects": [
+            "PACKAGE"
+          ],
+          "evidence_kinds": [
+            "PACKAGE_VALIDATION"
+          ]
+        },
+        "package.temporal_wire_checks": {
+          "effects": [
+            "PACKAGE",
+            "WIRE_V4_VALIDATOR",
+            "TEMPORAL"
+          ],
+          "evidence_kinds": [
+            "PACKAGE_VALIDATION"
+          ]
+        },
+        "package.provenance_checks": {
+          "effects": [
+            "PACKAGE",
+            "LEGACY_V3",
+            "SOURCE_READ",
+            "EVIDENCE"
+          ],
+          "evidence_kinds": [
+            "PACKAGE_VALIDATION"
+          ]
+        },
+        "package.wire_checks": {
+          "effects": [
+            "PACKAGE",
+            "WIRE_V4_VALIDATOR",
+            "BOUNDED"
+          ],
+          "evidence_kinds": [
+            "PACKAGE_VALIDATION"
+          ]
+        },
+        "package.runtime_inventory": {
+          "effects": [
+            "PACKAGE"
+          ],
+          "evidence_kinds": [
+            "PACKAGE_VALIDATION"
+          ]
+        },
+        "archive.init": {
+          "effects": [
+            "WRITER_V4",
+            "WIRE_V4"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "archive.ingest": {
+          "effects": [
+            "WRITER_V4",
+            "WIRE_V4",
+            "SOURCE_READ",
+            "EVIDENCE",
+            "BOUNDED"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "archive.import_case": {
+          "effects": [
+            "WRITER_V4",
+            "WIRE_V4",
+            "LEGACY_V3",
+            "SOURCE_READ",
+            "EVIDENCE",
+            "BOUNDED"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "archive.verify": {
+          "effects": [
+            "WIRE_V4",
+            "EVIDENCE",
+            "READ_ONLY"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "archive.recover": {
+          "effects": [
+            "WRITER_V4",
+            "WIRE_V4",
+            "EVIDENCE"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "association.record": {
+          "effects": [
+            "WRITER_V4",
+            "WIRE_V4",
+            "EVIDENCE",
+            "TEMPORAL"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "scope.resolve": {
+          "effects": [
+            "WIRE_V4",
+            "EVIDENCE",
+            "TEMPORAL",
+            "READ_ONLY"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "event.show": {
+          "effects": [
+            "WIRE_V4",
+            "EVIDENCE",
+            "TEMPORAL",
+            "READ_ONLY"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "evidence.read": {
+          "effects": [
+            "WIRE_V4",
+            "EVIDENCE",
+            "READ_ONLY",
+            "BOUNDED"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "ledger.occurrences": {
+          "effects": [
+            "WIRE_V4",
+            "EVIDENCE",
+            "READ_ONLY"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "stats": {
+          "effects": [
+            "WIRE_V4",
+            "EVIDENCE",
+            "TEMPORAL",
+            "READ_ONLY",
+            "RETRIEVAL"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "temporal.select": {
+          "effects": [
+            "TEMPORAL",
+            "EVIDENCE",
+            "READ_ONLY"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "graph.neighbors": {
+          "effects": [
+            "WIRE_V4",
+            "EVIDENCE",
+            "TEMPORAL",
+            "READ_ONLY",
+            "RETRIEVAL",
+            "BOUNDED"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "graph.path": {
+          "effects": [
+            "WIRE_V4",
+            "EVIDENCE",
+            "TEMPORAL",
+            "READ_ONLY",
+            "RETRIEVAL",
+            "BOUNDED"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "intent.extract": {
+          "effects": [
+            "WRITER_V4",
+            "WIRE_V4",
+            "EVIDENCE",
+            "TEMPORAL"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "intent.review": {
+          "effects": [
+            "WRITER_V4",
+            "WIRE_V4",
+            "EVIDENCE",
+            "TEMPORAL"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "gold.promote": {
+          "effects": [
+            "WRITER_V4",
+            "WIRE_V4",
+            "EVIDENCE",
+            "TEMPORAL"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "gold.revise": {
+          "effects": [
+            "WRITER_V4",
+            "WIRE_V4",
+            "EVIDENCE",
+            "TEMPORAL"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "gold.view": {
+          "effects": [
+            "WIRE_V4",
+            "EVIDENCE",
+            "TEMPORAL",
+            "READ_ONLY"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "semantic.build": {
+          "effects": [
+            "WRITER_V4",
+            "WIRE_V4",
+            "EVIDENCE",
+            "MODEL",
+            "TEMPORAL",
+            "BOUNDED"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "semantic.verify": {
+          "effects": [
+            "WIRE_V4",
+            "EVIDENCE",
+            "MODEL",
+            "READ_ONLY",
+            "BOUNDED"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "query": {
+          "effects": [
+            "WIRE_V4",
+            "EVIDENCE",
+            "MODEL",
+            "TEMPORAL",
+            "READ_ONLY",
+            "RETRIEVAL",
+            "BOUNDED"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "context.build": {
+          "effects": [
+            "WIRE_V4",
+            "EVIDENCE",
+            "MODEL",
+            "TEMPORAL",
+            "READ_ONLY",
+            "RETRIEVAL",
+            "BOUNDED"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "progress.observe": {
+          "effects": [
+            "WIRE_V4",
+            "BOUNDED"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "resident.start": {
+          "effects": [
+            "WIRE_V4",
+            "MODEL",
+            "READ_ONLY",
+            "BOUNDED"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "resident.status": {
+          "effects": [
+            "WIRE_V4",
+            "READ_ONLY"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "resident.stop": {
+          "effects": [
+            "WIRE_V4"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "resident.query": {
+          "effects": [
+            "WIRE_V4",
+            "EVIDENCE",
+            "MODEL",
+            "TEMPORAL",
+            "READ_ONLY",
+            "RETRIEVAL",
+            "BOUNDED"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "platform.matrix": {
+          "effects": [
+            "WIRE_V4",
+            "SOURCE_READ",
+            "EVIDENCE",
+            "MODEL",
+            "BOUNDED"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "bundle.export": {
+          "effects": [
+            "WIRE_V4",
+            "EVIDENCE",
+            "SOURCE_READ",
+            "BOUNDED"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "bundle.import": {
+          "effects": [
+            "WRITER_V4",
+            "WIRE_V4",
+            "EVIDENCE",
+            "SOURCE_READ",
+            "BOUNDED"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "capture.init": {
+          "effects": [
+            "WRITER_V4",
+            "WIRE_V4"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "capture.append": {
+          "effects": [
+            "WRITER_V4",
+            "WIRE_V4",
+            "SOURCE_READ",
+            "EVIDENCE",
+            "BOUNDED"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "capture.status": {
+          "effects": [
+            "WIRE_V4",
+            "READ_ONLY"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "evaluation.trials": {
+          "effects": [
+            "WIRE_V4",
+            "EVIDENCE",
+            "MODEL",
+            "RETRIEVAL",
+            "BOUNDED"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "evaluation.scale": {
+          "effects": [
+            "WRITER_V4",
+            "WIRE_V4",
+            "EVIDENCE",
+            "MODEL",
+            "RETRIEVAL",
+            "BOUNDED"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "release.prepare": {
+          "effects": [
+            "RELEASE",
+            "BOUNDED"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "release.publish": {
+          "effects": [
+            "RELEASE"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        },
+        "release.verify_published": {
+          "effects": [
+            "RELEASE",
+            "SOURCE_READ",
+            "EVIDENCE"
+          ],
+          "evidence_kinds": [
+            "SYNTHETIC_REAL_RUNTIME",
+            "REAL_PROCESS_CRASH",
+            "BLIND_AGENT_CONTINUATION",
+            "SYNTHETIC_FIXTURE_PROVIDER",
+            "SYNTHETIC_REAL_MODEL",
+            "PLATFORM_RUNTIME",
+            "RELEASE_ARTIFACT"
+          ]
+        }
+      },
+      "rules": {
+        "ARTIFACT_IDENTITY": {
+          "rule_id": "afh-controls-v1/ARTIFACT_IDENTITY",
+          "when": "ALWAYS",
+          "effects": [],
+          "reason": "Direct scenario-specific or universal preservation obligation; never exempt by evidence class."
+        },
+        "ATOMIC_PUBLICATION": {
+          "rule_id": "afh-controls-v1/ATOMIC_PUBLICATION",
+          "when": "ANY_EFFECT",
+          "effects": [
+            "WRITER_V4"
+          ],
+          "reason": "Inherited control applies to operations with declared effects: WRITER_V4."
+        },
+        "BLIND_LABELS_SEALED": {
+          "rule_id": "afh-controls-v1/BLIND_LABELS_SEALED",
+          "when": "ALWAYS",
+          "effects": [],
+          "reason": "Direct scenario-specific or universal preservation obligation; never exempt by evidence class."
+        },
+        "BOUNDED_RESOURCES": {
+          "rule_id": "afh-controls-v1/BOUNDED_RESOURCES",
+          "when": "ANY_EFFECT",
+          "effects": [
+            "BOUNDED"
+          ],
+          "reason": "Inherited control applies to operations with declared effects: BOUNDED."
+        },
+        "COVERAGE_ACCOUNTING": {
+          "rule_id": "afh-controls-v1/COVERAGE_ACCOUNTING",
+          "when": "ANY_EFFECT",
+          "effects": [
+            "MODEL"
+          ],
+          "reason": "Inherited control applies to operations with declared effects: MODEL."
+        },
+        "EXACT_INPUT_IDENTITY": {
+          "rule_id": "afh-controls-v1/EXACT_INPUT_IDENTITY",
+          "when": "ALWAYS",
+          "effects": [],
+          "reason": "Direct scenario-specific or universal preservation obligation; never exempt by evidence class."
+        },
+        "FRESH_AGENT_TRACES": {
+          "rule_id": "afh-controls-v1/FRESH_AGENT_TRACES",
+          "when": "ALWAYS",
+          "effects": [],
+          "reason": "Direct scenario-specific or universal preservation obligation; never exempt by evidence class."
+        },
+        "IDEMPOTENCE": {
+          "rule_id": "afh-controls-v1/IDEMPOTENCE",
+          "when": "ANY_EFFECT",
+          "effects": [
+            "WRITER_V4"
+          ],
+          "reason": "Inherited control applies to operations with declared effects: WRITER_V4."
+        },
+        "IDENTITY_STABILITY": {
+          "rule_id": "afh-controls-v1/IDENTITY_STABILITY",
+          "when": "ANY_EFFECT",
+          "effects": [
+            "IDENTITY"
+          ],
+          "reason": "Inherited control applies to operations with declared effects: IDENTITY."
+        },
+        "IMMUTABLE_SOURCE_INVENTORY": {
+          "rule_id": "afh-controls-v1/IMMUTABLE_SOURCE_INVENTORY",
+          "when": "ALWAYS",
+          "effects": [],
+          "reason": "Direct scenario-specific or universal preservation obligation; never exempt by evidence class."
+        },
+        "INDEPENDENT_CUSTODIAN": {
+          "rule_id": "afh-controls-v1/INDEPENDENT_CUSTODIAN",
+          "when": "ALWAYS",
+          "effects": [],
+          "reason": "Direct scenario-specific or universal preservation obligation; never exempt by evidence class."
+        },
+        "LEGACY_PACKAGE_IDENTITY": {
+          "rule_id": "afh-controls-v1/LEGACY_PACKAGE_IDENTITY",
+          "when": "ALWAYS",
+          "effects": [],
+          "reason": "Direct scenario-specific or universal preservation obligation; never exempt by evidence class."
+        },
+        "LEGACY_REGRESSION": {
+          "rule_id": "afh-controls-v1/LEGACY_REGRESSION",
+          "when": "ANY_EFFECT",
+          "effects": [
+            "LEGACY_V3"
+          ],
+          "reason": "Inherited control applies to operations with declared effects: LEGACY_V3."
+        },
+        "LEGACY_SCHEMA_IDENTITY": {
+          "rule_id": "afh-controls-v1/LEGACY_SCHEMA_IDENTITY",
+          "when": "ANY_EFFECT",
+          "effects": [
+            "LEGACY_V3"
+          ],
+          "reason": "Inherited control applies to operations with declared effects: LEGACY_V3."
+        },
+        "LOSS_GUARD": {
+          "rule_id": "afh-controls-v1/LOSS_GUARD",
+          "when": "ALWAYS",
+          "effects": [],
+          "reason": "Direct scenario-specific or universal preservation obligation; never exempt by evidence class."
+        },
+        "MODEL_IDENTITY": {
+          "rule_id": "afh-controls-v1/MODEL_IDENTITY",
+          "when": "ANY_EFFECT",
+          "effects": [
+            "MODEL"
+          ],
+          "reason": "Inherited control applies to operations with declared effects: MODEL."
+        },
+        "NONEMPTY_ARCHITECTURE_GRAPH": {
+          "rule_id": "afh-controls-v1/NONEMPTY_ARCHITECTURE_GRAPH",
+          "when": "ALWAYS",
+          "effects": [],
+          "reason": "Direct scenario-specific or universal preservation obligation; never exempt by evidence class."
+        },
+        "NO_HISTORICAL_EXECUTION": {
+          "rule_id": "afh-controls-v1/NO_HISTORICAL_EXECUTION",
+          "when": "ALWAYS",
+          "effects": [],
+          "reason": "Direct scenario-specific or universal preservation obligation; never exempt by evidence class."
+        },
+        "NO_SILENT_FALLBACK": {
+          "rule_id": "afh-controls-v1/NO_SILENT_FALLBACK",
+          "when": "ANY_EFFECT",
+          "effects": [
+            "RETRIEVAL",
+            "MODEL"
+          ],
+          "reason": "Inherited control applies to operations with declared effects: RETRIEVAL, MODEL."
+        },
+        "NO_UNAVAILABLE_AS_PASS": {
+          "rule_id": "afh-controls-v1/NO_UNAVAILABLE_AS_PASS",
+          "when": "ALWAYS",
+          "effects": [],
+          "reason": "Direct scenario-specific or universal preservation obligation; never exempt by evidence class."
+        },
+        "PRODUCER_SCHEMA_IDENTITY": {
+          "rule_id": "afh-controls-v1/PRODUCER_SCHEMA_IDENTITY",
+          "when": "ALWAYS",
+          "effects": [],
+          "reason": "Direct scenario-specific or universal preservation obligation; never exempt by evidence class."
+        },
+        "PROVENANCE_RESOLUTION": {
+          "rule_id": "afh-controls-v1/PROVENANCE_RESOLUTION",
+          "when": "ANY_EFFECT",
+          "effects": [
+            "EVIDENCE"
+          ],
+          "reason": "Inherited control applies to operations with declared effects: EVIDENCE."
+        },
+        "PUBLIC_FIXTURE_REVIEW": {
+          "rule_id": "afh-controls-v1/PUBLIC_FIXTURE_REVIEW",
+          "when": "ALWAYS",
+          "effects": [],
+          "reason": "Direct scenario-specific or universal preservation obligation; never exempt by evidence class."
+        },
+        "READ_ONLY_INVENTORY": {
+          "rule_id": "afh-controls-v1/READ_ONLY_INVENTORY",
+          "when": "ANY_EFFECT",
+          "effects": [
+            "READ_ONLY"
+          ],
+          "reason": "Inherited control applies to operations with declared effects: READ_ONLY."
+        },
+        "REAL_CHILD_PROCESS_TERMINATION": {
+          "rule_id": "afh-controls-v1/REAL_CHILD_PROCESS_TERMINATION",
+          "when": "ALWAYS",
+          "effects": [],
+          "reason": "Direct scenario-specific or universal preservation obligation; never exempt by evidence class."
+        },
+        "REAL_MODEL_IDENTITY": {
+          "rule_id": "afh-controls-v1/REAL_MODEL_IDENTITY",
+          "when": "ALWAYS",
+          "effects": [],
+          "reason": "Direct scenario-specific or universal preservation obligation; never exempt by evidence class."
+        },
+        "REAL_TOKENIZER_IDENTITY": {
+          "rule_id": "afh-controls-v1/REAL_TOKENIZER_IDENTITY",
+          "when": "ALWAYS",
+          "effects": [],
+          "reason": "Direct scenario-specific or universal preservation obligation; never exempt by evidence class."
+        },
+        "RECOVERY": {
+          "rule_id": "afh-controls-v1/RECOVERY",
+          "when": "ANY_EFFECT",
+          "effects": [
+            "WRITER_V4"
+          ],
+          "reason": "Inherited control applies to operations with declared effects: WRITER_V4."
+        },
+        "SCHEMA_V4": {
+          "rule_id": "afh-controls-v1/SCHEMA_V4",
+          "when": "ANY_EFFECT",
+          "effects": [
+            "WIRE_V4",
+            "WIRE_V4_VALIDATOR"
+          ],
+          "reason": "Inherited control applies to operations with declared effects: WIRE_V4, WIRE_V4_VALIDATOR."
+        },
+        "TIME_SCOPE_FILTERS": {
+          "rule_id": "afh-controls-v1/TIME_SCOPE_FILTERS",
+          "when": "ANY_EFFECT",
+          "effects": [
+            "TEMPORAL"
+          ],
+          "reason": "Inherited control applies to operations with declared effects: TEMPORAL."
+        }
+      },
+      "package_source_operations": {
+        "M1": "package.temporal_wire_checks",
+        "M2": "package.provenance_checks",
+        "M3": "package.wire_checks",
+        "M4": "package.wire_checks",
+        "M5": "package.runtime_inventory"
+      }
     }
   }
 }

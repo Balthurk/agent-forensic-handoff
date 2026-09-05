@@ -102,6 +102,7 @@ export function validateRegistry(registry,{root=ROOT,checkGenerated=true}={}){
   check('registry-schema',()=>{const ajv=ajvInstance();const v=ajv.compile(readJson(path.join(root,'specification/contracts.schema.json')));if(!v(registry))throw new Error(ajv.errorsText(v.errors,{separator:'; '}));});
   if(errors.length)return {passed:false,errors};
   check('acceptance-schedule',()=>{acceptancePlan(registry,{root});});
+  check('control-applicability',()=>{controlPlan(registry,{root});resolveDoc(root,registry.acceptance_policy.control_applicability.interpretation_ref);});
   check('required-artifacts',()=>{for(const rel of ['.gitattributes','.github/workflows/ci.yml','openspec/config.yaml','openspec/specs/legacy-case-access/spec.md','docs/programs/afh-v0.4.0/HANDOFF.md','docs/programs/afh-v0.4.0/TESTING.md','specification/contract-checks.mjs','specification/validate-package.test.mjs','specification/regression-probes.mjs','tools/specification/package-lock.json'])localPath(root,rel);});
   check('generated-view-list',()=>{if(canonical([...registry.program.generated_views].sort())!==canonical(['RECOMMENDATIONS.md','REQUIREMENTS.md','REVIEW-CHECKLIST.md'].sort()))throw new Error('declared generated views differ from renderer');});
   const maps={};
@@ -188,13 +189,94 @@ export function acceptancePlan(registry,{root=ROOT}={}){
 
 export function acceptanceEvidenceProblems(registry,plan,context,snapshot_sha256,through,{postPublication=false}={}){
   const problems=[];
+  let controls;
+  try { controls=new Map(controlPlan(registry,{plan}).map(row=>[row.id,row])); }
+  catch { return ['CONTROL_APPLICABILITY_INVALID']; }
   for(const item of plan.filter(x=>x.milestone<=through&&(postPublication||x.stage==='CHANGE_EXIT'))){
     const s=registry.scenarios.find(x=>x.id===item.id),e=context.scenario_results?.find(x=>x.scenario_id===item.id);
     if(!e||e.status!=='PASS'||e.role!=='FULL_ACCEPTANCE'||e.oracle_sha256!==s.oracle_ref.sha256||e.package_sha256!==snapshot_sha256||!e.candidate_commit||!e.evidence_ref||e.mechanical_errors!==0||e.evidence_kind!==s.evidence_kind)problems.push('SCENARIO_'+item.id);
     if(e?.role==='BASELINE_DIAGNOSTIC')problems.push('DIAGNOSTIC_CANNOT_ACCEPT_'+item.id);
     if(s.required_checks.includes('REAL_MODEL_IDENTITY')&&e?.provider_class!=='REAL_LOCAL')problems.push('REAL_MODEL_REQUIRED_'+item.id);
+    const control=controls.get(item.id);
+    if(!e||e.control_plan_sha256!==digest(control)||canonical(e.execution_operations)!==canonical(control.operations)||e.evidence_kind!==control.evidence_kind)problems.push('CONTROL_BINDING_'+item.id);
+    const results=e?.check_results;
+    if(!Array.isArray(results)||new Set(results.map(r=>r.check)).size!==results.length||canonical(results.map(r=>r.check).sort())!==canonical(control.checks.map(r=>r.check).sort()))problems.push('CONTROL_INVENTORY_'+item.id);
+    for(const obligation of control.checks){
+      const result=Array.isArray(results)?results.find(r=>r.check===obligation.check):null;
+      if(!result||result.rule_id!==obligation.rule_id)problems.push('CONTROL_'+item.id+'_'+obligation.check);
+      else if(obligation.applicability==='APPLICABLE'){
+        if(result.status!=='PASS'||!result.evidence_ref||result.mechanical_errors!==0)problems.push('CONTROL_'+item.id+'_'+obligation.check);
+      }else if(result.status!=='NOT_APPLICABLE'||result.derivation_sha256!==digest(obligation))problems.push('FALSE_EXEMPTION_'+item.id+'_'+obligation.check);
+    }
   }
   return problems;
+}
+
+/** Derive control applicability from reviewed operations, never from a receipt's N/A. */
+export function controlPlan(registry,{root=ROOT,plan=acceptancePlan(registry,{root})}={}){
+  const policy=registry.acceptance_policy?.control_applicability;
+  if(!policy||policy.version!=='afh-controls-v1'||policy.capability_defaults!=='RUNTIME_UNLESS_PACKAGE_OR_EXPLICIT_LEGACY_ONLY')throw new Error('Missing control applicability policy');
+  const ownership=registry.acceptance_policy.operation_ownership;
+  const effectSchema=readJson(path.join(root,'specification/contracts.schema.json')).properties.acceptance_policy.properties.control_applicability.properties.operation_effects.additionalProperties.properties.effects.items.enum;
+  if(canonical(Object.keys(policy.operation_effects).sort())!==canonical(Object.keys(ownership).sort()))throw new Error('Incomplete operation effect classification');
+  for(const [op,classification]of Object.entries(policy.operation_effects))if(!Array.isArray(classification.effects)||classification.effects.some(effect=>!effectSchema.includes(effect)))throw new Error('Unknown operation effect '+op);
+  for(const [check,rule]of Object.entries(policy.rules)){
+    if(rule.rule_id!=='afh-controls-v1/'+check||!['ALWAYS','ANY_EFFECT'].includes(rule.when)||!rule.reason||!Array.isArray(rule.effects)||rule.effects.some(effect=>!effectSchema.includes(effect))||(rule.when==='ANY_EFFECT'&&!rule.effects.length)||(rule.when==='ALWAYS'&&rule.effects.length))throw new Error('Unknown or malformed control rule '+check);
+  }
+  const profiles=new Map(registry.profiles.map(p=>[p.id,p]));
+  const inherited=(id,seen=new Set())=>{
+    if(seen.has(id))return [];seen.add(id);const profile=profiles.get(id);
+    if(!profile)throw new Error('Unknown profile '+id);
+    return [...profile.required_checks,...profile.extends.flatMap(parent=>inherited(parent,seen))];
+  };
+  const rows=plan.map(item=>{
+    const scenario=registry.scenarios.find(s=>s.id===item.id),change=registry.changes.find(c=>c.id===scenario.change_id);
+    const packageEntry=scenario.entrypoint.kind==='PACKAGE_TEST';
+    if(packageEntry!==(scenario.evidence_kind==='PACKAGE_VALIDATION'))throw new Error('Evidence class/entrypoint mismatch '+item.id);
+    if(packageEntry){
+      const declared=policy.package_source_operations?.[scenario.source_ref];
+      if(!declared||!scenario.execution_requires?.includes(declared))throw new Error('Package oracle surface missing or contradictory '+item.id);
+      if(!scenario.entrypoint.args.includes('specification/validate-package.test.mjs'))throw new Error('Unclassified package oracle entrypoint '+item.id);
+    }
+    const explicit=item.operations.filter(op=>!op.startsWith('capability.'));
+    const legacyOnly=explicit.length>0&&explicit.every(op=>op.startsWith('legacy.'));
+    // Capability anchors still set ownership/milestone. Package and explicitly
+    // legacy-only executions do not execute the owner's future runtime surface.
+    const operations=packageEntry||legacyOnly?explicit:item.operations;
+    if(!operations.length)throw new Error('Missing executed operations '+item.id);
+    const effects=[...new Set(operations.flatMap(op=>{
+      const classification=policy.operation_effects[op];
+      if(!classification?.effects?.length||!classification.evidence_kinds?.includes(scenario.evidence_kind))throw new Error('Unknown or incompatible operation effects '+item.id+':'+op);
+      if(packageEntry!==op.startsWith('package.'))throw new Error('Package/runtime operations mismatch '+item.id);
+      return classification.effects;
+    }))].sort();
+    const inheritedChecks=new Set(change.profiles.flatMap(p=>inherited(p)));
+    for(const check of inheritedChecks)if(!scenario.required_checks.includes(check))throw new Error('Missing inherited control '+item.id+':'+check);
+    const triggered=Object.entries(policy.rules).filter(([,rule])=>rule.when==='ANY_EFFECT'&&rule.effects.some(effect=>effects.includes(effect))).map(([check])=>check);
+    const checks=[...new Set([...scenario.required_checks,...triggered])].sort().map(check=>{
+      const rule=policy.rules[check];if(!rule)throw new Error('Unclassified control '+check);
+      // Non-inherited scenario-specific checks are unconditional and cannot be
+      // erased by profile applicability. Frozen oracle assertions are separate.
+      const specific=scenario.required_checks.includes(check)&&!inheritedChecks.has(check);
+      const applicable=specific||rule.when==='ALWAYS'||rule.effects.some(effect=>effects.includes(effect));
+      return {check,rule_id:rule.rule_id,applicability:applicable?'APPLICABLE':'NOT_APPLICABLE',
+        reason:specific?'Specific scenario obligation; applicability cannot suppress it.':rule.reason,
+        scope:{operations,effects},retained_by:[]};
+    });
+    return {id:item.id,evidence_kind:scenario.evidence_kind,operations,assignment_operations:item.operations,effects,milestone:item.milestone,checks,oracle_sha256:scenario.oracle_ref.sha256};
+  });
+  const retention=new Map();
+  for(const row of rows)for(const check of row.checks.filter(c=>c.applicability==='APPLICABLE')){
+    if(!retention.has(check.check))retention.set(check.check,[]);
+    retention.get(check.check).push({scenario_id:row.id,milestone:row.milestone});
+  }
+  for(const row of rows)for(const check of row.checks.filter(c=>c.applicability==='NOT_APPLICABLE')){
+    const destinations=retention.get(check.check);
+    if(!destinations?.length)throw new Error('Control obligation lost '+check.check);
+    const first=Math.min(...destinations.map(d=>d.milestone));
+    check.retained_by=destinations.filter(d=>d.milestone===first);
+  }
+  return rows;
 }
 
 export function generatedFiles(r){
@@ -213,7 +295,7 @@ export function generatedFiles(r){
     files.set(dir+'design.md',`## Context\n\n${c.problem}\n\nPurpose and global integration: ${c.purpose}\n\n## Goals / Non-Goals\n\nBenefit: ${c.benefit}\n\nThis change implements only the declared interfaces and write set. No historical command execution, old-case mutation, global install, or cross-project writes.\n\n## Definitions and shared contracts\n\nGLOSSARY.md, ARCHITECTURE.md, DATA-CONTRACT.md, API-CONTRACT.md and OPERATIONS.md under docs/programs/afh-v0.4.0 are normative. Profile inheritance: ${c.profiles.join(', ')}; resolve in specification/contracts.json. Fact, claim, occurrence, representation, intent, authority, evidence, validity, promotion and closure retain those definitions.\n\n## Decisions\n\n### Algorithm and interface\n\n${c.design.algorithm}\n\nInterfaces: ${c.interfaces.join(', ')}. Exact typed producer/consumer schemas are schemas/archive-v4.schema.json; relational checks remain mandatory.\n\n### Rationale and alternatives\n\n${c.design.rationale}\n\n${c.design.alternatives}\n\n### Persistence, concurrency and idempotence\n\n${c.design.persistence}\n\n### Integration and dependencies\n\n${c.design.integration}\n\nDependencies: ${c.depends_on.join(', ')||'none'}. One writer executes the full ordered program.\n\n## Migration Plan\n\n${c.design.compatibility}\n\n${c.design.recovery}\n\nExpected write set: ${c.write_set.join(', ')}.\n\n## Risks / Trade-offs\n\n${c.design.risks}\n\n## Entry and exit\n\nEntry:\n${c.entry_criteria.map(x=>'- '+x).join('\n')}\n\nExit:\n${c.exit_criteria.map(x=>'- '+x).join('\n')}\n\n## TDD contracts\n\n${ss.length} scenarios in specification/contracts.json. Each names fixture/digest, preconditions, exact command, oracle and evidence class. API absence is NOT_IMPLEMENTED; syntax/import/environment failure is mechanical, never behavioral RED. Existing baseline green tests stay green. Follow TESTING.md to materialize any CONTRACT_ONLY harness before production edits; changing that harness must not weaken the frozen oracle.\n`);
     files.set(dir+'design.md',files.get(dir+'design.md')+'\n'+schedule);
     const commands=due.map(item=>item.id+': '+item.acceptance_entrypoint.command+' '+item.acceptance_entrypoint.args.join(' '));
-    const tasks=['## 1. Entry and due RED','',
+    const tasks=['The checkboxes below are normative obligations. Verified receipts in the existing coordination carry execution state; do not manually mark this generated view.','', '## 1. Entry and due RED','',
       '- [ ] 1.1 Evaluate IMPLEMENTATION_READY for '+c.id+' with exact package/review, writer and earlier milestone receipts.',
       '- [ ] 1.2 Materialize only full acceptance harnesses due at this milestone; retain later contracts as DEFERRED_NOT_RUN. Incoming scenarios keep their original IDs, fixtures, paths and oracles.',
       '- [ ] 1.3 Run the due test commands below before the affected implementation/integration edit; distinguish behavioral RED, NOT_IMPLEMENTED and mechanical failure. Baseline probes remain diagnostic.','',
@@ -245,6 +327,7 @@ export function packageSnapshot(root=ROOT){
 export function evaluateGate({registry,validation,snapshot_sha256,context,change_id=null,release_phase=null}){
   const blockers=[];
   let plan=[];try{plan=acceptancePlan(registry);}catch{blockers.push('ACCEPTANCE_SCHEDULE_INVALID');}
+  try{controlPlan(registry,{plan});}catch{blockers.push('CONTROL_APPLICABILITY_INVALID');}
   if(context.phase==='PAUSED'||context.paused===true)blockers.push('PAUSED');
   if(!validation.passed||registry.changes.length!==14||registry.recommendations.length!==22||registry.scenarios.length<200)blockers.push('PACKAGE_INCOMPLETE_OR_INVALID');
   const auth=context.authorization_ref;

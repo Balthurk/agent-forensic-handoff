@@ -44,7 +44,7 @@ Normal scenarios inherit OWNER_CHANGE / CHANGE_EXIT. Explicit execution consumer
 
 | Scenario | Owner | Due milestone | Stage | Required consumers | Entrypoint coverage |
 |---|---|---|---|---|---|
-| AFH-01-T01 | 1 | 1 | CHANGE_EXIT | capability.native-identity | BASELINE_DIAGNOSTIC; full acceptance contract-only |
+| AFH-01-T01 | 1 | 1 | CHANGE_EXIT | capability.native-identity, legacy.audit, legacy.show, legacy.evidence | BASELINE_DIAGNOSTIC; full acceptance contract-only |
 | AFH-01-T02 | 1 | 2 | CHANGE_EXIT | capability.native-identity, archive.ingest, association.record, scope.resolve | Full declared scenario contract |
 | AFH-01-T03 | 1 | 1 | CHANGE_EXIT | capability.native-identity | Full declared scenario contract |
 | AFH-01-T04 | 1 | 2 | CHANGE_EXIT | capability.native-identity, archive.ingest, association.record, scope.resolve | Full declared scenario contract |
@@ -62,7 +62,7 @@ Normal scenarios inherit OWNER_CHANGE / CHANGE_EXIT. Explicit execution consumer
 | AFH-01-T16 | 1 | 2 | CHANGE_EXIT | capability.native-identity, archive.ingest, association.record, scope.resolve | Full declared scenario contract |
 | AFH-01-T17 | 1 | 2 | CHANGE_EXIT | capability.native-identity, archive.ingest, association.record, scope.resolve | Full declared scenario contract |
 | AFH-01-T18 | 1 | 2 | CHANGE_EXIT | capability.native-identity, archive.ingest, association.record, scope.resolve | Full declared scenario contract |
-| AFH-01-T19 | 1 | 1 | CHANGE_EXIT | capability.native-identity | Full declared scenario contract |
+| AFH-01-T19 | 1 | 1 | CHANGE_EXIT | capability.native-identity, legacy.audit | Full declared scenario contract |
 | AFH-01-T20 | 1 | 2 | CHANGE_EXIT | capability.native-identity, archive.ingest, association.record, scope.resolve | Full declared scenario contract |
 | AFH-02-T01 | 2 | 2 | CHANGE_EXIT | capability.incremental-archive | Full declared scenario contract |
 | AFH-02-T02 | 2 | 2 | CHANGE_EXIT | capability.incremental-archive | Full declared scenario contract |
@@ -84,15 +84,15 @@ Normal scenarios inherit OWNER_CHANGE / CHANGE_EXIT. Explicit execution consumer
 | AFH-02-T18 | 2 | 2 | CHANGE_EXIT | capability.incremental-archive | Full declared scenario contract |
 | AFH-02-T19 | 2 | 2 | CHANGE_EXIT | capability.incremental-archive | Full declared scenario contract |
 | AFH-02-T20 | 2 | 2 | CHANGE_EXIT | capability.incremental-archive | Full declared scenario contract |
-| AFH-03-T01 | 3 | 3 | CHANGE_EXIT | capability.occurrence-ledger | BASELINE_DIAGNOSTIC; full acceptance contract-only |
+| AFH-03-T01 | 3 | 3 | CHANGE_EXIT | capability.occurrence-ledger, legacy.audit, legacy.show, legacy.evidence | BASELINE_DIAGNOSTIC; full acceptance contract-only |
 | AFH-03-T02 | 3 | 3 | CHANGE_EXIT | capability.occurrence-ledger | Full declared scenario contract |
-| AFH-03-T03 | 3 | 3 | CHANGE_EXIT | capability.occurrence-ledger | BASELINE_DIAGNOSTIC; full acceptance contract-only |
-| AFH-03-T04 | 3 | 3 | CHANGE_EXIT | capability.occurrence-ledger | BASELINE_DIAGNOSTIC; full acceptance contract-only |
+| AFH-03-T03 | 3 | 3 | CHANGE_EXIT | capability.occurrence-ledger, legacy.audit, legacy.show, legacy.evidence | BASELINE_DIAGNOSTIC; full acceptance contract-only |
+| AFH-03-T04 | 3 | 3 | CHANGE_EXIT | capability.occurrence-ledger, legacy.audit, legacy.show, legacy.evidence | BASELINE_DIAGNOSTIC; full acceptance contract-only |
 | AFH-03-T05 | 3 | 3 | CHANGE_EXIT | capability.occurrence-ledger | Full declared scenario contract |
 | AFH-03-T06 | 3 | 3 | CHANGE_EXIT | capability.occurrence-ledger | Full declared scenario contract |
-| AFH-03-T07 | 3 | 3 | CHANGE_EXIT | capability.occurrence-ledger | BASELINE_DIAGNOSTIC; full acceptance contract-only |
+| AFH-03-T07 | 3 | 3 | CHANGE_EXIT | capability.occurrence-ledger, legacy.audit, legacy.show, legacy.evidence | BASELINE_DIAGNOSTIC; full acceptance contract-only |
 | AFH-03-T08 | 3 | 3 | CHANGE_EXIT | capability.occurrence-ledger | Full declared scenario contract |
-| AFH-03-T09 | 3 | 3 | CHANGE_EXIT | capability.occurrence-ledger | BASELINE_DIAGNOSTIC; full acceptance contract-only |
+| AFH-03-T09 | 3 | 3 | CHANGE_EXIT | capability.occurrence-ledger, legacy.audit, legacy.show, legacy.evidence | BASELINE_DIAGNOSTIC; full acceptance contract-only |
 | AFH-03-T10 | 3 | 3 | CHANGE_EXIT | capability.occurrence-ledger | Full declared scenario contract |
 | AFH-03-T11 | 3 | 4 | CHANGE_EXIT | capability.occurrence-ledger, stats, temporal.select | Full declared scenario contract |
 | AFH-03-T12 | 3 | 3 | CHANGE_EXIT | capability.occurrence-ledger | Full declared scenario contract |
@@ -112,7 +112,7 @@ Normal scenarios inherit OWNER_CHANGE / CHANGE_EXIT. Explicit execution consumer
 | AFH-04-T04 | 4 | 4 | CHANGE_EXIT | capability.temporal-provenance | Full declared scenario contract |
 | AFH-04-T05 | 4 | 4 | CHANGE_EXIT | capability.temporal-provenance | Full declared scenario contract |
 | AFH-04-T06 | 4 | 4 | CHANGE_EXIT | capability.temporal-provenance | Full declared scenario contract |
-| AFH-04-T07 | 4 | 4 | CHANGE_EXIT | capability.temporal-provenance | BASELINE_DIAGNOSTIC; full acceptance contract-only |
+| AFH-04-T07 | 4 | 4 | CHANGE_EXIT | capability.temporal-provenance, legacy.audit, legacy.show, legacy.evidence | BASELINE_DIAGNOSTIC; full acceptance contract-only |
 | AFH-04-T08 | 4 | 4 | CHANGE_EXIT | capability.temporal-provenance | Full declared scenario contract |
 | AFH-04-T09 | 4 | 4 | CHANGE_EXIT | capability.temporal-provenance | Full declared scenario contract |
 | AFH-04-T10 | 4 | 4 | CHANGE_EXIT | capability.temporal-provenance | Full declared scenario contract |
@@ -126,9 +126,9 @@ Normal scenarios inherit OWNER_CHANGE / CHANGE_EXIT. Explicit execution consumer
 | AFH-04-T18 | 4 | 4 | CHANGE_EXIT | capability.temporal-provenance | Full declared scenario contract |
 | AFH-04-T19 | 4 | 4 | CHANGE_EXIT | capability.temporal-provenance | Full declared scenario contract |
 | AFH-04-T20 | 4 | 4 | CHANGE_EXIT | capability.temporal-provenance | Full declared scenario contract |
-| AFH-05-T01 | 5 | 5 | CHANGE_EXIT | capability.governed-context | BASELINE_DIAGNOSTIC; full acceptance contract-only |
+| AFH-05-T01 | 5 | 5 | CHANGE_EXIT | capability.governed-context, legacy.audit, legacy.show, legacy.evidence | BASELINE_DIAGNOSTIC; full acceptance contract-only |
 | AFH-05-T02 | 5 | 5 | CHANGE_EXIT | capability.governed-context | Full declared scenario contract |
-| AFH-05-T03 | 5 | 5 | CHANGE_EXIT | capability.governed-context | BASELINE_DIAGNOSTIC; full acceptance contract-only |
+| AFH-05-T03 | 5 | 5 | CHANGE_EXIT | capability.governed-context, legacy.audit, legacy.show, legacy.evidence | BASELINE_DIAGNOSTIC; full acceptance contract-only |
 | AFH-05-T04 | 5 | 5 | CHANGE_EXIT | capability.governed-context | Full declared scenario contract |
 | AFH-05-T05 | 5 | 7 | CHANGE_EXIT | capability.governed-context, intent.extract, gold.view, query, context.build | Full declared scenario contract |
 | AFH-05-T06 | 5 | 5 | CHANGE_EXIT | capability.governed-context | Full declared scenario contract |
@@ -186,7 +186,7 @@ Normal scenarios inherit OWNER_CHANGE / CHANGE_EXIT. Explicit execution consumer
 | AFH-07-T18 | 7 | 7 | CHANGE_EXIT | capability.contextual-retrieval | Full declared scenario contract |
 | AFH-07-T19 | 7 | 7 | CHANGE_EXIT | capability.contextual-retrieval | Full declared scenario contract |
 | AFH-07-T20 | 7 | 7 | CHANGE_EXIT | capability.contextual-retrieval | Full declared scenario contract |
-| AFH-08-T01 | 8 | 8 | CHANGE_EXIT | capability.observable-performance | BASELINE_DIAGNOSTIC; full acceptance contract-only |
+| AFH-08-T01 | 8 | 8 | CHANGE_EXIT | capability.observable-performance, legacy.audit, legacy.show, legacy.evidence | BASELINE_DIAGNOSTIC; full acceptance contract-only |
 | AFH-08-T02 | 8 | 8 | CHANGE_EXIT | capability.observable-performance | Full declared scenario contract |
 | AFH-08-T03 | 8 | 8 | CHANGE_EXIT | capability.observable-performance | Full declared scenario contract |
 | AFH-08-T04 | 8 | 8 | CHANGE_EXIT | capability.observable-performance | Full declared scenario contract |
@@ -314,21 +314,21 @@ Normal scenarios inherit OWNER_CHANGE / CHANGE_EXIT. Explicit execution consumer
 | AFH-14-T18 | 14 | 14 | CHANGE_EXIT | capability.assured-release | Full declared scenario contract |
 | AFH-14-T19 | 14 | 14 | CHANGE_EXIT | capability.assured-release | Full declared scenario contract |
 | AFH-14-T20 | 14 | 14 | POST_PUBLICATION | capability.assured-release, release.publish, release.verify_published | Full declared scenario contract |
-| AFH-04-T21 | 4 | 4 | CHANGE_EXIT | capability.temporal-provenance, package.checks | Full declared scenario contract |
-| AFH-04-T22 | 4 | 4 | CHANGE_EXIT | capability.temporal-provenance, package.checks | Full declared scenario contract |
-| AFH-04-T23 | 4 | 4 | CHANGE_EXIT | capability.temporal-provenance, package.checks | Full declared scenario contract |
-| AFH-04-T24 | 4 | 4 | CHANGE_EXIT | capability.temporal-provenance, package.checks | Full declared scenario contract |
-| AFH-04-T25 | 4 | 4 | CHANGE_EXIT | capability.temporal-provenance, package.checks | Full declared scenario contract |
-| AFH-05-T21 | 5 | 5 | CHANGE_EXIT | capability.governed-context, package.checks | Full declared scenario contract |
-| AFH-05-T22 | 5 | 5 | CHANGE_EXIT | capability.governed-context, package.checks | Full declared scenario contract |
-| AFH-05-T23 | 5 | 5 | CHANGE_EXIT | capability.governed-context, package.checks | Full declared scenario contract |
-| AFH-07-T21 | 7 | 7 | CHANGE_EXIT | capability.contextual-retrieval, package.checks | Full declared scenario contract |
-| AFH-07-T22 | 7 | 7 | CHANGE_EXIT | capability.contextual-retrieval, package.checks | Full declared scenario contract |
-| AFH-07-T23 | 7 | 7 | CHANGE_EXIT | capability.contextual-retrieval, package.checks | Full declared scenario contract |
-| AFH-07-T24 | 7 | 7 | CHANGE_EXIT | capability.contextual-retrieval, package.checks | Full declared scenario contract |
-| AFH-07-T25 | 7 | 7 | CHANGE_EXIT | capability.contextual-retrieval, package.checks | Full declared scenario contract |
-| AFH-07-T26 | 7 | 7 | CHANGE_EXIT | capability.contextual-retrieval, package.checks | Full declared scenario contract |
-| AFH-07-T27 | 7 | 7 | CHANGE_EXIT | capability.contextual-retrieval, package.checks | Full declared scenario contract |
-| AFH-01-T21 | 1 | 1 | CHANGE_EXIT | capability.native-identity, package.checks | Full declared scenario contract |
-| AFH-01-T22 | 1 | 1 | CHANGE_EXIT | capability.native-identity, package.checks | Full declared scenario contract |
+| AFH-04-T21 | 4 | 4 | CHANGE_EXIT | capability.temporal-provenance, package.checks, package.temporal_wire_checks | Full declared scenario contract |
+| AFH-04-T22 | 4 | 4 | CHANGE_EXIT | capability.temporal-provenance, package.checks, package.temporal_wire_checks | Full declared scenario contract |
+| AFH-04-T23 | 4 | 4 | CHANGE_EXIT | capability.temporal-provenance, package.checks, package.temporal_wire_checks | Full declared scenario contract |
+| AFH-04-T24 | 4 | 4 | CHANGE_EXIT | capability.temporal-provenance, package.checks, package.temporal_wire_checks | Full declared scenario contract |
+| AFH-04-T25 | 4 | 4 | CHANGE_EXIT | capability.temporal-provenance, package.checks, package.temporal_wire_checks | Full declared scenario contract |
+| AFH-05-T21 | 5 | 5 | CHANGE_EXIT | capability.governed-context, package.checks, package.provenance_checks | Full declared scenario contract |
+| AFH-05-T22 | 5 | 5 | CHANGE_EXIT | capability.governed-context, package.checks, package.provenance_checks | Full declared scenario contract |
+| AFH-05-T23 | 5 | 5 | CHANGE_EXIT | capability.governed-context, package.checks, package.provenance_checks | Full declared scenario contract |
+| AFH-07-T21 | 7 | 7 | CHANGE_EXIT | capability.contextual-retrieval, package.checks, package.wire_checks | Full declared scenario contract |
+| AFH-07-T22 | 7 | 7 | CHANGE_EXIT | capability.contextual-retrieval, package.checks, package.wire_checks | Full declared scenario contract |
+| AFH-07-T23 | 7 | 7 | CHANGE_EXIT | capability.contextual-retrieval, package.checks, package.wire_checks | Full declared scenario contract |
+| AFH-07-T24 | 7 | 7 | CHANGE_EXIT | capability.contextual-retrieval, package.checks, package.wire_checks | Full declared scenario contract |
+| AFH-07-T25 | 7 | 7 | CHANGE_EXIT | capability.contextual-retrieval, package.checks, package.wire_checks | Full declared scenario contract |
+| AFH-07-T26 | 7 | 7 | CHANGE_EXIT | capability.contextual-retrieval, package.checks, package.wire_checks | Full declared scenario contract |
+| AFH-07-T27 | 7 | 7 | CHANGE_EXIT | capability.contextual-retrieval, package.checks, package.wire_checks | Full declared scenario contract |
+| AFH-01-T21 | 1 | 1 | CHANGE_EXIT | capability.native-identity, package.checks, package.runtime_inventory | Full declared scenario contract |
+| AFH-01-T22 | 1 | 1 | CHANGE_EXIT | capability.native-identity, package.checks, package.runtime_inventory | Full declared scenario contract |
 | AFH-11-T19 | 11 | 11 | CHANGE_EXIT | capability.portable-bundles | Full declared scenario contract |

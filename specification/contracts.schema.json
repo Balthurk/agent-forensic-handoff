@@ -286,7 +286,8 @@
         "default_stage",
         "final_milestone",
         "operation_ownership",
-        "fixture_consumer_operations"
+        "fixture_consumer_operations",
+        "control_applicability"
       ],
       "properties": {
         "default_milestone": {
@@ -324,6 +325,144 @@
           "type": "object",
           "additionalProperties": {
             "$ref": "#/$defs/string"
+          }
+        },
+        "control_applicability": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "version",
+            "capability_defaults",
+            "package_source_operations",
+            "interpretation_ref",
+            "operation_effects",
+            "rules"
+          ],
+          "properties": {
+            "version": {
+              "const": "afh-controls-v1"
+            },
+            "capability_defaults": {
+              "const": "RUNTIME_UNLESS_PACKAGE_OR_EXPLICIT_LEGACY_ONLY"
+            },
+            "package_source_operations": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "interpretation_ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "operation_effects": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "effects",
+                  "evidence_kinds"
+                ],
+                "properties": {
+                  "effects": {
+                    "type": "array",
+                    "items": {
+                      "enum": [
+                        "IDENTITY",
+                        "EVIDENCE",
+                        "WRITER_V4",
+                        "WIRE_V4",
+                        "SOURCE_READ",
+                        "BOUNDED",
+                        "TEMPORAL",
+                        "READ_ONLY",
+                        "MODEL",
+                        "RETRIEVAL",
+                        "RELEASE",
+                        "LEGACY_V3",
+                        "PACKAGE",
+                        "WIRE_V4_VALIDATOR"
+                      ]
+                    },
+                    "uniqueItems": true,
+                    "minItems": 1
+                  },
+                  "evidence_kinds": {
+                    "type": "array",
+                    "items": {
+                      "enum": [
+                        "SYNTHETIC_REAL_RUNTIME",
+                        "REAL_PROCESS_CRASH",
+                        "BLIND_AGENT_CONTINUATION",
+                        "SYNTHETIC_FIXTURE_PROVIDER",
+                        "SYNTHETIC_REAL_MODEL",
+                        "PLATFORM_RUNTIME",
+                        "RELEASE_ARTIFACT",
+                        "PACKAGE_VALIDATION"
+                      ]
+                    },
+                    "uniqueItems": true,
+                    "minItems": 1
+                  }
+                }
+              }
+            },
+            "rules": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "rule_id",
+                  "when",
+                  "effects",
+                  "reason"
+                ],
+                "properties": {
+                  "rule_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "when": {
+                    "enum": [
+                      "ALWAYS",
+                      "ANY_EFFECT"
+                    ]
+                  },
+                  "effects": {
+                    "type": "array",
+                    "items": {
+                      "enum": [
+                        "IDENTITY",
+                        "EVIDENCE",
+                        "WRITER_V4",
+                        "WIRE_V4",
+                        "SOURCE_READ",
+                        "BOUNDED",
+                        "TEMPORAL",
+                        "READ_ONLY",
+                        "MODEL",
+                        "RETRIEVAL",
+                        "RELEASE",
+                        "LEGACY_V3",
+                        "PACKAGE",
+                        "WIRE_V4_VALIDATOR"
+                      ]
+                    },
+                    "uniqueItems": true
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
           }
         }
       }

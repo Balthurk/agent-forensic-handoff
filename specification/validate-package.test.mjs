@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
-import { ROOT, canonical, digest, pointer, validateRegistry, validateWire, relationalWireChecks, validateNormativeExamples, generatedFiles, packageSnapshot, evaluateGate, acceptancePlan, acceptanceEvidenceProblems } from './validate-package.mjs';
+import { ROOT, canonical, digest, pointer, validateRegistry, validateWire, relationalWireChecks, validateNormativeExamples, generatedFiles, packageSnapshot, evaluateGate, acceptancePlan, acceptanceEvidenceProblems, controlPlan } from './validate-package.mjs';
 import { runtimeSnapshot, snapshotStability, exactTimestamp, temporalRange, temporalChecks, validateEvidencePair, validateUnresolvedAssignment, assertNativeIdentityObservation, assertHumanDecisionCandidates, inspectHumanDecisionCandidates } from './contract-checks.mjs';
 import { auditSession, verifyCaseIntegrity } from '../src/index.js';
 
@@ -191,6 +191,9 @@ test('F1 cannot hide an integration in arbitrary later or postpublication stage'
 function acceptedContext(){
   const c=gateContext(),plan=acceptancePlan(registry);
   c.scenario_results=registry.scenarios.map(s=>({scenario_id:s.id,status:'PASS',role:'FULL_ACCEPTANCE',oracle_sha256:s.oracle_ref.sha256,package_sha256:snapshot,candidate_commit:'e'.repeat(40),evidence_ref:'synthetic-acceptance-'+s.id,mechanical_errors:0,evidence_kind:s.evidence_kind,provider_class:s.required_checks.includes('REAL_MODEL_IDENTITY')?'REAL_LOCAL':'NONE'}));
+  // Synthetic receipts only test gate logic; they never become program evidence.
+  const controls=new Map(controlPlan(registry,{plan}).map(row=>[row.id,row]));
+  for(const e of c.scenario_results){const p=controls.get(e.scenario_id);e.control_plan_sha256=digest(p);e.execution_operations=p.operations;e.check_results=p.checks.map(c=>c.applicability==='APPLICABLE'?{check:c.check,rule_id:c.rule_id,status:'PASS',evidence_ref:'synthetic-control-'+e.scenario_id+'-'+c.check,mechanical_errors:0}:{check:c.check,rule_id:c.rule_id,status:'NOT_APPLICABLE',derivation_sha256:digest(c)});}
   c.predecessors=registry.changes.map(d=>({change_id:d.id,status:'MILESTONE_GREEN',package_sha256:snapshot,candidate_commit:'e'.repeat(40),evidence_ref:'synthetic-milestone-'+d.order,mechanical_errors:0,accepted_scenario_ids:plan.filter(s=>s.milestone===d.order&&s.stage==='CHANGE_EXIT').map(s=>s.id),deferred_scenario_ids:plan.filter(s=>s.owner===d.order&&(s.milestone>d.order||s.stage==='POST_PUBLICATION')).map(s=>s.id)}));
   return c;
 }
@@ -225,3 +228,78 @@ test('F2 exact human decision supports multiple candidates with real provenance 
   assert.throws(()=>assertHumanDecisionCandidates([],{marker,session_id}),/At least one/);
 });
 test('F2 npm package tests cannot impersonate a global semantic oracle review',()=>{const c=gateContext();Object.assign(c.evidence.find(e=>e.check==='oracle_review'),{result:'PASS',evidence_class:'PACKAGE_VALIDATION',source_ref:'npm-check.txt'});assert.ok(gate(c).blockers.includes('EVIDENCE_ORACLE_REVIEW'));});
+
+test('A1 applicable writer control missing from acceptance evidence blocks release',()=>{
+  const c=acceptedContext();
+  const evidence=c.scenario_results.find(x=>x.scenario_id==='AFH-02-T01');
+  evidence.check_results=[];
+  const result=evaluateGate({registry,validation:{passed:true},snapshot_sha256:snapshot,context:c,release_phase:'ready'});
+  assert.equal(result.state,'BLOCKED','A scenario-level PASS cannot replace applicable control evidence');
+});
+test('A1 self-declared nonapplication cannot discharge writer publication',()=>{
+  const c=acceptedContext();
+  const evidence=c.scenario_results.find(x=>x.scenario_id==='AFH-02-T01');
+  evidence.check_results=[{check:'ATOMIC_PUBLICATION',status:'NOT_APPLICABLE',reason:'executor says leaf'}];
+  const result=evaluateGate({registry,validation:{passed:true},snapshot_sha256:snapshot,context:c,release_phase:'ready'});
+  assert.equal(result.state,'BLOCKED');
+});
+test('A2 generated checkboxes describe obligations while receipts carry execution state',()=>{
+  for(const change of registry.changes){
+    const body=generatedFiles(registry).get(`openspec/changes/${change.id}/tasks.md`);
+    assert.match(body,/receipts.*execution state/i);
+  }
+});
+
+test('A1 all288 scenarios retain frozen direct obligations with derived applicability',()=>{
+  const fields=['id','fixture_ref','oracle_ref','requirement_ids','given','when','then','required_checks'];
+  assert.equal(digest(registry.scenarios.map(s=>Object.fromEntries(fields.map(k=>[k,s[k]])))),'dd5072ca9558ed0756fcbaae31ce56b3f4fa61d486a7098587dae4b9db55bf6c');
+  const p=controlPlan(registry);assert.equal(p.length,288);
+  for(const row of p){const s=registry.scenarios.find(s=>s.id===row.id);assert.equal(row.oracle_sha256,s.oracle_ref.sha256);for(const check of s.required_checks)assert.ok(row.checks.some(c=>c.check===check));}
+  for(const id of ['AFH-01-T01','AFH-01-T03','AFH-01-T19','AFH-01-T21','AFH-01-T22']){
+    const row=p.find(x=>x.id===id);
+    for(const name of ['ATOMIC_PUBLICATION','IDEMPOTENCE','RECOVERY','SCHEMA_V4']){
+      const c=row.checks.find(c=>c.check===name);assert.equal(c.applicability,'NOT_APPLICABLE');assert.ok(c.retained_by.length);assert.ok(c.retained_by.every(d=>d.milestone>=2));
+    }
+    assert.equal(row.checks.find(c=>c.check==='EXACT_INPUT_IDENTITY').applicability,'APPLICABLE');
+  }
+  for(const id of ['AFH-02-T01','AFH-02-T08'])for(const check of ['ATOMIC_PUBLICATION','IDEMPOTENCE','RECOVERY','SCHEMA_V4'])assert.equal(p.find(x=>x.id===id).checks.find(c=>c.check===check).applicability,'APPLICABLE');
+  for(const s of registry.scenarios.filter(s=>['M3','M4'].includes(s.source_ref)))assert.equal(p.find(x=>x.id===s.id).checks.find(c=>c.check==='SCHEMA_V4').applicability,'APPLICABLE');
+});
+test('A1 unknown effects, missing classification and false package metadata fail closed',()=>{
+  for(const mutate of [r=>delete r.acceptance_policy.control_applicability.operation_effects['archive.init'],r=>r.acceptance_policy.control_applicability.operation_effects['archive.init'].effects=['UNKNOWN_EFFECT'],r=>r.scenarios.find(s=>s.id==='AFH-02-T01').evidence_kind='PACKAGE_VALIDATION']){
+    const r=clone();mutate(r);assert.throws(()=>controlPlan(r));assert.ok(gate(gateContext(),null,r).blockers.includes('CONTROL_APPLICABILITY_INVALID'));
+  }
+});
+test('A1 missing, stale, fabricated or skipped individual controls cannot accept a scenario',()=>{
+  const invoke=c=>acceptanceEvidenceProblems(registry,acceptancePlan(registry),c,snapshot,2);
+  for(const mutate of [e=>e.check_results.pop(),e=>e.control_plan_sha256='stale',e=>e.execution_operations=['package.checks'],e=>e.evidence_kind='PACKAGE_VALIDATION',e=>e.check_results[0].mechanical_errors=1,e=>e.check_results[0].status='UNAVAILABLE',e=>e.check_results.push(e.check_results[0])]){
+    const c=acceptedContext();mutate(c.scenario_results.find(e=>e.scenario_id==='AFH-02-T01'));assert.ok(invoke(c).length);
+  }
+  const c=acceptedContext();const e=c.scenario_results.find(e=>e.scenario_id==='AFH-01-T21');const na=e.check_results.find(c=>c.status==='NOT_APPLICABLE');na.derivation_sha256='invented';assert.ok(invoke(c).some(x=>x.startsWith('FALSE_EXEMPTION_AFH-01-T21')));
+});
+test('A1 specific checks cannot be exempted by inherited effect rules',()=>{
+  const r=clone(),s=r.scenarios.find(s=>s.id==='AFH-01-T03');s.required_checks.push('REAL_MODEL_IDENTITY');
+  // Added only to the test registry, never to a product scenario or real receipt.
+  assert.equal(controlPlan(r).find(x=>x.id===s.id).checks.find(c=>c.check==='REAL_MODEL_IDENTITY').applicability,'APPLICABLE');
+});
+test('A1 positive first milestone passes only with complete applicable control evidence',()=>{
+  const c=acceptedContext();c.scenario_results=c.scenario_results.filter(e=>controlPlan(registry).find(p=>p.id===e.scenario_id).milestone===1);c.writer={task_id:'test-writer',exclusive:true,write_set:registry.changes[1].write_set};
+  assert.equal(gate(c,registry.changes[1].id).state,'IMPLEMENTATION_READY');
+  assert.ok(evaluateGate({registry,validation:{passed:true},snapshot_sha256:snapshot,context:c,release_phase:'ready'}).blockers.includes('SCENARIO_AFH-02-T01'));
+});
+test('A1 package oracle schema surface cannot disappear behind package evidence class',()=>{
+  const r=clone(),s=r.scenarios.find(s=>s.source_ref==='M3');
+  s.execution_requires=['package.checks'];
+  assert.throws(()=>controlPlan(r),/Package oracle surface missing/);
+  const typed=controlPlan(registry).filter(row=>row.operations.includes('package.wire_checks'));
+  assert.equal(typed.length,7);
+  for(const row of typed)assert.equal(row.checks.find(c=>c.check==='SCHEMA_V4').applicability,'APPLICABLE');
+});
+test('A1 legacy captures retain actual schema and regression controls without claiming v4',()=>{
+  const plan=controlPlan(registry),row=plan.find(x=>x.id==='AFH-01-T01');
+  assert.ok(row.assignment_operations.includes('capability.native-identity'));
+  assert.ok(!row.operations.includes('capability.native-identity'));
+  for(const check of ['LEGACY_SCHEMA_IDENTITY','LEGACY_REGRESSION','PROVENANCE_RESOLUTION'])assert.equal(row.checks.find(c=>c.check===check).applicability,'APPLICABLE');
+  assert.equal(row.checks.find(c=>c.check==='SCHEMA_V4').applicability,'NOT_APPLICABLE');
+  assert.equal(plan.find(x=>x.id==='AFH-01-T03').checks.find(c=>c.check==='IDENTITY_STABILITY').applicability,'APPLICABLE');
+});

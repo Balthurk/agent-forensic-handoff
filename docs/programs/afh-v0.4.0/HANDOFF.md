@@ -14,6 +14,8 @@ Instalar localmente con los comandos de README; disponer de Node22.15+ o24, SQLi
 
 ## Ejecución secuencial
 
+Aplicar la política central de controles descrita en TESTING, sección A1/A2: los controles efectivos derivan de operaciones/efectos y conservan toda obligación real. No registrar N/A manuales ni atribuir schema4 al audit legacy. Los checkboxes generados expresan obligaciones; su cumplimiento se acredita por receipts y estado de coordinación, sin editar `tasks.md`. Las integraciones pendientes siguen bloqueando su hito y el cierre final.
+
 01 native-identity →02 incremental-archive →03 occurrence-ledger →04 temporal-provenance →05 governed-context →06 layered-semantics →07 contextual-retrieval →08 observable-performance →09 resident-reader →10 compatibility-matrix →11 portable-bundles →12 prospective-capture →13 continuity-evaluation →14 assured-release.
 
 Antes de cada cambio resolver IMPLEMENTATION_READY sobre el paquete revisado, writer y predecesores. Materializar primero los harnesses CONTRACT_ONLY según TESTING; no rebajar los oráculos congelados. Conservar RED, acreditar las obligaciones debidas en su hito, refactorizar y ejecutar checks afectados/baseline. Cada cambio tiene write set e interfaces definidos; modificaciones necesarias de integración se registran y revisan manteniendo ownership y sin ampliar alcance a otros sistemas. Commit local por cambio, evidencia y revisión enlazadas; el coordinador conserva la trazabilidad privada existente. Los tasks de OpenSpec permanecen sin marcar hasta ejecutar realmente su condición.

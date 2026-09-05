@@ -1,3 +1,5 @@
+The checkboxes below are normative obligations. Verified receipts in the existing coordination carry execution state; do not manually mark this generated view.
+
 ## 1. Entry and due RED
 
 - [ ] 1.1 Evaluate IMPLEMENTATION_READY for afh-05-governed-context with exact package/review, writer and earlier milestone receipts.
