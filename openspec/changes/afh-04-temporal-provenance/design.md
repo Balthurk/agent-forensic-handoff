@@ -44,7 +44,7 @@ Casos schema1-3 siguen leídos según semántica histórica y aliases; nueva pro
 
 Crash durante batch temporal debe exponer a1/b1 o a2/b2, nunca frontera mixta. Clock regression bloquea nueva publicación; no retrodatar conocimiento. Readers paralelos mantienen su corte durante publicación.
 
-Expected write set: src/archive/temporal.js, src/archive/provenance.js, src/graph.js, src/reducers.js, schemas/, test/acceptance/afh-04.test.mjs.
+Expected write set: src/archive/temporal.js, src/archive/provenance.js, src/graph.js, src/reducers.js, schemas/, test/acceptance/afh-04.test.mjs, test/acceptance/afh-01.test.mjs, test/acceptance/afh-03.test.mjs.
 
 ## Risks / Trade-offs
 

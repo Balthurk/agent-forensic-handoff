@@ -44,7 +44,7 @@ query legacy mantiene léxico default y opciones existentes. Nuevos kind/layers/
 
 AbortSignal/timeout devuelve error sin mutación; modelo no disponible devuelve UNAVAILABLE. Fuente/ref corrupta impide unidad con EVIDENCE_RESOLVED; partial pack muestra la unidad como gap y no la sustituye por una afirmación inventada. Reader sobre generación vieja termina con esa identidad.
 
-Expected write set: src/retrieval.js, src/render.js, src/context/planner.js, src/context/pack.js, src/archive/stats.js, test/acceptance/afh-07.test.mjs.
+Expected write set: src/retrieval.js, src/render.js, src/context/planner.js, src/context/pack.js, src/archive/stats.js, test/acceptance/afh-07.test.mjs, test/acceptance/afh-01.test.mjs, test/acceptance/afh-04.test.mjs, test/acceptance/afh-05.test.mjs, test/acceptance/afh-06.test.mjs.
 
 ## Risks / Trade-offs
 

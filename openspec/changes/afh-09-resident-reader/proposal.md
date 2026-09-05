@@ -20,4 +20,4 @@ No existing OpenSpec requirement is removed; legacy behavior remains covered by 
 
 ## Impact
 
-Interfaces: afh serve, resident.status, resident.stop, reader-only archiveRequest over IPC. Write set: src/resident/, src/cli.js, test/acceptance/afh-09.test.mjs. Dependencies: afh-02-incremental-archive, afh-04-temporal-provenance, afh-06-layered-semantics, afh-07-contextual-retrieval, afh-08-observable-performance. All shared profiles are normative: reader, semantic.
+Interfaces: afh serve, resident.status, resident.stop, reader-only archiveRequest over IPC. Write set: src/resident/, src/cli.js, test/acceptance/afh-09.test.mjs, test/acceptance/afh-08.test.mjs. Dependencies: afh-02-incremental-archive, afh-04-temporal-provenance, afh-06-layered-semantics, afh-07-contextual-retrieval, afh-08-observable-performance. All shared profiles are normative: reader, semantic.

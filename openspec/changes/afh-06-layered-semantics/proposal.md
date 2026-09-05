@@ -20,4 +20,4 @@ No existing OpenSpec requirement is removed; legacy behavior remains covered by 
 
 ## Impact
 
-Interfaces: semantic.build, semantic.verify, semantic-index, verify-projection. Write set: src/semantic.js, src/semantic-model.js, src/archive/projections.js, src/context/chunking.js, test/acceptance/afh-06.test.mjs. Dependencies: afh-01-native-identity, afh-02-incremental-archive, afh-03-occurrence-ledger, afh-04-temporal-provenance, afh-05-governed-context. All shared profiles are normative: writer, semantic.
+Interfaces: semantic.build, semantic.verify, semantic-index, verify-projection. Write set: src/semantic.js, src/semantic-model.js, src/archive/projections.js, src/context/chunking.js, test/acceptance/afh-06.test.mjs, test/acceptance/afh-03.test.mjs. Dependencies: afh-01-native-identity, afh-02-incremental-archive, afh-03-occurrence-ledger, afh-04-temporal-provenance, afh-05-governed-context. All shared profiles are normative: writer, semantic.

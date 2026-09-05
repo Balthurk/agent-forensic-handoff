@@ -44,7 +44,7 @@ CLI directo siempre funciona si no hay servicio. Servicio caído retorna UNAVAIL
 
 Crash del reader no cambia archivo. Reinicio vuelve a verificar identidad. Rotación de endpoint por owner verificado; stop drena hasta30s y cancela pendientes con IDs, sin matar procesos ajenos. Saturación devuelve BUSY con retryable true y cola acotada.
 
-Expected write set: src/resident/, src/cli.js, test/acceptance/afh-09.test.mjs.
+Expected write set: src/resident/, src/cli.js, test/acceptance/afh-09.test.mjs, test/acceptance/afh-08.test.mjs.
 
 ## Risks / Trade-offs
 

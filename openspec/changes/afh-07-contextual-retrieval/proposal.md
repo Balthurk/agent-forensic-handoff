@@ -20,4 +20,4 @@ No existing OpenSpec requirement is removed; legacy behavior remains covered by 
 
 ## Impact
 
-Interfaces: query, stats, context.build, graph.neighbors, graph.path, event.show, evidence.read. Write set: src/retrieval.js, src/render.js, src/context/planner.js, src/context/pack.js, src/archive/stats.js, test/acceptance/afh-07.test.mjs. Dependencies: afh-01-native-identity, afh-02-incremental-archive, afh-03-occurrence-ledger, afh-04-temporal-provenance, afh-05-governed-context, afh-06-layered-semantics. All shared profiles are normative: reader, semantic.
+Interfaces: query, stats, context.build, graph.neighbors, graph.path, event.show, evidence.read. Write set: src/retrieval.js, src/render.js, src/context/planner.js, src/context/pack.js, src/archive/stats.js, test/acceptance/afh-07.test.mjs, test/acceptance/afh-01.test.mjs, test/acceptance/afh-04.test.mjs, test/acceptance/afh-05.test.mjs, test/acceptance/afh-06.test.mjs. Dependencies: afh-01-native-identity, afh-02-incremental-archive, afh-03-occurrence-ledger, afh-04-temporal-provenance, afh-05-governed-context, afh-06-layered-semantics. All shared profiles are normative: reader, semantic.

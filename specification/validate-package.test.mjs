@@ -18,6 +18,53 @@ const open={kind:'open',value:null,precision:'ns',timezone:null};
 const unknown={kind:'unknown',value:null,precision:'order_only',timezone:null};
 const known=(offset='Z')=>bound('2026-01-01T00:00:00.000000001'+offset);
 
+const incomingHarnessPermissions = [
+  [2,'test/acceptance/afh-01.test.mjs'], [3,'test/acceptance/afh-02.test.mjs'],
+  [4,'test/acceptance/afh-01.test.mjs'], [4,'test/acceptance/afh-03.test.mjs'],
+  [6,'test/acceptance/afh-03.test.mjs'], [7,'test/acceptance/afh-01.test.mjs'],
+  [7,'test/acceptance/afh-04.test.mjs'], [7,'test/acceptance/afh-05.test.mjs'],
+  [7,'test/acceptance/afh-06.test.mjs'], [9,'test/acceptance/afh-08.test.mjs']
+];
+function scopeCompleteRegistry(){
+  const r=clone();
+  for(const [order,file]of [...incomingHarnessPermissions,[2,'src/index.js']]){
+    const change=r.changes.find(c=>c.order===order);if(!change.write_set.includes(file))change.write_set.push(file);
+  }
+  return r;
+}
+for(const [order,file]of incomingHarnessPermissions)test(`SCOPE02 missing consumer${order} permission for ${file} invalidates the package`,()=>{
+  const r=scopeCompleteRegistry();const change=r.changes.find(c=>c.order===order);change.write_set=change.write_set.filter(area=>area!==file);
+  const result=validateRegistry(r,{checkGenerated:false});assert.equal(result.passed,false,'An executable incoming oracle must be writable at its due milestone');assert.match(result.errors.join('\n'),/acceptance-write-set/);
+});
+test('SCOPE02 explicitly complete scopes preserve scheduling and diagnostic acceptance override',()=>{
+  const r=scopeCompleteRegistry(),before=acceptancePlan(registry),after=acceptancePlan(r);
+  assert.deepEqual(after,before);assert.equal(validateRegistry(r,{checkGenerated:false}).passed,true);
+  assert.equal(after.filter(s=>s.milestone===2&&s.stage==='CHANGE_EXIT').length,29);
+  assert.equal(after.filter(s=>s.milestone===2&&s.owner===1).length,11);
+  assert.equal(after.filter(s=>s.milestone>s.owner).length,35);
+  assert.equal(after.filter(s=>s.stage==='CHANGE_EXIT').length,286);assert.equal(after.filter(s=>s.stage==='POST_PUBLICATION').length,2);
+  const direct=after.find(s=>s.id==='AFH-01-T01');assert.ok(direct.acceptance_entrypoint.args.includes('test/acceptance/afh-01.test.mjs'));assert.ok(!direct.acceptance_entrypoint.args.includes('specification/regression-probes.mjs'));
+});
+test('SCOPE02 gate independently refuses insufficient scopes even with a claimed successful validation',()=>{
+  const r=scopeCompleteRegistry();r.changes[1].write_set=r.changes[1].write_set.filter(file=>file!=='test/acceptance/afh-01.test.mjs');
+  const context=acceptedContext();context.writer={task_id:'exclusive-test-writer',exclusive:true,write_set:r.changes[1].write_set};
+  const result=evaluateGate({registry:r,validation:{passed:true},snapshot_sha256:snapshot,context,change_id:r.changes[1].id});assert.equal(result.state,'BLOCKED');assert.ok(result.blockers.includes('ACCEPTANCE_WRITE_SET_INVALID'));
+});
+for(const area of ['test/acceptance','test/acceptance/afh-01.test.mjs.backup','test/acceptance-other/','test/acceptance/afh-01.test'])test('SCOPE02 a partial path permission cannot authorize the incoming test: '+area,()=>{
+  const r=scopeCompleteRegistry(),change=r.changes[1];change.write_set=change.write_set.filter(file=>file!=='test/acceptance/afh-01.test.mjs');change.write_set.push(area);
+  const result=validateRegistry(r,{checkGenerated:false});assert.equal(result.passed,false);assert.match(result.errors.join('\n'),/acceptance-write-set/);
+});
+for(const file of ['../test/acceptance/afh-02.test.mjs','test/acceptance/../afh-02.test.mjs','/tmp/test/acceptance/afh-02.test.mjs','C:/test/acceptance/afh-02.test.mjs','test\\acceptance\\afh-02.test.mjs','test/acceptance//afh-02.test.mjs'])test('SCOPE02 malformed canonical acceptance path fails closed: '+file,()=>{
+  const r=scopeCompleteRegistry(),s=r.scenarios.find(s=>s.id==='AFH-02-T01');s.entrypoint.args[s.entrypoint.args.length-1]=file;
+  const result=validateRegistry(r,{checkGenerated:false});assert.equal(result.passed,false);assert.match(result.errors.join('\n'),/acceptance-write-set/);
+});
+test('SCOPE02 explicit directory boundaries and postpublication stages remain distinct',()=>{
+  const r=scopeCompleteRegistry();r.changes[1].write_set=r.changes[1].write_set.filter(file=>!file.startsWith('test/acceptance/'));r.changes[1].write_set.push('test/acceptance/');
+  // A directory permission is accepted only when explicitly declared by the test registry; the guard never adds one.
+  const before=structuredClone(r);assert.equal(validateRegistry(r,{checkGenerated:false}).passed,true);assert.deepEqual(r,before);
+  assert.deepEqual(acceptancePlan(r).filter(s=>s.stage==='POST_PUBLICATION').map(s=>s.id).sort(),['AFH-14-T17','AFH-14-T20']);
+});
+
 test('whole canonical package and generated views validate without writing',()=>{
   const before=packageSnapshot();const mtimes=[...generatedFiles(registry).keys()].map(p=>fs.statSync(path.join(ROOT,p)).mtimeMs);
   const result=validateRegistry(registry);assert.equal(result.passed,true,JSON.stringify(result.errors));

@@ -1183,7 +1183,9 @@
         "src/evidence.js",
         "src/integrity.js",
         "schemas/",
-        "test/acceptance/afh-02.test.mjs"
+        "test/acceptance/afh-02.test.mjs",
+        "test/acceptance/afh-01.test.mjs",
+        "src/index.js"
       ],
       "interfaces": [
         "archive.init",
@@ -1239,7 +1241,8 @@
         "src/database.js",
         "src/archive/ledger.js",
         "src/archive/occurrences.js",
-        "test/acceptance/afh-03.test.mjs"
+        "test/acceptance/afh-03.test.mjs",
+        "test/acceptance/afh-02.test.mjs"
       ],
       "interfaces": [
         "auditSession",
@@ -1294,7 +1297,9 @@
         "src/graph.js",
         "src/reducers.js",
         "schemas/",
-        "test/acceptance/afh-04.test.mjs"
+        "test/acceptance/afh-04.test.mjs",
+        "test/acceptance/afh-01.test.mjs",
+        "test/acceptance/afh-03.test.mjs"
       ],
       "interfaces": [
         "graph.neighbors",
@@ -1408,7 +1413,8 @@
         "src/semantic-model.js",
         "src/archive/projections.js",
         "src/context/chunking.js",
-        "test/acceptance/afh-06.test.mjs"
+        "test/acceptance/afh-06.test.mjs",
+        "test/acceptance/afh-03.test.mjs"
       ],
       "interfaces": [
         "semantic.build",
@@ -1466,7 +1472,11 @@
         "src/context/planner.js",
         "src/context/pack.js",
         "src/archive/stats.js",
-        "test/acceptance/afh-07.test.mjs"
+        "test/acceptance/afh-07.test.mjs",
+        "test/acceptance/afh-01.test.mjs",
+        "test/acceptance/afh-04.test.mjs",
+        "test/acceptance/afh-05.test.mjs",
+        "test/acceptance/afh-06.test.mjs"
       ],
       "interfaces": [
         "query",
@@ -1584,7 +1594,8 @@
       "write_set": [
         "src/resident/",
         "src/cli.js",
-        "test/acceptance/afh-09.test.mjs"
+        "test/acceptance/afh-09.test.mjs",
+        "test/acceptance/afh-08.test.mjs"
       ],
       "interfaces": [
         "afh serve",

@@ -20,4 +20,4 @@ No existing OpenSpec requirement is removed; legacy behavior remains covered by 
 
 ## Impact
 
-Interfaces: graph.neighbors, graph.path, event.show, query temporal, stats effects. Write set: src/archive/temporal.js, src/archive/provenance.js, src/graph.js, src/reducers.js, schemas/, test/acceptance/afh-04.test.mjs. Dependencies: afh-01-native-identity, afh-02-incremental-archive, afh-03-occurrence-ledger. All shared profiles are normative: writer, reader.
+Interfaces: graph.neighbors, graph.path, event.show, query temporal, stats effects. Write set: src/archive/temporal.js, src/archive/provenance.js, src/graph.js, src/reducers.js, schemas/, test/acceptance/afh-04.test.mjs, test/acceptance/afh-01.test.mjs, test/acceptance/afh-03.test.mjs. Dependencies: afh-01-native-identity, afh-02-incremental-archive, afh-03-occurrence-ledger. All shared profiles are normative: writer, reader.

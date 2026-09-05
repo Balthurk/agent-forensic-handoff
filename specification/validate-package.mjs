@@ -102,6 +102,7 @@ export function validateRegistry(registry,{root=ROOT,checkGenerated=true}={}){
   check('registry-schema',()=>{const ajv=ajvInstance();const v=ajv.compile(readJson(path.join(root,'specification/contracts.schema.json')));if(!v(registry))throw new Error(ajv.errorsText(v.errors,{separator:'; '}));});
   if(errors.length)return {passed:false,errors};
   check('acceptance-schedule',()=>{acceptancePlan(registry,{root});});
+  check('acceptance-write-set',()=>{const problems=acceptanceWriteSetProblems(registry,{root});if(problems.length)throw new Error(problems.join('; '));});
   check('control-applicability',()=>{controlPlan(registry,{root});resolveDoc(root,registry.acceptance_policy.control_applicability.interpretation_ref);});
   check('required-artifacts',()=>{for(const rel of ['.gitattributes','.github/workflows/ci.yml','openspec/config.yaml','openspec/specs/legacy-case-access/spec.md','docs/programs/afh-v0.4.0/HANDOFF.md','docs/programs/afh-v0.4.0/TESTING.md','specification/contract-checks.mjs','specification/validate-package.test.mjs','specification/regression-probes.mjs','tools/specification/package-lock.json'])localPath(root,rel);});
   check('generated-view-list',()=>{if(canonical([...registry.program.generated_views].sort())!==canonical(['RECOMMENDATIONS.md','REQUIREMENTS.md','REVIEW-CHECKLIST.md'].sort()))throw new Error('declared generated views differ from renderer');});
@@ -185,6 +186,27 @@ export function acceptancePlan(registry,{root=ROOT}={}){
   });
   if(new Set(rows.map(x=>x.id)).size!==registry.scenarios.length||rows.some(x=>x.milestone>14))throw new Error('Acceptance obligation lost');
   return rows;
+}
+
+/** Check explicit canonical permissions; deriving a due harness never grants a write. */
+export function acceptanceWriteSetProblems(registry,{root=ROOT,plan=acceptancePlan(registry,{root})}={}){
+  const problems=[];
+  const canonicalPath=value=>typeof value==='string'&&value.length>0&&!/^[\/]/.test(value)&&!/[\\:\0]/.test(value)&&!value.includes('//')&&value.replace(/\/$/,'').split('/').every(part=>part!=='.'&&part!=='..'&&part.length>0);
+  for(const item of plan){
+    // acceptancePlan has already selected any diagnostic acceptance override and
+    // retained the original CHANGE_EXIT/POST_PUBLICATION stage and consumer.
+    const entry=item.acceptance_entrypoint,consumer=registry.changes.find(c=>c.order===item.milestone);
+    const paths=entry.args.filter(arg=>!arg.startsWith('-')&&arg.replaceAll('\\','/').includes('test/acceptance'));
+    if(entry.kind!=='PACKAGE_TEST'&&paths.length!==1){problems.push(item.id+': expected one canonical acceptance harness');continue;}
+    for(const file of paths){
+      if(!canonicalPath(file)||!/^test\/acceptance\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.test\.(?:mjs|js|cjs)$/.test(file)){
+        problems.push(item.id+': invalid acceptance harness path '+file);continue;
+      }
+      const covered=consumer?.write_set.some(area=>canonicalPath(area)&&(area.endsWith('/')?file.startsWith(area):file===area));
+      if(!covered)problems.push(item.id+': milestone '+item.milestone+' '+item.stage+' lacks explicit write permission for '+file);
+    }
+  }
+  return problems;
 }
 
 export function acceptanceEvidenceProblems(registry,plan,context,snapshot_sha256,through,{postPublication=false}={}){
@@ -327,6 +349,7 @@ export function packageSnapshot(root=ROOT){
 export function evaluateGate({registry,validation,snapshot_sha256,context,change_id=null,release_phase=null}){
   const blockers=[];
   let plan=[];try{plan=acceptancePlan(registry);}catch{blockers.push('ACCEPTANCE_SCHEDULE_INVALID');}
+  try{if(acceptanceWriteSetProblems(registry,{plan}).length)blockers.push('ACCEPTANCE_WRITE_SET_INVALID');}catch{blockers.push('ACCEPTANCE_WRITE_SET_INVALID');}
   try{controlPlan(registry,{plan});}catch{blockers.push('CONTROL_APPLICABILITY_INVALID');}
   if(context.phase==='PAUSED'||context.paused===true)blockers.push('PAUSED');
   if(!validation.passed||registry.changes.length!==14||registry.recommendations.length!==22||registry.scenarios.length<200)blockers.push('PACKAGE_INCOMPLETE_OR_INVALID');

@@ -44,7 +44,7 @@ Importar 0.1/0.2/0.3 a destino vacío sin modificar originales; verificar invent
 
 Inyectar terminación de proceso después de objects_fsync, ledger_commit, revision_manifest y pointer_replace. Reiniciar, validar checkpoint y recuperar una sola revisión sin duplicados. Disk-full/rename Windows deja staging; último pointer sano permanece. Rechazar lock vivo y checkpoint adulterado.
 
-Expected write set: src/archive/, src/evidence.js, src/integrity.js, schemas/, test/acceptance/afh-02.test.mjs.
+Expected write set: src/archive/, src/evidence.js, src/integrity.js, schemas/, test/acceptance/afh-02.test.mjs, test/acceptance/afh-01.test.mjs, src/index.js.
 
 ## Risks / Trade-offs
 

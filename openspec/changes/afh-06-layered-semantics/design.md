@@ -44,7 +44,7 @@ Mantener semantic-index/query legacy y sidecars schema3 read-only; nuevos sideca
 
 Crash después de batch durable reusa únicamente filas verificadas y clave exacta. Reanudación config/modelo/redaction distinta falla PROJECTION_UNAVAILABLE con incompatibilidad; no retorna REUSED. Corrupción aislada no contamina Bronce/Plata publicados.
 
-Expected write set: src/semantic.js, src/semantic-model.js, src/archive/projections.js, src/context/chunking.js, test/acceptance/afh-06.test.mjs.
+Expected write set: src/semantic.js, src/semantic-model.js, src/archive/projections.js, src/context/chunking.js, test/acceptance/afh-06.test.mjs, test/acceptance/afh-03.test.mjs.
 
 ## Risks / Trade-offs
 

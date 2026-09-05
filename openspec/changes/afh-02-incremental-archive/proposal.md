@@ -20,4 +20,4 @@ No existing OpenSpec requirement is removed; legacy behavior remains covered by 
 
 ## Impact
 
-Interfaces: archive.init, archive.ingest, archive.import_case, archive.verify, archive.recover, evidence.read. Write set: src/archive/, src/evidence.js, src/integrity.js, schemas/, test/acceptance/afh-02.test.mjs. Dependencies: afh-01-native-identity. All shared profiles are normative: writer.
+Interfaces: archive.init, archive.ingest, archive.import_case, archive.verify, archive.recover, evidence.read. Write set: src/archive/, src/evidence.js, src/integrity.js, schemas/, test/acceptance/afh-02.test.mjs, test/acceptance/afh-01.test.mjs, src/index.js. Dependencies: afh-01-native-identity. All shared profiles are normative: writer.
