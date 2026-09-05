@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { AFH_VERSION, DEFAULTS, EPISTEMIC, SCHEMA_VERSION } from "./constants.js";
 import { CaseDatabase } from "./database.js";
-import { resolveSession } from "./discovery.js";
+import { resolveSession, assertSourcePath } from "./discovery.js";
 import { decodedLines, EvidenceStore } from "./evidence.js";
 import { inferredSessionFromSource, normalizeRecord } from "./adapters.js";
 import { reduceCase, computeCaseMetrics } from "./reducers.js";
@@ -28,6 +28,7 @@ export async function auditSession(identifier, options = {}) {
   };
   validateAuditConfig(config);
   const resolution = await resolveSession(identifier, { ...options, ...config });
+  for (const source of resolution.sources) assertSourcePath(source.path, options);
   const sources = resolution.sources.map((source) => ({ ...source, byteLength: fs.statSync(source.path).size }));
   const totalSourceBytes = sources.reduce((sum, source) => sum + source.byteLength, 0);
   if (totalSourceBytes > config.maxTotalSourceBytes) {

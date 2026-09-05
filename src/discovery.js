@@ -7,6 +7,24 @@ import { expandHome, walkFiles } from "./util.js";
 
 const SESSION_EXTENSIONS = [".jsonl", ".jsonl.zst", ".jsonl.gz", ".ndjson"];
 
+// Check every ancestor before opening source bytes: lstat of the leaf alone
+// does not detect a file accessed through a directory junction/symlink.
+export function assertSourcePath(filePath, { allowSymlink = false } = {}) {
+  if (allowSymlink) return;
+  const absolute = path.resolve(filePath);
+  const root = path.parse(absolute).root;
+  let current = root;
+  for (const part of absolute.slice(root.length).split(path.sep).filter(Boolean)) {
+    current = path.join(current, part);
+    let stat;
+    try { stat = fs.lstatSync(current); }
+    catch (error) { if (error.code === 'ENOENT') return; throw error; }
+    if (stat.isSymbolicLink()) {
+      throw Object.assign(new Error('Refusing a symlink source or ancestor; pass --allow-symlink to acknowledge it'), { code: 'INVALID_REQUEST' });
+    }
+  }
+}
+
 function isSessionFile(filePath) {
   return SESSION_EXTENSIONS.some((extension) => filePath.endsWith(extension));
 }
@@ -127,6 +145,7 @@ function returnedThreadIds(result) {
 }
 
 async function observedCodexDelegations(source) {
+  assertSourcePath(source.path);
   const edges = [];
   for await (const decoded of decodedLines(source.path)) {
     if (!decoded.line.includes('"item_completed"') || (!decoded.line.includes('"create_thread"') && !decoded.line.includes('"fork_thread"') && !decoded.line.includes('"SubAgentActivity"'))) continue;
@@ -256,13 +275,14 @@ function discoverAntigravity(identifier, options) {
 export async function resolveSession(identifier, options = {}) {
   const requestedHarness = options.harness || "auto";
   const expanded = expandHome(identifier);
+  assertSourcePath(expanded, options);
   if (fs.existsSync(expanded)) {
     const stat = fs.lstatSync(expanded);
-    if (stat.isSymbolicLink() && !options.allowSymlink) throw new Error("Refusing a symlink source; pass --allow-symlink to acknowledge it");
     const files = stat.isDirectory() ? walkFiles(expanded, isSessionFile) : [expanded];
     if (!files.length) throw new Error(`No supported transcript files found at ${expanded}`);
     const sources = [];
     for (const file of files) {
+      assertSourcePath(file, options);
       const harness = requestedHarness === "auto" ? await sniffHarness(file) : requestedHarness;
       sources.push({ path: path.resolve(file), nativeId: path.basename(file).replace(/\.(?:jsonl(?:\.zst|\.gz)?|ndjson)$/i, ""), harness, kind: `${harness}-transcript`, stateMetadata: {} });
     }
@@ -295,6 +315,7 @@ export async function resolveSession(identifier, options = {}) {
 }
 
 export async function inspectSource(filePath) {
+  assertSourcePath(filePath);
   const stat = fs.statSync(filePath);
   return { path: filePath, size: stat.size, mtimeMs: stat.mtimeMs, harness: await sniffHarness(filePath) };
 }

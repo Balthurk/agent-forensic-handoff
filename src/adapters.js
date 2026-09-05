@@ -181,7 +181,7 @@ function normalizeCompletedItem(record, payload, ctx) {
 }
 
 function codexSession(payload, sourceContext) {
-  const nativeId = payload.session_id ?? payload.id ?? sourceContext.nativeId;
+  const nativeId = payload.id ?? payload.session_id ?? sourceContext.nativeId;
   return {
     id: `ses:${sourceContext.harness}:${nativeId}`,
     nativeId,
@@ -194,6 +194,7 @@ function codexSession(payload, sourceContext) {
     harnessVersion: payload.cli_version ?? sourceContext.stateMetadata?.harnessVersion ?? null,
     model: payload.model ?? sourceContext.stateMetadata?.model ?? null,
     metadata: {
+      grouping_native_id: payload.session_id != null && payload.session_id !== nativeId ? payload.session_id : null,
       originator: payload.originator ?? null,
       source: payload.source ?? null,
       threadSource: payload.thread_source ?? null,
