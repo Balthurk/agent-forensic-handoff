@@ -144,8 +144,8 @@ function returnedThreadIds(result) {
   return [...ids];
 }
 
-async function observedCodexDelegations(source) {
-  assertSourcePath(source.path);
+async function observedCodexDelegations(source, options) {
+  assertSourcePath(source.path, options);
   const edges = [];
   for await (const decoded of decodedLines(source.path)) {
     if (!decoded.line.includes('"item_completed"') || (!decoded.line.includes('"create_thread"') && !decoded.line.includes('"fork_thread"') && !decoded.line.includes('"SubAgentActivity"'))) continue;
@@ -221,7 +221,7 @@ async function discoverCodex(identifier, options) {
     const warnedChildren = new Set();
     while (queue.length) {
       const parentSource = queue.shift();
-      for (const edge of await observedCodexDelegations(parentSource)) {
+      for (const edge of await observedCodexDelegations(parentSource, options)) {
         const key = `${edge.parent_thread_id}\0${edge.child_thread_id}`;
         if (!edgeByPair.has(key)) edgeByPair.set(key, edge);
         if (sourceByNativeId.has(edge.child_thread_id)) continue;
