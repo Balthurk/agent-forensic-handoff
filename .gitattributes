@@ -1,0 +1,10 @@
+# Reproducible specification snapshots and generated views across Windows/POSIX.
+/.gitattributes text eol=lf
+/.gitignore text eol=lf
+/.github/workflows/ci.yml text eol=lf
+/docs/programs/afh-v0.4.0/** text eol=lf
+/openspec/** text eol=lf
+/specification/** text eol=lf
+/schemas/archive-v4.schema.json text eol=lf
+/tools/specification/package.json text eol=lf
+/tools/specification/package-lock.json text eol=lf

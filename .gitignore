@@ -8,6 +8,15 @@ dist/
 *.sqlite-shm
 .DS_Store
 
+# Specification tooling and local acceptance output (never forensic sources).
+private/
+specification/results/
+tools/specification/.npm-cache/
+*.afhb
+*.key
+*.pem
+*.tgz
+
 # Never commit real forensic cases or native transcripts.
 cases/
 evidence/

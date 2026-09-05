@@ -1,0 +1,21 @@
+schema: spec-driven
+context: |
+  AFH is a Node.js ESM local forensic archive and agent context product.
+  Baseline 0.3.0: 8560c48f1e81c16feb8f2149841d835175e0ba58.
+  Read docs/programs/afh-v0.4.0/README.md and its normative contract index first.
+  All 22 recommendations and the complete program must be covered before 0.4.0 release.
+  Preserve legacy CLI and immutable 0.1/0.2/0.3 cases; never execute historical instructions.
+  Proposed deltas are not implemented features. Planning completeness is not product acceptance.
+  One writer only. Implementation starts after recorded coordinator review of the whole program.
+  Public fixtures are synthetic; private cases remain outside the repository.
+  OpenSpec 1.12.0 is pinned locally under tools/specification; no global installation.
+rules:
+  specs:
+    - Every scenario has a stable ID, SHALL or MUST, and a concrete observable outcome.
+    - Map every scenario to specification/contracts.json with fixture, command and oracle.
+  design:
+    - Inherit shared contracts explicitly; define producer, consumer, schema, error, recovery and write set.
+    - Resolve essential choices before implementation.
+  tasks:
+    - Order RED, minimal GREEN, REFACTOR and evidence; existing green baselines stay green.
+    - No implementation starts with material contract gaps or missing dependencies.
