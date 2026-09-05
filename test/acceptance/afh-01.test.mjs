@@ -272,7 +272,13 @@ test('AFH-01-T19 reject reparse acquisition before reading target bytes', async 
     assert.equal(fs.readFileSync(ordinary, 'utf8'), positiveBytes);
     const repeat = await auditSession(ordinary, { harness: 'codex', caseDir: positive.caseDir, workspace: run, includeChildren: false });
     assert.equal(repeat.reused, true);
-    receipt.control_observations.LEGACY_REGRESSION = { ordinary_case: positive.caseDir, same_case_reused: true, historical_command: command, execution_marker_absent: true, negative_observations: observations, no_negative_case_published: true };
+    const publishedBefore = fileInventory(positive.caseDir);
+    await assert.rejects(auditSession(path.join(link, 'outside-sentinel.jsonl'), { harness: 'generic', caseDir: positive.caseDir, workspace: allowed, includeChildren: false }), { code: 'INVALID_REQUEST' });
+    const publishedAfter = fileInventory(positive.caseDir);
+    assert.deepEqual(publishedAfter, publishedBefore, 'Rejection must preserve an already published case');
+    assert.equal((await verifyCaseIntegrity(positive.caseDir)).passed, true);
+    receipt.control_observations.LOSS_GUARD.rejected_over_existing_case = { before: publishedBefore, after: publishedAfter, integrity_passed: true };
+    receipt.control_observations.LEGACY_REGRESSION = { ordinary_case: positive.caseDir, same_case_reused: true, historical_command: command, execution_marker_absent: true, negative_observations: observations, no_negative_case_published: true, prior_case_preserved_on_rejection: true };
     receipt.control_observations.IMMUTABLE_SOURCE_INVENTORY.ordinary = { path: ordinary, before_sha256: hash(positiveBytes), after_sha256: hash(fs.readFileSync(ordinary)) };
   });
 });
