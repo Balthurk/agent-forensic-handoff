@@ -1,0 +1,54 @@
+import {createHash} from 'node:crypto';
+import {openSnapshot,openLedger,sourceManifest,readObject} from './storage.js';
+import {FRAME_BYTES,digest,failure,makeReceipt,checkResponse} from './protocol.js';
+
+function parseUri(value){
+  let uri;try{uri=new URL(value);}catch{throw failure('INVALID_URI','Evidence URI cannot be decoded');}
+  const match=/^\/sha256\/([a-f0-9]{64})\/record\/(0|[1-9][0-9]*)$/.exec(uri.pathname),range=/^#bytes=(0|[1-9][0-9]*):(0|[1-9][0-9]*)$/.exec(uri.hash);
+  if(uri.protocol!=='afh:'||uri.host!=='evidence'||!match||!range||[...uri.searchParams.keys()].some(key=>key!=='source')||uri.searchParams.getAll('source').length>1)throw failure('INVALID_URI','Evidence URI has invalid identity or extent');
+  return {raw_sha256:match[1],ordinal:BigInt(match[2]),offset:BigInt(range[1]),length:BigInt(range[2]),source_id:uri.searchParams.get('source')};
+}
+function resolveRecord(root,snapshot,uri){
+  const db=openLedger(root,true);let ids;try{db.exec('BEGIN');ids=db.prepare('SELECT id FROM source_revision WHERE commit_seq<=? ORDER BY id').all(snapshot.commit_seq).map(row=>row.id);db.exec('COMMIT');}finally{db.close();}
+  const matches=[];
+  for(const id of ids){if(uri.source_id&&id!==uri.source_id)continue;const source=sourceManifest(root,id);if((source.legacy_raw_sha256??source.raw_sha256)!==uri.raw_sha256)continue;const record=source.records.find(record=>BigInt(record.ordinal)===uri.ordinal&&BigInt(record.byte_offset)===uri.offset&&BigInt(record.byte_length)===uri.length);if(record)matches.push({source,record});}
+  if(matches.length!==1)throw failure(matches.length?'AMBIGUOUS_IDENTITY':'EVIDENCE_UNAVAILABLE',matches.length?'Evidence identity requires a source revision':'Evidence record is not visible in this revision');return matches[0];
+}
+export function recordBytes(root,source,record,offset,maxBytes,cache=null){
+  const objects=source.codec==='none'?source.objects:source.decoded_objects,hasher=createHash('sha256'),pieces=[],verified=[];
+  let covered=0;const start=Number(record.byte_offset),end=start+Number(record.byte_length),wantedStart=start+offset,wantedEnd=Math.min(end,wantedStart+maxBytes);
+  let low=0,high=objects.length;while(low<high){const middle=(low+high)>>>1;if(objects[middle].offset+objects[middle].length<=start)low=middle+1;else high=middle;}
+  for(let i=low;i<objects.length;i++){const object=objects[i],objectEnd=object.offset+object.length;if(object.offset>=end)break;let bytes=cache?.get(object.sha256);if(!bytes){bytes=readObject(root,object);if(cache){if(cache.size>=8)cache.delete(cache.keys().next().value);cache.set(object.sha256,bytes);}}verified.push(object.sha256);
+    const a=Math.max(start,object.offset),b=Math.min(end,objectEnd);if(a!==start+covered)throw failure('INTEGRITY_FAILED','Record extent is not contiguous');hasher.update(bytes.subarray(a-object.offset,b-object.offset));covered+=b-a;
+    const takeStart=Math.max(a,wantedStart),takeEnd=Math.min(b,wantedEnd);if(takeEnd>takeStart)pieces.push(bytes.subarray(takeStart-object.offset,takeEnd-object.offset));
+  }
+  if(covered!==Number(record.byte_length)||hasher.digest('hex')!==record.sha256)throw failure('INTEGRITY_FAILED','Record bytes do not match their manifest digest');return {bytes:Buffer.concat(pieces),verified:[...new Set(verified)]};
+}
+export function readArchiveEvidence(root,request,{receiptExtra={}}={}){
+  const snapshot=openSnapshot(root,request.revision_id),uri=parseUri(request.params.uri),{source,record}=resolveRecord(root,snapshot,uri),params=request.params;
+  const format=params.format??params.continuation?.format??'text',length=Number(record.byte_length),offset=Number(params.offset??params.continuation?.next_offset??0),max=params.max_bytes??1048576;
+  if(!Number.isSafeInteger(offset)||offset<0||offset>length)throw failure('INVALID_REQUEST','Evidence offset is outside the captured extent');
+  // The URI defines the requested extent. offset selects a transport position
+  // inside that fixed extent; it never changes the range identity mid-stream.
+  const extent={archive_id:snapshot.archive_id,revision_id:snapshot.revision_id,source_revision_id:source.source_revision_id,uri:params.uri,json_pointer:params.json_pointer??'',format,initial_offset:'0',extent_bytes:String(length),record_sha256:record.sha256};
+  const extentHash=digest(extent),cursor=params.continuation;
+  if(cursor){
+    const expected={archive_id:extent.archive_id,revision_id:extent.revision_id,source_revision_id:extent.source_revision_id,uri:extent.uri,format,request_extent_sha256:extentHash};
+    if(Object.entries(expected).some(([key,value])=>cursor[key]!==value)||BigInt(cursor.next_offset)!==BigInt(offset)||BigInt(cursor.remaining_bytes)!==BigInt(length-offset))throw failure('CONTINUATION_MISMATCH','Continuation identity or remaining extent differs');
+  }
+  const captured=recordBytes(root,source,record,offset,Math.min(max,length-offset)),receipt=makeReceipt(snapshot,{evidence_refs:[record.evidence_ref],...receiptExtra});
+  function envelope(byteCount){
+    let count=byteCount,payload;
+    if(format==='base64')payload=captured.bytes.subarray(0,count).toString('base64');
+    else{
+      // A transport fragment may end just before a UTF8 character; never use a
+      // replacement decoder or return half a codepoint.
+      try{payload=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(captured.bytes.subarray(0,count),{stream:offset+count<length});count=Buffer.byteLength(payload,'utf8');}catch{throw failure('INVALID_TEXT_ENCODING','Requested text fragment is not valid UTF8');}
+    }
+    const next=offset+count,remaining=length-next,continuation=remaining?{archive_id:extent.archive_id,revision_id:extent.revision_id,source_revision_id:extent.source_revision_id,uri:extent.uri,format,next_offset:next,remaining_bytes:remaining,request_extent_sha256:extentHash}:null;
+    return {kind:'response',schema_version:4,protocol_version:'4.0',request_id:request.request_id,operation:request.operation,status:remaining?'PARTIAL':'OK',data:{format,payload,bytes_returned:count,extent_bytes:length,record_sha256:record.sha256,objects_verified:captured.verified,partial:remaining>0,availability:record.original_extent_bytes===null?'TRUNCATED_AT_SOURCE':'AVAILABLE',continuation,archive_id:extent.archive_id,revision_id:extent.revision_id,source_revision_id:extent.source_revision_id,uri:extent.uri,offset,request_extent_sha256:extentHash,original_extent_bytes:record.original_extent_bytes??null},error:null,receipt};
+  }
+  let low=0,high=captured.bytes.length,best=null;
+  while(low<=high){const middle=Math.floor((low+high)/2),result=envelope(middle),size=Buffer.byteLength(JSON.stringify(result),'utf8');if(size<=FRAME_BYTES){best=result;low=middle+1;}else high=middle-1;}
+  if(!best||best.data.partial&&best.data.bytes_returned===0)throw failure('FRAME_TOO_LARGE','Frame budget cannot contain a complete evidence unit');return checkResponse(best);
+}

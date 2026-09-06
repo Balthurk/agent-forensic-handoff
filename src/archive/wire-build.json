@@ -1,0 +1,188 @@
+{
+  "schema_sha256": "f7b5f6a81928766237383fcace21b586e7f54b5c39cbc209dffac3a6b1392c72",
+  "generator": "Ajv2020 standalone",
+  "ajv": "8.20.0",
+  "ajv_formats": "3.0.1",
+  "error_catalog": [
+    {
+      "code": "INVALID_REQUEST",
+      "status": "ERROR",
+      "retryable": false
+    },
+    {
+      "code": "INVALID_QUERY",
+      "status": "ERROR",
+      "retryable": false
+    },
+    {
+      "code": "AMBIGUOUS_IDENTITY",
+      "status": "ERROR",
+      "retryable": false
+    },
+    {
+      "code": "INVALID_TEMPORAL_RANGE",
+      "status": "ERROR",
+      "retryable": false
+    },
+    {
+      "code": "BUDGET_TOO_SMALL",
+      "status": "ERROR",
+      "retryable": false
+    },
+    {
+      "code": "IDEMPOTENCY_CONFLICT",
+      "status": "ERROR",
+      "retryable": false
+    },
+    {
+      "code": "PROTOCOL_INCOMPATIBLE",
+      "status": "UNAVAILABLE",
+      "retryable": false
+    },
+    {
+      "code": "UNSUPPORTED_VERSION",
+      "status": "UNAVAILABLE",
+      "retryable": false
+    },
+    {
+      "code": "UNAVAILABLE",
+      "status": "UNAVAILABLE",
+      "retryable": false
+    },
+    {
+      "code": "NOT_IMPLEMENTED",
+      "status": "UNAVAILABLE",
+      "retryable": false
+    },
+    {
+      "code": "MODEL_UNAVAILABLE",
+      "status": "UNAVAILABLE",
+      "retryable": false
+    },
+    {
+      "code": "TOKENIZER_UNAVAILABLE",
+      "status": "UNAVAILABLE",
+      "retryable": false
+    },
+    {
+      "code": "PROJECTION_UNAVAILABLE",
+      "status": "UNAVAILABLE",
+      "retryable": false
+    },
+    {
+      "code": "EVIDENCE_UNAVAILABLE",
+      "status": "UNAVAILABLE",
+      "retryable": false
+    },
+    {
+      "code": "INTEGRITY_FAILED",
+      "status": "ERROR",
+      "retryable": false
+    },
+    {
+      "code": "PROVENANCE_UNRESOLVED",
+      "status": "ERROR",
+      "retryable": false
+    },
+    {
+      "code": "SIGNATURE_INVALID",
+      "status": "ERROR",
+      "retryable": false
+    },
+    {
+      "code": "DECRYPTION_FAILED",
+      "status": "ERROR",
+      "retryable": false
+    },
+    {
+      "code": "UNTRUSTED_SIGNER",
+      "status": "ERROR",
+      "retryable": false
+    },
+    {
+      "code": "BUSY",
+      "status": "ERROR",
+      "retryable": true
+    },
+    {
+      "code": "OWNER_UNVERIFIED",
+      "status": "ERROR",
+      "retryable": false
+    },
+    {
+      "code": "REVISION_CONFLICT",
+      "status": "ERROR",
+      "retryable": true
+    },
+    {
+      "code": "LIMIT_EXCEEDED",
+      "status": "ERROR",
+      "retryable": false
+    },
+    {
+      "code": "DISK_FULL",
+      "status": "ERROR",
+      "retryable": true
+    },
+    {
+      "code": "CLOCK_REGRESSION",
+      "status": "ERROR",
+      "retryable": true
+    },
+    {
+      "code": "FRAME_TOO_LARGE",
+      "status": "ERROR",
+      "retryable": false
+    },
+    {
+      "code": "INVALID_TEXT_ENCODING",
+      "status": "ERROR",
+      "retryable": false
+    },
+    {
+      "code": "CONTINUATION_MISMATCH",
+      "status": "ERROR",
+      "retryable": false
+    },
+    {
+      "code": "CANCELLED",
+      "status": "ERROR",
+      "retryable": true
+    },
+    {
+      "code": "INTERRUPTED",
+      "status": "ERROR",
+      "retryable": true
+    },
+    {
+      "code": "PARTIAL",
+      "status": "PARTIAL",
+      "retryable": false
+    },
+    {
+      "code": "INCONCLUSIVE_COVERAGE",
+      "status": "INCONCLUSIVE_COVERAGE",
+      "retryable": false
+    },
+    {
+      "code": "INVALID_URI",
+      "status": "ERROR",
+      "retryable": false
+    },
+    {
+      "code": "TARGET_EXISTS",
+      "status": "ERROR",
+      "retryable": false
+    },
+    {
+      "code": "INVALID_SIGNATURE_KEY",
+      "status": "ERROR",
+      "retryable": false
+    },
+    {
+      "code": "INTERNAL_ERROR",
+      "status": "ERROR",
+      "retryable": false
+    }
+  ]
+}

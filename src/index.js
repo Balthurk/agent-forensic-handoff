@@ -1,4 +1,5 @@
 export { auditSession } from "./audit.js";
+export { archiveRequest } from "./archive/engine.js";
 export { readHotContext, searchCase, showEvent, readEvidence, loadManifest } from "./render.js";
 export { resolveSession, inspectSource } from "./discovery.js";
 export { installSkill } from "./install.js";

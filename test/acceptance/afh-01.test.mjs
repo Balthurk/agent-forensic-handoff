@@ -7,14 +7,167 @@ import { createHash } from 'node:crypto';
 import childProcess, { execFileSync } from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
 import { fileURLToPath } from 'node:url';
-import { DatabaseSync } from 'node:sqlite';
-import { auditSession, readEvidence, showEvent, loadManifest, verifyCaseIntegrity } from '../../src/index.js';
+import sqlite, { DatabaseSync, constants as sqliteConstants } from 'node:sqlite';
+import { auditSession, readEvidence, showEvent, loadManifest, verifyCaseIntegrity, archiveRequest } from '../../src/index.js';
+import Ajv2020 from '../../tools/specification/node_modules/ajv/dist/2020.js';
+import addFormats from '../../tools/specification/node_modules/ajv-formats/dist/index.js';
+import {digest, relationalWireChecks} from '../../specification/validate-package.mjs';
 import { runtimeSnapshot, snapshotStability, inspectNativeIdentity, assertNativeIdentityObservation } from '../../specification/contract-checks.mjs';
 
 const checkout = fileURLToPath(new URL('../../', import.meta.url));
 const registry = JSON.parse(fs.readFileSync(path.join(checkout, 'specification/contracts.json'), 'utf8'));
 const fixtures = JSON.parse(fs.readFileSync(path.join(checkout, 'specification/fixtures/critical-contracts.json'), 'utf8'));
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
+const wireSchema=JSON.parse(fs.readFileSync(path.join(checkout,'schemas/archive-v4.schema.json'))),ajv=new Ajv2020({allErrors:true,strict:true,validateFormats:true});addFormats(ajv);ajv.addSchema(wireSchema);
+const validateRequest=ajv.compile({$ref:wireSchema.$id+'#/$defs/Request'}),validateResponse=ajv.compile({$ref:wireSchema.$id+'#/$defs/Response'});
+const archiveOrigins=['generic','codex','claude'].map((harness,i)=>({id:'00000000-0000-4000-8000-00000000040'+i,harness,descriptor:'Synthetic identity integration origin'}));
+function observeArchiveProcesses(run,receipt,onCall=null){
+  const methods=['exec','execSync','execFile','execFileSync','spawn','spawnSync','fork'],originals=Object.fromEntries(methods.map(name=>[name,childProcess[name]])),observed=[];
+  for(const method of methods)childProcess[method]=function(command,args,options){
+    const osLookup=process.platform==='win32'&&method==='execFileSync'&&command===path.join(process.env.SystemRoot??'C:/Windows','System32/WindowsPowerShell/v1.0/powershell.exe')&&args?.length===4&&args[0]==='-NoProfile'&&args[1]==='-NonInteractive'&&args[2]==='-Command'&&/^\(Get-Process -Id [0-9]+ -ErrorAction Stop\)\.StartTime\.ToUniversalTime\(\)\.Ticks\.ToString\(\)$/.test(args[3])&&options?.windowsHide===true;
+    const ownWorker=method==='fork'&&path.resolve(command)===path.join(run,'archive-worker.mjs')&&args?.length===0&&options?.windowsHide===true&&options.execArgv?.length===0;
+    observed.push({method,command,args,allowed:osLookup||ownWorker,kind:osLookup?'CURRENT_OS_IDENTITY':ownWorker?'OWN_CRASH_TEST_WORKER':'UNEXPECTED',...(ownWorker?{worker_sha256:hash(fs.readFileSync(command))}:{})});onCall?.(observed.at(-1));if(!osLookup&&!ownWorker)throw new Error('Unexpected process execution in archive observation');return originals[method].apply(this,arguments);
+  };syncBuiltinESMExports();return ()=>{Object.assign(childProcess,originals);syncBuiltinESMExports();receipt.process_execution_observation={calls:observed,unexpected:observed.filter(call=>!call.allowed).length};};
+}
+// Test-only observation of real native calls. This is intentionally independent
+// of product receipts: a boolean supplied by the engine cannot authorize a delta.
+const readerWriterPhases=new Map();
+const readerFixtureRoots=new Set();
+const readerAuxiliaryNames=new Set(['ledger.sqlite-shm','ledger.sqlite-wal']);
+function readerInventory(root){
+  const rows=[];
+  function visit(file){
+    const stat=fs.lstatSync(file,{bigint:true}),relative=path.relative(root,file).split(path.sep).join('/');
+    const type=stat.isSymbolicLink()?'link':stat.isDirectory()?'directory':stat.isFile()?'file':'unknown';
+    rows.push({path:relative,type,bytes:type==='file'?Number(stat.size):null,identity:stat.dev+':'+stat.ino,sha256:type==='file'?hash(fs.readFileSync(file)):null,...(type==='link'?{link:fs.readlinkSync(file)}:{})});
+    if(type==='directory')for(const name of fs.readdirSync(file).sort())visit(path.join(file,name));
+  }
+  visit(root);return rows;
+}
+function readerAuxiliaryInventory(root){
+  return [...readerAuxiliaryNames].flatMap(name=>{
+    const file=path.join(root,name);if(!fs.existsSync(file))return [];
+    const stat=fs.lstatSync(file,{bigint:true});return [{path:name,type:stat.isSymbolicLink()?'link':stat.isFile()?'file':'unknown',bytes:Number(stat.size),identity:stat.dev+':'+stat.ino,sha256:stat.isFile()&&!stat.isSymbolicLink()?hash(fs.readFileSync(file)):null}];
+  });
+}
+function readerCompare(observation){
+  const reasons=[],add=reason=>{if(!reasons.includes(reason))reasons.push(reason);},before=observation.inventories[0].rows;
+  const protectedRows=rows=>rows.filter(row=>!readerAuxiliaryNames.has(row.path));
+  for(const snapshot of observation.inventories){
+    if(snapshot.rows.some(row=>!['file','directory'].includes(row.type)))add('UNSUPPORTED_FILE_TYPE');
+    if(snapshot.rows.some(row=>readerAuxiliaryNames.has(row.path)&&row.type!=='file'))add('NONREGULAR_AUXILIARY');
+    if(digest(protectedRows(snapshot.rows))!==digest(protectedRows(before)))add('PROTECTED_INVENTORY_CHANGE');
+  }
+  const auxiliarySnapshots=[before.filter(row=>readerAuxiliaryNames.has(row.path)),...observation.native_calls.flatMap(call=>[call.before,call.after]),observation.inventories.at(-1).rows.filter(row=>readerAuxiliaryNames.has(row.path))];
+  const firstWal=auxiliarySnapshots[0].find(row=>row.path==='ledger.sqlite-wal')??null;
+  for(const rows of auxiliarySnapshots){
+    if(rows.some(row=>row.type!=='file'))add('NONREGULAR_AUXILIARY');
+    const wal=rows.find(row=>row.path==='ledger.sqlite-wal')??null;
+    if(firstWal?.bytes>0){if(digest(wal)!==digest(firstWal))add('NONEMPTY_WAL_CHANGED');}
+    else if(wal&&wal.bytes!==0)add('ZERO_WAL_GAINED_DATA');
+  }
+  const changed=auxiliarySnapshots.some(rows=>digest(rows)!==digest(auxiliarySnapshots[0]));
+  if(changed){
+    if(!observation.writer_observation.quiet)add('WRITER_NOT_OBSERVED_QUIET');
+    if(!observation.handles.length||observation.handles.some(handle=>!handle.readOnly||handle.location!==observation.database||!handle.closed))add('NATIVE_READONLY_HANDLE_UNPROVEN');
+    if(observation.unattributed_boundaries.length)add('UNATTRIBUTED_AUXILIARY_CHANGE');
+    for(const call of observation.native_calls){
+      if(digest(call.before)!==digest(call.after)&&!observation.handles.some(handle=>handle.id===call.handle_id&&handle.readOnly&&handle.location===observation.database))add('UNATTRIBUTED_NATIVE_CHANGE');
+    }
+  }
+  if(observation.filesystem_mutations.length)add('JAVASCRIPT_FILESYSTEM_MUTATION');
+  if(!observation.sql_probes&&observation.sql_mutations.length)add('SQL_MUTATION_ATTEMPT');
+  return {preserved:reasons.length===0,reasons,auxiliary_changes:changed,nonempty_wal_protected:firstWal?.bytes>0};
+}
+async function observeArchiveReader(root,body,{sqlProbes=false}={}){
+  root=path.resolve(root);const database=path.join(root,'ledger.sqlite'),originalConstructor=sqlite.DatabaseSync;
+  const report={root,pid:process.pid,database,decision:'AFH-02-READONLY-WAL-INTERPRETATION-01',inventories:[{phase:'BEFORE',rows:readerInventory(root)}],handles:[],native_calls:[],filesystem_mutations:[],sql_mutations:[],errors:[],unattributed_boundaries:[],sql_probes:sqlProbes};
+  const phase=readerWriterPhases.get(root),lockFile=path.join(root,'writer.lock'),lock=fs.existsSync(lockFile)?JSON.parse(fs.readFileSync(lockFile)):null;
+  const syntheticBase=[...readerFixtureRoots].find(base=>{const relative=path.relative(base,root);return relative!==''&&!relative.startsWith('..')&&!path.isAbsolute(relative);}),relative=syntheticBase?path.relative(syntheticBase,root):'..';
+  report.writer_observation={synthetic_root:syntheticBase??null,contained:relative!==''&&!relative.startsWith('..')&&!path.isAbsolute(relative),lock:lock?{pid:lock.pid,job_id:lock.job_id,nonce:lock.nonce}:null,phase:phase??null};
+  report.writer_observation.quiet=report.writer_observation.contained&&(!lock||phase?.pid===lock.pid&&['PAUSED_AT_NATIVE_FAULT_BARRIER','PROCESS_CLOSED'].includes(phase.state));
+  let lastAux=readerAuxiliaryInventory(root),sequence=0;const duringHandles=new Set();
+  const errorValue=error=>({code:error.code??null,errcode:error.errcode??null,errstr:error.errstr??null,message:error.message});
+  function native(handle,method,sql,invoke){
+    const before=readerAuxiliaryInventory(root);if(digest(before)!==digest(lastAux))report.unattributed_boundaries.push({sequence,method,before:lastAux,after:before});
+    const event={sequence:++sequence,handle_id:handle.id,method,sql:sql??null,before};let result;
+    try{result=invoke();event.completed=true;return result;}catch(error){event.error=errorValue(error);report.errors.push({sequence:event.sequence,...event.error});throw error;}
+    finally{event.after=readerAuxiliaryInventory(root);lastAux=event.after;report.native_calls.push(event);if(method==='prepare'&&!duringHandles.has(handle.id)||method==='close'){duringHandles.add(handle.id);report.inventories.push({phase:'DURING_'+event.sequence+'_'+method,rows:readerInventory(root)});}}
+  }
+  function checkSql(sql){
+    const normalized=sql.trim().replace(/;\s*$/,'');
+    const allowed=!normalized.includes(';')&&(/^(BEGIN|COMMIT|ROLLBACK)$/i.test(normalized)||/^SELECT\b/i.test(normalized)||/^PRAGMA\s+integrity_check$/i.test(normalized));
+    if(!allowed){report.sql_mutations.push({sql});if(!sqlProbes)throw new Error('Normal archive reader attempted non-read SQL: '+sql);}
+  }
+  sqlite.DatabaseSync=new Proxy(originalConstructor,{construct(_ctor,args){
+    const handle={id:report.handles.length+1,argument:args[0],options:args[1]??{},readOnly:args[1]?.readOnly===true,closed:false};report.handles.push(handle);
+    const db=native(handle,'constructor',null,()=>Reflect.construct(originalConstructor,args));handle.location=path.resolve(db.location('main'));
+    if(!handle.readOnly||handle.location!==database){db.close();throw new Error('Reader native handle is writable or outside the active archive');}
+    if(typeof db.setAuthorizer!=='function'){db.close();throw Object.assign(new Error('Native authorizer observation is unavailable'),{code:'UNAVAILABLE'});}
+    const allowed=new Set([sqliteConstants.SQLITE_READ,sqliteConstants.SQLITE_SELECT,sqliteConstants.SQLITE_FUNCTION,sqliteConstants.SQLITE_PRAGMA,sqliteConstants.SQLITE_TRANSACTION,sqliteConstants.SQLITE_RECURSIVE]);
+    db.setAuthorizer((action,a,b)=>{if(!allowed.has(action)||action===sqliteConstants.SQLITE_PRAGMA&&b!==null){report.sql_mutations.push({handle_id:handle.id,action,a,b});if(!sqlProbes)return sqliteConstants.SQLITE_DENY;}return sqliteConstants.SQLITE_OK;});
+    return new Proxy(db,{get(target,key){
+      if(key==='prepare')return sql=>{checkSql(sql);const statement=native(handle,'prepare',sql,()=>target.prepare(sql));return new Proxy(statement,{get(stmt,method){const value=Reflect.get(stmt,method,stmt);if(typeof value!=='function')return value;return (...parameters)=>{const result=native(handle,'statement.'+String(method),sql,()=>value.apply(stmt,parameters));if(method!=='iterate')return result;const iteratorProxy=new Proxy(result,{get(iterator,action){if(action===Symbol.iterator)return ()=>iteratorProxy;const fn=Reflect.get(iterator,action,iterator);return typeof fn==='function'?(...values)=>native(handle,'iterator.'+String(action),sql,()=>fn.apply(iterator,values)):fn;}});return iteratorProxy;};}});};
+      if(key==='exec')return sql=>{checkSql(sql);return native(handle,'exec',sql,()=>target.exec(sql));};
+      if(key==='close')return ()=>{const result=native(handle,'close',null,()=>target.close());handle.closed=true;return result;};
+      const value=Reflect.get(target,key,target);if(typeof value!=='function')return value;
+      return (...args)=>{throw new Error('Unobserved native reader method: '+String(key));};
+    }});
+  }});
+  const restorers=[],mutators=['appendFile','chmod','chown','copyFile','cp','fchmod','fchown','fdatasync','fsync','ftruncate','futimes','lchmod','lchown','link','lutimes','mkdir','mkdtemp','rename','rm','rmdir','symlink','truncate','unlink','utimes','write','writeFile','writev'];
+  function watch(object,name,open=false){if(typeof object[name]!=='function')return;const original=object[name];object[name]=function(...args){const flags=args[1],writes=!open||(typeof flags==='string'?!['r','rs','sr'].includes(flags):(Number(flags)&(fs.constants.O_WRONLY|fs.constants.O_RDWR|fs.constants.O_CREAT|fs.constants.O_TRUNC|fs.constants.O_APPEND))!==0);if(writes)report.filesystem_mutations.push({method:name,target:typeof args[0]==='string'?args[0]:String(args[0]),flags:open?flags:null});return original.apply(this,args);};restorers.push(()=>{object[name]=original;});}
+  for(const name of mutators){watch(fs,name);watch(fs,name+'Sync');watch(fs.promises,name);}watch(fs,'open',true);watch(fs,'openSync',true);watch(fs.promises,'open',true);watch(fs,'createWriteStream');syncBuiltinESMExports();
+  let result,operationError;
+  try{result=await body();}catch(error){operationError=error;}
+  finally{for(const restore of restorers.reverse())restore();sqlite.DatabaseSync=originalConstructor;syncBuiltinESMExports();report.inventories.push({phase:'AFTER',rows:readerInventory(root)});const finalAux=readerAuxiliaryInventory(root);if(digest(finalAux)!==digest(lastAux))report.unattributed_boundaries.push({sequence:++sequence,method:'AFTER_NATIVE_CALLS',before:lastAux,after:finalAux});}
+  report.comparison=readerCompare(report);report.operation_error=operationError?errorValue(operationError):result?.error??null;report.passed=report.comparison.preserved&&report.writer_observation.quiet&&!report.operation_error&&result?.data?.passed!==false&&report.errors.length===0&&report.handles.length>0&&report.handles.every(handle=>handle.readOnly&&handle.closed)&&!sqlProbes;
+  return {result,error:operationError,observation:report};
+}
+async function archiveScenario(t,id,body){
+  const run=createRun(id),archive=path.join(run,'archive'),contract=registry.scenarios.find(s=>s.id===id),before=runtimeSnapshot(checkout),receipt={scenario_id:id,role:'COMPONENT_OBSERVATION',acceptance_eligible:false,input_class:'SYNTHETIC',runtime_class:'REAL_AFH',provider_class:'NONE',candidate_commit:execFileSync('git',['rev-parse','HEAD'],{cwd:checkout,encoding:'utf8'}).trim(),runner_sha256:hash(fs.readFileSync(fileURLToPath(import.meta.url))),runtime_before:before,fixture_sha256:contract.fixture_ref.sha256,oracle_sha256:contract.oracle_ref.sha256,requests:[],phase:'PRECONDITION'};let index=0;
+  readerFixtureRoots.add(run);const invoke=async(operation,params,overrides={})=>{const request={kind:'request',schema_version:4,protocol_version:'4.0',request_id:id+'-'+(++index),operation,archive,revision_id:null,params,...overrides};if(request.protocol_version==='4.0')assert.equal(validateRequest(request),true,JSON.stringify(validateRequest.errors));let response;if(['evidence.read','archive.verify','scope.resolve'].includes(operation)){const observed=await observeArchiveReader(request.archive,()=>archiveRequest(request));response=observed.result;(receipt.read_only_observations??=[]).push({operation,...observed.observation});if(observed.error)throw observed.error;assert.equal(observed.observation.comparison.preserved,true,JSON.stringify(observed.observation.comparison));}else response=await archiveRequest(request);receipt.requests.push({request,response});if(!validateResponse(response))throw Object.assign(new Error(JSON.stringify(validateResponse.errors)),{code:'SCHEMA_PRECONDITION'});if(response.error?.code==='NOT_IMPLEMENTED')throw Object.assign(new Error(response.error.message),{code:'NOT_IMPLEMENTED'});let pair=null;if(operation==='evidence.read'&&response.data){const pointer=JSON.parse(fs.readFileSync(path.join(archive,'archive.json'))),revision=JSON.parse(fs.readFileSync(path.join(archive,'revisions',pointer.revision_id+'.json')));const matches=revision.source_manifest_ids.flatMap(id=>{const source=JSON.parse(fs.readFileSync(path.join(archive,'bronze/sources',id+'.json')));return source.records.filter(record=>record.evidence_ref.uri===params.uri).map(record=>({source,record}));});assert.equal(matches.length,1);const {source,record}=matches[0],state={archive_id:pointer.archive_id,revision_id:pointer.revision_id,source_revision_id:source.source_revision_id,uri:params.uri,json_pointer:params.json_pointer??'',format:params.format??'text',initial_offset:'0',extent_bytes:String(record.byte_length),record_sha256:record.sha256};pair={request,state:{...state,request_extent_sha256:hash(canonical(state)),original_extent_bytes:record.original_extent_bytes}};}const problems=relationalWireChecks(response,registry,pair);if(problems.length)throw Object.assign(new Error(problems.join(',')),{code:'WIRE_PRECONDITION'});return response;};
+  const ingest=async(name,records,{harness='generic',native_id,source_lineage_id}={})=>{const file=path.join(run,name),bytes=records.map(JSON.stringify).join('\n')+'\n';fs.writeFileSync(file,bytes,{flag:'wx'});const input={path:file,harness,origin_domain_id:archiveOrigins.find(o=>o.harness===harness).id,...(native_id?{native_id}:{}),...(source_lineage_id?{source_lineage_id}:{})};const result=await invoke('archive.ingest',{sources:[input],include_children:false,idempotency_key:name});assert.equal(result.error,null);const source=JSON.parse(fs.readFileSync(path.join(archive,'bronze/sources',result.data.source_revisions[0]+'.json')));for(const record of source.records){const read=await invoke('evidence.read',{uri:record.evidence_ref.uri,format:'base64'});assert.equal(read.error,null);assert.equal(hash(Buffer.from(read.data.payload,'base64')),record.sha256);}assert.equal(hash(fs.readFileSync(file)),hash(Buffer.from(bytes)));return {input,source,result,bytes};};
+  const ledger=table=>{assert.ok(['session_version','association_version','source_revision'].includes(table));const db=new DatabaseSync(path.join(archive,'ledger.sqlite'),{readOnly:true});try{return db.prepare('SELECT * FROM '+table).all().map(row=>row.data_json?JSON.parse(row.data_json):row);}finally{db.close();}};
+  const stopProcesses=observeArchiveProcesses(run,receipt);
+  try{assert.equal(hash(canonical(fixtures.cases[id])),contract.fixture_ref.sha256);assert.equal(hash(canonical(fixtures.oracles[id])),contract.oracle_ref.sha256);assert.equal((await invoke('archive.init',{idempotency_key:'init',origin_domains:archiveOrigins})).error,null);receipt.phase='BEHAVIOR';await body({run,archive,invoke,ingest,ledger,fixture:fixtures.cases[id],expected:fixtures.oracles[id].expected,receipt});receipt.status='GREEN_BEHAVIOR';}catch(error){receipt.status=error.code==='NOT_IMPLEMENTED'?'NOT_IMPLEMENTED':error.code==='ERR_ASSERTION'&&receipt.phase==='BEHAVIOR'?'RED_BEHAVIOR':'ERROR_MECHANICAL_OR_PRECONDITION';receipt.reason=error.message;if(receipt.status==='NOT_IMPLEMENTED')t.skip(receipt.reason);else throw error;}finally{readerFixtureRoots.delete(run);stopProcesses();assert.equal(receipt.process_execution_observation.unexpected,0);receipt.runtime_after=runtimeSnapshot(checkout);receipt.stability=snapshotStability(before,receipt.runtime_after);fs.writeFileSync(path.join(run,'receipt.json'),JSON.stringify(receipt,null,2)+'\n',{flag:'wx'});t.diagnostic('Evidence: '+path.join(run,'receipt.json'));assert.equal(receipt.stability.stable,true);}
+}
+function association(source,id,project_id,workspace=null,state='associated',checkout=null){return {association_id:id,expected_revision_id:null,branch_id:'main',session_id:source.session_id,project_id,workspace,checkout,association_state:state,valid_from:{kind:'unknown',value:null,precision:'order_only',timezone:null},valid_to:{kind:'open',value:null,precision:'order_only',timezone:null},evidence_refs:[source.records[0].evidence_ref]};}
+test('Association controls preserve temporal bounds idempotence and pinned scope while rejecting stale writes',async t=>archiveScenario(t,'AFH-01-T13',async({archive,ingest,invoke,receipt})=>{
+  receipt.validation_role='INHERITED_ASSOCIATION_TIME_SCOPE_IDEMPOTENCE';const {source}=await ingest('association-controls.jsonl',[{role:'user',content:'Association observation'}]);
+  const a=association(source,'control','project-a'),first=await invoke('association.record',{idempotency_key:'first',changes:[a]});assert.equal(first.error,null);const firstRevision=first.data.revisions[0],firstCapture=first.receipt.revision_id;
+  const same=await invoke('association.record',{idempotency_key:'first',changes:[a]});assert.deepEqual(same.data,first.data);assert.deepEqual(same.receipt,first.receipt);
+  const b={...a,project_id:'project-b',expected_revision_id:firstRevision.revision_id,valid_from:{kind:'known',value:'2026-01-01T00:00:00.000000001Z',precision:'ns',timezone:'UTC'},valid_to:{kind:'known',value:'2026-01-01T00:00:00.000000002Z',precision:'ns',timezone:'UTC'}};
+  const second=await invoke('association.record',{idempotency_key:'second',changes:[b]});assert.equal(second.error,null);assert.deepEqual(second.data.revisions[0].valid_from,b.valid_from);assert.deepEqual(second.data.revisions[0].valid_to,b.valid_to);assert.equal(second.data.revisions[0].supersedes_revision_id,firstRevision.revision_id);
+  const oldScope=await invoke('scope.resolve',{active_context:{session_id:source.session_id}},{revision_id:firstCapture}),currentScope=await invoke('scope.resolve',{active_context:{session_id:source.session_id}});assert.equal(oldScope.data.effective_scope.project_id,'project-a');assert.equal(currentScope.data.effective_scope.project_id,'project-b');
+  const pointer=fs.readFileSync(path.join(archive,'archive.json')),stale=await invoke('association.record',{idempotency_key:'stale',changes:[a]});assert.equal(stale.error?.code,'REVISION_CONFLICT');assert.deepEqual(fs.readFileSync(path.join(archive,'archive.json')),pointer);
+  const conflict=await invoke('association.record',{idempotency_key:'second',changes:[{...b,project_id:'different'}]});assert.equal(conflict.error?.code,'IDEMPOTENCY_CONFLICT');assert.deepEqual(fs.readFileSync(path.join(archive,'archive.json')),pointer);
+  const invalid={...b,expected_revision_id:second.data.revisions[0].revision_id,valid_from:b.valid_to,valid_to:b.valid_from};const rejected=await invoke('association.record',{idempotency_key:'invalid-time',changes:[invalid]});assert.equal(rejected.error?.code,'INVALID_TEMPORAL_RANGE');assert.deepEqual(fs.readFileSync(path.join(archive,'archive.json')),pointer);
+  receipt.observed={temporal_bound_bytes_preserved:true,pinned_scope_preserved:true,stale_branch_rejected:true,idempotent_original_receipt:true,invalid_time_rejected:true};
+}));
+
+test('AFH-01-T02 archive retains parent and two children as three native owners with one grouping',async t=>archiveScenario(t,'AFH-01-T02',async({ingest,ledger,fixture,expected,receipt})=>{
+  const captured=[];for(const native of fixture.input.native_ids){const records=[{type:'session_meta',payload:{id:native,session_id:fixture.input.shared_id}}];if(native==='parent')for(const child of fixture.input.native_ids.slice(1))records.push({type:'event_msg',payload:{type:'item_completed',item:{type:'SubAgentActivity',agent_thread_id:child,kind:'spawned'}}});captured.push((await ingest(native+'.jsonl',records,{harness:'codex'})).source);}
+  const edges=captured.flatMap(s=>s.records.flatMap(r=>r.events.flatMap(e=>e.session_edges)));assert.equal(edges.filter(e=>e.type==='SPAWNED').length,2);
+  receipt.observed={sessions:new Set(ledger('session_version').map(s=>s.id)).size,owners_per_source:Math.max(...captured.map(s=>new Set(s.records.flatMap(r=>r.events.map(e=>e.session_id))).size)),groupings:new Set(captured.flatMap(s=>s.records.flatMap(r=>r.events.map(e=>e.session_metadata.grouping_native_id))).filter(Boolean)).size};assert.deepEqual(receipt.observed,expected);
+}));
+test('AFH-01-T04 archive namespaces native IDs by harness',async t=>archiveScenario(t,'AFH-01-T04',async({ingest,fixture,expected,receipt})=>{const sessions=[];for(const harness of fixture.input.harnesses)sessions.push((await ingest(harness+'.jsonl',[{session_id:fixture.input.native_id,role:'user',content:'identity'}],{harness,native_id:fixture.input.native_id})).source.session_id);receipt.observed={native_sessions:new Set(sessions).size,collision:sessions[0]===sessions[1]};assert.deepEqual(receipt.observed,expected);}));
+test('AFH-01-T05 missing native ID remains uncertain and provisional',async t=>archiveScenario(t,'AFH-01-T05',async({ingest,expected,receipt})=>{const {source}=await ingest('one.jsonl',[{role:'user',content:'No native owner supplied'}]);assert.equal(source.native_id,null);receipt.observed={identity_status:source.identity_status,provisional:source.provisional};assert.deepEqual(receipt.observed,expected);}));
+test('AFH-01-T06 explicit relocation preserves lineage and both location observations',async t=>archiveScenario(t,'AFH-01-T06',async({run,archive,ingest,invoke,fixture,expected,receipt})=>{const first=await ingest('from.jsonl',[{role:'user',content:'relocated'}],{source_lineage_id:fixture.input.lineage}),relocated=path.join(run,'to.jsonl');fs.copyFileSync(first.input.path,relocated);const result=await invoke('archive.ingest',{sources:[{...first.input,path:relocated}],include_children:false,idempotency_key:'relocated'});assert.equal(result.error,null);const current=JSON.parse(fs.readFileSync(path.join(archive,'bronze/sources',result.data.source_revisions[0]+'.json')));receipt.observed={lineages:new Set([first.source.source_lineage_id,current.source_lineage_id]).size,location_observations:current.location_observations?.length??0};assert.deepEqual(receipt.observed,expected);assert.deepEqual(new Set(current.location_observations.map(o=>o.path)),new Set([first.input.path,relocated]));}));
+for(const suffix of ['08','09'])test('AFH-01-T'+suffix+' explicit projects are not merged by remote or name',async t=>archiveScenario(t,'AFH-01-T'+suffix,async({ingest,invoke,ledger,fixture,expected,receipt})=>{const projects=fixture.input.projects??fixture.input.names;for(const [i,project]of projects.entries()){const {source}=await ingest('project-'+i+'.jsonl',[{role:'user',content:JSON.stringify(fixture.input)}]);const checkout=fixture.input.remote?{id:'checkout-'+i,repository_id:fixture.input.remote,head:null,worktree:false}:null;assert.equal((await invoke('association.record',{idempotency_key:'assoc-'+i,changes:[association(source,'a-'+i,project,null,'associated',checkout)]})).error,null);}const actual=new Set(ledger('association_version').map(a=>a.change.project_id));receipt.observed={projects:actual.size,auto_merge:actual.size!==projects.length};assert.deepEqual(receipt.observed,expected);}));
+test('AFH-01-T13 preserves projectless no_workspace and unknown separately',async t=>archiveScenario(t,'AFH-01-T13',async({ingest,invoke,ledger,fixture,expected,receipt})=>{for(const state of fixture.input.states){const {source}=await ingest(state+'.jsonl',[{role:'user',content:state}]);assert.equal((await invoke('association.record',{idempotency_key:state,changes:[association(source,state,null,null,state)]})).error,null);}const changes=ledger('association_version').map(a=>a.change);receipt.observed={distinct_states:new Set(changes.map(a=>a.association_state)).size,invented_project:changes.some(a=>a.project_id!==null)};assert.deepEqual(receipt.observed,expected);}));
+test('AFH-01-T16 explicit project overrides active scope with disclosure',async t=>archiveScenario(t,'AFH-01-T16',async({invoke,fixture,expected,receipt})=>{const result=await invoke('scope.resolve',{active_context:{project_id:fixture.input.active},explicit_scope:{project_id:fixture.input.explicit,session_ids:[],group_id:null,association_mode:'observed'}});assert.equal(result.error,null);receipt.observed={effective:result.data.effective_scope.project_id,disclosed:result.data.resolution==='EXPLICIT'&&result.receipt.scope.project_id===fixture.input.explicit&&result.receipt.warnings.length>0};assert.deepEqual(receipt.observed,expected);}));
+test('AFH-01-T17 ambiguous observed workspace returns candidates and no selected project',async t=>archiveScenario(t,'AFH-01-T17',async({ingest,invoke,fixture,expected,receipt})=>{for(const project of ['a','b']){const {source}=await ingest(project+'.jsonl',[{role:'user',content:'ambiguous workspace'}]);assert.equal((await invoke('association.record',{idempotency_key:project,changes:[association(source,project,project,{host_id:'synthetic-host',path:fixture.input.path,path_flavor:'windows',case_mode:'unknown'})]})).error,null);}const result=await invoke('scope.resolve',{active_context:{workspace:fixture.input.path}});assert.equal(result.error,null);assert.equal(result.data.candidates.length,2);receipt.observed={resolution:result.data.resolution,selected:result.data.effective_scope};assert.deepEqual(receipt.observed,expected);}));
+test('AFH-01-T18 association paths preserve Windows Unicode and UNC without probing them',async t=>archiveScenario(t,'AFH-01-T18',async({ingest,invoke,ledger,fixture,expected,receipt})=>{
+  const restorers=[],probes=[],methods=['access','exists','lstat','stat','statfs','realpath','readdir','opendir','readFile','open','readlink','watch','watchFile','createReadStream'];
+  function watch(object,name){if(typeof object[name]!=='function')return;const prior=object[name];object[name]=function(file,...args){const text=file instanceof URL?fileURLToPath(file):typeof file==='string'?file:null;if(text&&(text.startsWith('\\\\')||fixture.input.paths.some(original=>text===original||text.startsWith(original+'\\')||text.startsWith(original+'/')))){probes.push({method:name,path:text});throw new Error('Historical association path must not be probed');}return prior.call(this,file,...args);};restorers.push(()=>{object[name]=prior;});}
+  for(const method of methods){watch(fs,method);watch(fs,method+'Sync');watch(fs.promises,method);}syncBuiltinESMExports();
+  try{for(const [i,original]of fixture.input.paths.entries()){
+    const {source}=await ingest('path-'+i+'.jsonl',[{role:'user',content:original}]);assert.equal((await invoke('association.record',{idempotency_key:'p'+i,changes:[association(source,'p'+i,'project-'+i,{host_id:'synthetic-host',path:original,path_flavor:original.startsWith('\\\\')?'unc':'windows',case_mode:fixture.input.case_mode})]})).error,null);
+    const scope=await invoke('scope.resolve',{active_context:{workspace:original}});assert.equal(scope.error,null);assert.equal(scope.data.effective_scope.project_id,'project-'+i);
+  }}finally{for(const restore of restorers.reverse())restore();syncBuiltinESMExports();receipt.historical_path_probe_observation={watched_methods:methods,attempts:probes};}
+  assert.equal(probes.length,0);const workspaces=ledger('association_version').map(a=>a.change.workspace);receipt.observed={original_paths_preserved:canonical(workspaces.map(w=>w.path))===canonical(fixture.input.paths),auto_case_fold:workspaces.some(w=>w.case_mode!=='unknown')};assert.deepEqual(receipt.observed,expected);
+}));
+test('AFH-01-T20 incompatible protocol rejects association before any write',async t=>archiveScenario(t,'AFH-01-T20',async({archive,ingest,invoke,fixture,expected,receipt})=>{const {source}=await ingest('protocol.jsonl',[{role:'user',content:'protocol'}]),before=fileInventory(archive);const result=await invoke('association.record',{idempotency_key:'protocol',changes:[association(source,'protocol','p')]},{protocol_version:fixture.input.protocol_version});receipt.observed={error:result.error?.code,writes:canonical(fileInventory(archive))===canonical(before)?0:1};assert.deepEqual(receipt.observed,expected);}));
 const canonical = value => JSON.stringify(sort(value));
 function sort(value) {
   if (Array.isArray(value)) return value.map(sort);
