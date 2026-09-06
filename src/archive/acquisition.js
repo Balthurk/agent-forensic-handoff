@@ -47,8 +47,8 @@ export async function acquireSource(root,input,previousSources,limits,{signal,on
     const raw=await storeChunks(root,stream,previous?.objects);if(raw.bytes!==boundary.bytes)throw failure('INTEGRITY_FAILED','Source became shorter than its captured boundary');
     const identityEpoch='epoch4-'+digest({source_lineage_id:lineage,parent_source_revision_id:previous?.source_revision_id??null,raw_sha256:raw.sha256,raw_bytes:raw.bytes});
     const codec=/\.gz$/i.test(resolved)?'gzip':/\.(?:zst|zstd)$/i.test(resolved)?'zstd':'none';
-    let native=input.native_id??previous?.native_id??null;
-    const parser=byteRecords(record=>{const value=parseRecord(record.raw),observed=decodedIdentity(value,input.harness);if(observed!==null){if(typeof observed!=='string'||!observed.length)throw failure('INVALID_REQUEST','Native session identifier must be a nonempty string');if(native!==null&&native!==observed)throw failure('AMBIGUOUS_IDENTITY','Source contains conflicting native session owners');native=observed;}delete record.raw;});let decodedBytes=0;
+    let native=input.native_id??previous?.native_id??null,embeddedConflict=null;
+    const parser=byteRecords(record=>{const value=parseRecord(record.raw),observed=decodedIdentity(value,input.harness);if(observed!==null){if(typeof observed!=='string'||!observed.length)throw failure('INVALID_REQUEST','Native session identifier must be a nonempty string');if(native!==null&&native!==observed)embeddedConflict??={source_lineage_id:lineage,requested_native_id:native,embedded_native_id:observed,record_ordinal:record.ordinal,origin_domain_id:input.origin_domain_id,harness:input.harness};else native=observed;}delete record.raw;});let decodedBytes=0;
     const decode=decodedStream(root,raw,codec);
     const consume=chunk=>{if(signal?.aborted)throw failure('CANCELLED','Acquisition cancelled');decodedBytes+=chunk.length;if(decodedBytes>limits.max_decoded_source_bytes||codec!=='none'&&decodedBytes>Math.max(1,raw.bytes)*limits.max_expansion_ratio)throw failure('LIMIT_EXCEEDED','Decoded source exceeds configured byte or expansion limit');parser.consume(chunk,limits.max_record_bytes);};
     let decoded;
@@ -59,10 +59,10 @@ export async function acquireSource(root,input,previousSources,limits,{signal,on
     const continuous=previous&&prefix===previous.records.length&&previous.records.every(r=>r.includes_terminator)&&raw.bytes>=previous.raw_bytes;
     const sessionId=native?nativeSessionId({harness:input.harness,origin_domain_id:input.origin_domain_id,native_id:native}):'ses4-'+digest([input.harness,input.origin_domain_id,'provisional',lineage]);
     const effective={harness:input.harness,origin_domain_id:input.origin_domain_id,source_lineage_id:lineage,native_id:native,session_id:sessionId,codec,identity_status:native?'VERIFIED':'UNCERTAIN',provisional:native===null};
-    const unchanged=previous&&raw.sha256===previous.raw_sha256&&raw.bytes===previous.raw_bytes&&locations.length===previous.location_observations?.length&&Object.entries(effective).every(([field,value])=>previous[field]===value);
+    const unchanged=!embeddedConflict&&previous&&raw.sha256===previous.raw_sha256&&raw.bytes===previous.raw_bytes&&locations.length===previous.location_observations?.length&&Object.entries(effective).every(([field,value])=>previous[field]===value);
     // Defer this conflict until the engine has compared the idempotency digest
     // of all captured inputs. Nothing from this acquisition is published yet.
-    const identityConflict=previous?.native_id!==null&&previous?.native_id!==undefined&&previous.native_id!==native?{source_lineage_id:lineage,established_native_id:previous.native_id,requested_native_id:native,origin_domain_id:input.origin_domain_id,harness:input.harness}:null;
+    const identityConflict=embeddedConflict??(previous?.native_id!==null&&previous?.native_id!==undefined&&previous.native_id!==native?{source_lineage_id:lineage,established_native_id:previous.native_id,requested_native_id:native,origin_domain_id:input.origin_domain_id,harness:input.harness}:null);
     const counts={records_preserved:parser.records.length,records_parsed:0,records_unparsed:0,records_normalized:0,records_unsupported:0};
     const records=[],normalizer=byteRecords(record=>{
       const index=record.ordinal-1;record.value=parseRecord(record.raw);

@@ -50,7 +50,7 @@ export function assertReadObservation({request,response,observation:o,expectatio
   if(writer.lock){need(/^[a-f0-9]{64}$/.test(phase?.worker_sha256??''),'WRITER_PHASE_PROVENANCE');if(phase?.state==='PAUSED_AT_NATIVE_FAULT_BARRIER')need(phase.job_id===writer.lock.job_id&&['objects_fsync','ledger_commit','revision_manifest','pointer_replace'].includes(phase.barrier),'WRITER_BARRIER_BINDING');}
   need(o.handles.length>0&&o.native_calls.length>0,'NATIVE_HANDLES_OR_CALLS_MISSING');
   const handles=new Map();for(const handle of o.handles){need(Number.isSafeInteger(handle.id)&&handle.id>0&&!handles.has(handle.id),'HANDLE_IDENTITY');handles.set(handle.id,handle);need(handle.readOnly===true&&handle.options?.readOnly===true&&handle.closed===true,'READONLY_CLOSED_HANDLE_REQUIRED');need(handle.location===o.database&&typeof handle.argument==='string'&&path.resolve(handle.argument)===o.database,'HANDLE_DATABASE_PROVENANCE');}
-  const opened=new Set(),closed=new Set();let previousSequence=0,auxiliaryPrevious=o.inventories[0]?.rows?.filter(row=>readerAuxiliaryNames.has(row.path));
+  const opened=new Set(),closed=new Set(),preparations=new Map(),iterators=new Map(),executedPreparations=new Set(),executions=new Map(),readHandles=new Set(),calls=new Map();let previousSequence=0,auxiliaryPrevious=o.inventories[0]?.rows?.filter(row=>readerAuxiliaryNames.has(row.path));
   for(const call of o.native_calls){
     need(Array.isArray(call.before)&&Array.isArray(call.after),'NATIVE_AUXILIARY_INVENTORY_MISSING');
     for(const rows of [call.before,call.after])if(Array.isArray(rows))need(rows.every(row=>readerAuxiliaryNames.has(row.path)&&row.type==='file'&&typeof row.identity==='string'&&Number.isSafeInteger(row.bytes)&&row.bytes>=0&&/^[a-f0-9]{64}$/.test(row.sha256)),'NATIVE_AUXILIARY_PROVENANCE');
@@ -60,8 +60,30 @@ export function assertReadObservation({request,response,observation:o,expectatio
     if(call.method==='constructor'){need(!opened.has(call.handle_id),'DUPLICATE_CONSTRUCTOR');opened.add(call.handle_id);}
     else{need(opened.has(call.handle_id)&&!closed.has(call.handle_id),'NATIVE_HANDLE_LIFECYCLE');if(call.method==='close')closed.add(call.handle_id);}
     if(call.sql!==null){need(typeof call.sql==='string','MISSING_SQL');if(typeof call.sql==='string'){const sql=call.sql.trim().replace(/;\s*$/,'');need(!sql.includes(';')&&(/^(BEGIN|COMMIT|ROLLBACK)$/i.test(sql)||/^SELECT\b/i.test(sql)||/^PRAGMA\s+integrity_check$/i.test(sql)),'NONREAD_SQL');}}
+    calls.set(call.sequence,call);
+    const method=call.method,statement=['statement.get','statement.all','statement.iterate'].includes(method),iterator=['iterator.next','iterator.return'].includes(method),sql=typeof call.sql==='string'?call.sql.trim().replace(/;\s*$/,''):'';
+    need(['constructor','close','exec','prepare'].includes(method)||statement||iterator,'UNSUPPORTED_NATIVE_READ_METHOD');
+    if(['constructor','close'].includes(method))need(call.sql===null&&call.prepare_sequence===undefined&&call.iterator_sequence===undefined,'LIFECYCLE_IS_NOT_SQL_EXECUTION');
+    if(method==='exec')need(/^(BEGIN|COMMIT|ROLLBACK)$/i.test(sql),'TRANSACTION_IS_NOT_QUERY_EXECUTION');
+    if(method==='prepare'){
+      need(/^SELECT\b/i.test(sql)||request.operation==='archive.verify'&&/^PRAGMA\s+integrity_check$/i.test(sql),'OPERATION_READ_SQL_REQUIRED');preparations.set(call.sequence,call);
+    }
+    if(statement||iterator){
+      const prepared=preparations.get(call.prepare_sequence);need(!!prepared&&prepared.sequence<call.sequence&&prepared.handle_id===call.handle_id&&prepared.sql===call.sql,'EXECUTION_PREPARATION_BINDING');
+      if(method==='statement.iterate')iterators.set(call.sequence,{call,advanced:false,closed:false});
+      if(iterator){const creation=iterators.get(call.iterator_sequence);need(!!creation&&creation.call.sequence<call.sequence&&creation.call.handle_id===call.handle_id&&creation.call.prepare_sequence===call.prepare_sequence&&creation.call.sql===call.sql&&!creation.closed,'ITERATOR_CREATION_BINDING');if(creation){if(method==='iterator.next'){creation.advanced=true;need(typeof call.iterator_done==='boolean','ITERATOR_ADVANCE_RESULT');if(call.iterator_done)creation.closed=true;}else creation.closed=true;}}
+      if(['statement.get','statement.all','iterator.next'].includes(method)){
+        need(Number.isSafeInteger(call.row_count)&&call.row_count>=0&&(method==='statement.all'||call.row_count<=1),'EXECUTED_READ_RESULT_MISSING');if(method==='iterator.next')need(call.row_count===(call.iterator_done?0:1),'ITERATOR_RESULT_INCONSISTENT');
+        executions.set(call.sequence,call);readHandles.add(call.handle_id);executedPreparations.add(call.prepare_sequence);
+      }
+    }
   }
   need(opened.size===handles.size&&closed.size===handles.size,'CONSTRUCTOR_OR_CLOSE_EVIDENCE_MISSING');
+  need(executions.size>0&&[...handles.keys()].every(id=>readHandles.has(id)),'EXECUTED_READ_PER_HANDLE_REQUIRED');
+  need([...preparations.keys()].every(id=>executedPreparations.has(id)),'PREPARATION_WITHOUT_EXECUTION');need([...iterators.values()].every(item=>item.advanced),'ITERATOR_WITHOUT_ADVANCE');
+  const duringReadHandles=new Set();
+  for(const inventory of o.inventories){if(['BEFORE','AFTER'].includes(inventory.phase))continue;const match=/^DURING_(\d+)_(.+)$/.exec(inventory.phase??''),call=match?calls.get(Number(match[1])):null;need(!!call&&call.method===match[2]&&(executions.has(call.sequence)||call.method==='close'),'DURING_NATIVE_EVENT_BINDING');if(call&&Array.isArray(inventory.rows)){need(digest(inventory.rows.filter(row=>readerAuxiliaryNames.has(row.path)))===digest(call.after),'DURING_AUXILIARY_EVENT_BINDING');if(executions.has(call.sequence))duringReadHandles.add(call.handle_id);}}
+  need([...handles.keys()].every(id=>duringReadHandles.has(id)),'DURING_EXECUTION_PER_HANDLE_REQUIRED');
   const finalAuxiliary=o.inventories.at(-1)?.rows?.filter(row=>readerAuxiliaryNames.has(row.path));if(finalAuxiliary&&auxiliaryPrevious)need(digest(finalAuxiliary)===digest(auxiliaryPrevious),'FINAL_AUXILIARY_BOUNDARY_GAP');
   need(o.inventories.length>=3&&o.inventories[0]?.phase==='BEFORE'&&o.inventories.at(-1)?.phase==='AFTER'&&o.inventories.some(item=>item.phase.startsWith('DURING_')),'FULL_INVENTORY_PHASES');
   for(const inventory of o.inventories){need(Array.isArray(inventory.rows),'INVENTORY_ROWS_MISSING');if(!Array.isArray(inventory.rows))continue;need(new Set(inventory.rows.map(row=>row.path)).size===inventory.rows.length,'DUPLICATE_INVENTORY_PATH');need(inventory.rows.some(row=>row.path===''&&row.type==='directory')&&inventory.rows.some(row=>row.path==='ledger.sqlite'&&row.type==='file'),'ACTIVE_DATABASE_INVENTORY_MISSING');for(const row of inventory.rows)need(typeof row.identity==='string'&&(row.type==='directory'||row.type==='file'&&Number.isSafeInteger(row.bytes)&&row.bytes>=0&&/^[a-f0-9]{64}$/.test(row.sha256)),'UNTYPED_INVENTORY_ROW');}

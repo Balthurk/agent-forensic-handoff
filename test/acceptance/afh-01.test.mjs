@@ -61,11 +61,11 @@ async function observeArchiveReader(root,body,{sqlProbes=false}={}){
   report.writer_observation.quiet=report.writer_observation.contained&&(!lock||phase?.pid===lock.pid&&['PAUSED_AT_NATIVE_FAULT_BARRIER','PROCESS_CLOSED'].includes(phase.state));
   let lastAux=readerAuxiliaryInventory(root),sequence=0;const duringHandles=new Set();
   const errorValue=error=>({code:error.code??null,errcode:error.errcode??null,errstr:error.errstr??null,message:error.message});
-  function native(handle,method,sql,invoke){
+  function native(handle,method,sql,invoke,binding={}){
     const before=readerAuxiliaryInventory(root);if(digest(before)!==digest(lastAux))report.unattributed_boundaries.push({sequence,method,before:lastAux,after:before});
-    const event={sequence:++sequence,handle_id:handle.id,method,sql:sql??null,before};let result;
-    try{result=invoke();event.completed=true;return result;}catch(error){event.error=errorValue(error);report.errors.push({sequence:event.sequence,...event.error});throw error;}
-    finally{event.after=readerAuxiliaryInventory(root);lastAux=event.after;report.native_calls.push(event);if(method==='prepare'&&!duringHandles.has(handle.id)||method==='close'){duringHandles.add(handle.id);report.inventories.push({phase:'DURING_'+event.sequence+'_'+method,rows:readerInventory(root)});}}
+    const event={sequence:++sequence,handle_id:handle.id,method,sql:sql??null,before,...binding};let result;
+    try{result=invoke();event.completed=true;if(method==='statement.get')event.row_count=result===undefined?0:1;if(method==='statement.all')event.row_count=result.length;if(method==='iterator.next'){event.iterator_done=result.done===true;event.row_count=result.done?0:1;}return result;}catch(error){event.error=errorValue(error);report.errors.push({sequence:event.sequence,...event.error});throw error;}
+    finally{event.after=readerAuxiliaryInventory(root);lastAux=event.after;report.native_calls.push(event);if(['statement.get','statement.all','iterator.next'].includes(method)&&event.completed&&!duringHandles.has(handle.id)||method==='close'){duringHandles.add(handle.id);report.inventories.push({phase:'DURING_'+event.sequence+'_'+method,rows:readerInventory(root)});}}
   }
   function checkSql(sql){
     const normalized=sql.trim().replace(/;\s*$/,'');
@@ -80,7 +80,7 @@ async function observeArchiveReader(root,body,{sqlProbes=false}={}){
     const allowed=new Set([sqliteConstants.SQLITE_READ,sqliteConstants.SQLITE_SELECT,sqliteConstants.SQLITE_FUNCTION,sqliteConstants.SQLITE_PRAGMA,sqliteConstants.SQLITE_TRANSACTION,sqliteConstants.SQLITE_RECURSIVE]);
     db.setAuthorizer((action,a,b)=>{if(!allowed.has(action)||action===sqliteConstants.SQLITE_PRAGMA&&b!==null){report.sql_mutations.push({handle_id:handle.id,action,a,b});if(!sqlProbes)return sqliteConstants.SQLITE_DENY;}return sqliteConstants.SQLITE_OK;});
     return new Proxy(db,{get(target,key){
-      if(key==='prepare')return sql=>{checkSql(sql);const statement=native(handle,'prepare',sql,()=>target.prepare(sql));return new Proxy(statement,{get(stmt,method){const value=Reflect.get(stmt,method,stmt);if(typeof value!=='function')return value;return (...parameters)=>{const result=native(handle,'statement.'+String(method),sql,()=>value.apply(stmt,parameters));if(method!=='iterate')return result;const iteratorProxy=new Proxy(result,{get(iterator,action){if(action===Symbol.iterator)return ()=>iteratorProxy;const fn=Reflect.get(iterator,action,iterator);return typeof fn==='function'?(...values)=>native(handle,'iterator.'+String(action),sql,()=>fn.apply(iterator,values)):fn;}});return iteratorProxy;};}});};
+      if(key==='prepare')return sql=>{checkSql(sql);const statement=native(handle,'prepare',sql,()=>target.prepare(sql)),prepare_sequence=sequence;return new Proxy(statement,{get(stmt,method){const value=Reflect.get(stmt,method,stmt);if(typeof value!=='function')return value;return (...parameters)=>{const result=native(handle,'statement.'+String(method),sql,()=>value.apply(stmt,parameters),{prepare_sequence});if(method!=='iterate')return result;const iterator_sequence=sequence;const iteratorProxy=new Proxy(result,{get(iterator,action){if(action===Symbol.iterator)return ()=>iteratorProxy;const fn=Reflect.get(iterator,action,iterator);return typeof fn==='function'?(...values)=>native(handle,'iterator.'+String(action),sql,()=>fn.apply(iterator,values),{prepare_sequence,iterator_sequence}):fn;}});return iteratorProxy;};}});};
       if(key==='exec')return sql=>{checkSql(sql);return native(handle,'exec',sql,()=>target.exec(sql));};
       if(key==='close')return ()=>{const result=native(handle,'close',null,()=>target.close());handle.closed=true;return result;};
       const value=Reflect.get(target,key,target);if(typeof value!=='function')return value;
@@ -113,6 +113,40 @@ async function readerConsumerCalibration({run,archive,receipt,probeRead,negative
   const negative=await negativeRead();assert.equal(negative.error.code,'EVIDENCE_UNAVAILABLE');const negativeObservation=receipt.read_only_observations.at(-1),negativePair=receipt.requests.find(pair=>pair.request.request_id===negativeObservation.request_id);assert.equal(negativeObservation.passed,false);assert.equal(negativeObservation.outcome.category,'EXPECTED_NEGATIVE');assert.equal(builder.validateReaderCorpus([{r:{requests:[negativePair],read_only_observations:[negativeObservation]}}])[0].category,'EXPECTED_NEGATIVE');receipt.expected_negative={pair:negativePair,observation:negativeObservation};
   assert.deepEqual(accepted,[],'Both actual wrappers and the effective closure consumer must reject incomplete proofs');assert.deepEqual(unexpected,[],'Rejection must come from complete reader-control validation');
 }
+
+async function readerExecutionCalibration({receipt,probeRead}){
+  receipt.validation_role='REPAIR_R3_EXECUTION_PROVENANCE';const builderPath=process.env.AFH_READER_CLOSURE_BUILDER;assert.ok(builderPath);const builder=await import(pathToFileURL(builderPath).href);receipt.closure_consumer={ref:builderPath,sha256:hash(fs.readFileSync(builderPath)),export:'validateReaderCorpus'};
+  await probeRead(null);await probeRead(null);const baseline=structuredClone(receipt.read_only_observations.at(-1)),pair=structuredClone(receipt.requests.find(p=>p.request.request_id===baseline.request_id));assert.equal(builder.validateReaderCorpus([{r:{requests:[pair],read_only_observations:[baseline]}}])[0].category,'POSITIVE_READ');
+  const execute=c=>['statement.get','statement.all','iterator.next'].includes(c.method),lifecycle=c=>['constructor','close'].includes(c.method);
+  function prune(o,keep,{retainPhases=false}={}){const prior=o.native_calls,oCalls=prior.filter(keep);assert.ok(oCalls.length<prior.length,'Negative must remove native events');const map=new Map(oCalls.map((c,i)=>[c.sequence,i+1]));o.native_calls=oCalls.map((c,i)=>({...c,sequence:i+1,...(c.prepare_sequence?{prepare_sequence:map.get(c.prepare_sequence)??-1}:{}),...(c.iterator_sequence?{iterator_sequence:map.get(c.iterator_sequence)??-1}:{})}));if(!retainPhases)o.inventories=o.inventories.flatMap(item=>{const m=/^DURING_(\d+)_(.+)$/.exec(item.phase);return !m?[item]:map.has(Number(m[1]))?[{...item,phase:'DURING_'+map.get(Number(m[1]))+'_'+m[2]}]:[];});o.comparison=compareReadInventory(o);}
+  const mutations=[
+    ['lifecycle_only_stale_during',o=>{prune(o,lifecycle,{retainPhases:true});assert.ok(o.native_calls.every(lifecycle));}],
+    ['lifecycle_only_bound_during',o=>{prune(o,lifecycle);assert.ok(o.native_calls.every(lifecycle));}],
+    ['transactions_without_query',o=>{prune(o,c=>lifecycle(c)||c.method==='exec');assert.ok(!o.native_calls.some(c=>c.method==='prepare'||execute(c)));}],
+    ['prepare_without_execution',o=>{prune(o,c=>!c.method.startsWith('statement.')&&!c.method.startsWith('iterator.'));assert.ok(o.native_calls.some(c=>c.method==='prepare')&&!o.native_calls.some(execute));}],
+    ['iterator_without_advance',o=>{prune(o,c=>!execute(c));assert.ok(o.native_calls.some(c=>c.method==='statement.iterate')&&!o.native_calls.some(execute));}],
+    ['execution_without_prepare',o=>{prune(o,c=>c.method!=='prepare');assert.ok(o.native_calls.some(execute)&&!o.native_calls.some(c=>c.method==='prepare'));}],
+    ['execution_other_handle',o=>{const c=o.native_calls.find(execute),other=o.handles.find(h=>h.id!==c.handle_id);assert.ok(other);c.handle_id=other.id;}],
+    ['execution_other_sql',o=>{const c=o.native_calls.find(execute);assert.notEqual(c.sql,'SELECT 1');c.sql='SELECT 1';}],
+    ['execution_other_preparation',o=>{const c=o.native_calls.find(execute);c.prepare_sequence=0;}],
+    ['iterator_other_creation',o=>{const c=o.native_calls.find(c=>c.method==='iterator.next');assert.ok(c);c.iterator_sequence=0;}],
+    ['sql_on_lifecycle_only',o=>{const sql=o.native_calls.find(c=>c.method==='prepare').sql;prune(o,lifecycle);o.native_calls[0].sql=sql;assert.ok(!o.native_calls.some(execute));}],
+    ['execution_failed',o=>{const c=o.native_calls.find(execute);c.completed=false;c.error={code:'ERR_SQLITE_ERROR',message:'Derived failed execution'};}],
+    ['during_removed_event',o=>{const item=o.inventories.find(i=>i.phase.startsWith('DURING_'));assert.ok(item);item.phase='DURING_999999_statement.get';}],
+    ['during_incompatible_method',o=>{const item=o.inventories.find(i=>i.phase.startsWith('DURING_'));assert.ok(item);item.phase='DURING_1_constructor';}],
+  ];
+  const failures=[];receipt.execution_calibrations=[];
+  for(const [name,mutate]of mutations){let wrapperRejected=false,closureRejected=false,wrapperChange=null;const checked=observed=>{const before=digest(observed.observation);mutate(observed.observation);assert.notEqual(digest(observed.observation),before,'No-op negative '+name);wrapperChange={before,after:digest(observed.observation)};};
+    try{await probeRead(checked);}catch(error){if(error.code==='READ_CONTROL_REJECTED')wrapperRejected=true;else throw error;}
+    const mutant=structuredClone(baseline),before=digest(mutant);mutate(mutant);assert.notEqual(digest(mutant),before,'No-op closure negative '+name);try{builder.validateReaderCorpus([{r:{requests:[pair],read_only_observations:[mutant]}}]);}catch(error){if(error.code==='READ_CONTROL_REJECTED')closureRejected=true;else throw error;}
+    receipt.execution_calibrations.push({name,classification:'DERIVED_OMISSION_FROM_REAL_EXECUTED_READ',baseline,mutant,wrapper_change:wrapperChange,closure_change:{before,after:digest(mutant)},wrapperRejected,closureRejected});if(!wrapperRejected||!closureRejected)failures.push({name,wrapperRejected,closureRejected});
+  }
+  assert.deepEqual(failures,[],'Complete execution evidence required by both actual consumers');
+  receipt.real_execution_positive={pair,observation:baseline,methods:[...new Set(baseline.native_calls.filter(execute).map(c=>c.method))],zero_row_iterations:baseline.native_calls.filter(c=>c.method==='iterator.next'&&c.row_count===0&&c.iterator_done===true).length};
+  assert.deepEqual(receipt.real_execution_positive.methods.sort(),['iterator.next','statement.all','statement.get']);assert.ok(receipt.real_execution_positive.zero_row_iterations>0,'Actual empty-table iteration is still a successful executed read');
+}
+
+test('M02-R3 residual execution provenance harness01',async t=>archiveScenario(t,'AFH-01-T17',readerExecutionCalibration));
 test('M02-R3 actual harness01 and closure consumer reject incomplete read proofs',async t=>archiveScenario(t,'AFH-01-T17',readerConsumerCalibration));
 async function archiveScenario(t,id,body){
   const run=createRun(id),archive=path.join(run,'archive'),contract=registry.scenarios.find(s=>s.id===id),before=runtimeSnapshot(checkout),receipt={scenario_id:id,role:'COMPONENT_OBSERVATION',acceptance_eligible:false,input_class:'SYNTHETIC',runtime_class:'REAL_AFH',provider_class:'NONE',candidate_commit:execFileSync('git',['rev-parse','HEAD'],{cwd:checkout,encoding:'utf8'}).trim(),runner_sha256:hash(fs.readFileSync(fileURLToPath(import.meta.url))),runtime_before:before,fixture_sha256:contract.fixture_ref.sha256,oracle_sha256:contract.oracle_ref.sha256,requests:[],phase:'PRECONDITION'};let index=0;

@@ -93,7 +93,7 @@ async function ingestArchive(root,request,options,services){
     };for(const input of request.params.sources)acquired.push(await acquire(input));
     const childCoverage=await acquireObservedChildren(acquired,previous,request.params,acquire);
     const sha=requestDigest(request,acquired.map(x=>x.manifest.raw_sha256)),prior=durableResponse(root,request,sha,snapshot);if(prior)return prior;
-    const conflict=acquired.find(item=>item.identity_conflict);if(conflict)throw failure('AMBIGUOUS_IDENTITY','Established native owner cannot be retargeted within the same source lineage',conflict.identity_conflict);
+    const conflict=acquired.find(item=>item.identity_conflict);if(conflict)throw failure('AMBIGUOUS_IDENTITY','Native session owners conflict within the acquired source lineage',conflict.identity_conflict);
     if(now<snapshot.recorded_at)throw failure('CLOCK_REGRESSION','Clock precedes the latest committed observation');
     const delta={bytes_read:acquired.reduce((n,x)=>n+x.bytes_read,0),prefix_bytes_verified:acquired.reduce((n,x)=>n+x.prefix_bytes_verified,0),new_records:acquired.reduce((n,x)=>n+x.new_records,0),new_occurrences:acquired.reduce((n,x)=>n+x.new_occurrences,0),reused_objects:acquired.reduce((n,x)=>n+x.reused_objects,0)};
     const selected=new Map(previous.map(source=>[source.source_lineage_id,source]));for(const item of acquired)selected.set(item.manifest.source_lineage_id,item.manifest);

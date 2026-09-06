@@ -68,11 +68,11 @@ async function observeArchiveReader(root,body,{sqlProbes=false}={}){
   report.writer_observation.quiet=report.writer_observation.contained&&(!lock||phase?.pid===lock.pid&&['PAUSED_AT_NATIVE_FAULT_BARRIER','PROCESS_CLOSED'].includes(phase.state));
   let lastAux=readerAuxiliaryInventory(root),sequence=0;const duringHandles=new Set();
   const errorValue=error=>({code:error.code??null,errcode:error.errcode??null,errstr:error.errstr??null,message:error.message});
-  function native(handle,method,sql,invoke){
+  function native(handle,method,sql,invoke,binding={}){
     const before=readerAuxiliaryInventory(root);if(digest(before)!==digest(lastAux))report.unattributed_boundaries.push({sequence,method,before:lastAux,after:before});
-    const event={sequence:++sequence,handle_id:handle.id,method,sql:sql??null,before};let result;
-    try{result=invoke();event.completed=true;return result;}catch(error){event.error=errorValue(error);report.errors.push({sequence:event.sequence,...event.error});throw error;}
-    finally{event.after=readerAuxiliaryInventory(root);lastAux=event.after;report.native_calls.push(event);if(method==='prepare'&&!duringHandles.has(handle.id)||method==='close'){duringHandles.add(handle.id);report.inventories.push({phase:'DURING_'+event.sequence+'_'+method,rows:readerInventory(root)});}}
+    const event={sequence:++sequence,handle_id:handle.id,method,sql:sql??null,before,...binding};let result;
+    try{result=invoke();event.completed=true;if(method==='statement.get')event.row_count=result===undefined?0:1;if(method==='statement.all')event.row_count=result.length;if(method==='iterator.next'){event.iterator_done=result.done===true;event.row_count=result.done?0:1;}return result;}catch(error){event.error=errorValue(error);report.errors.push({sequence:event.sequence,...event.error});throw error;}
+    finally{event.after=readerAuxiliaryInventory(root);lastAux=event.after;report.native_calls.push(event);if(['statement.get','statement.all','iterator.next'].includes(method)&&event.completed&&!duringHandles.has(handle.id)||method==='close'){duringHandles.add(handle.id);report.inventories.push({phase:'DURING_'+event.sequence+'_'+method,rows:readerInventory(root)});}}
   }
   function checkSql(sql){
     const normalized=sql.trim().replace(/;\s*$/,'');
@@ -87,7 +87,7 @@ async function observeArchiveReader(root,body,{sqlProbes=false}={}){
     const allowed=new Set([sqliteConstants.SQLITE_READ,sqliteConstants.SQLITE_SELECT,sqliteConstants.SQLITE_FUNCTION,sqliteConstants.SQLITE_PRAGMA,sqliteConstants.SQLITE_TRANSACTION,sqliteConstants.SQLITE_RECURSIVE]);
     db.setAuthorizer((action,a,b)=>{if(!allowed.has(action)||action===sqliteConstants.SQLITE_PRAGMA&&b!==null){report.sql_mutations.push({handle_id:handle.id,action,a,b});if(!sqlProbes)return sqliteConstants.SQLITE_DENY;}return sqliteConstants.SQLITE_OK;});
     return new Proxy(db,{get(target,key){
-      if(key==='prepare')return sql=>{checkSql(sql);const statement=native(handle,'prepare',sql,()=>target.prepare(sql));return new Proxy(statement,{get(stmt,method){const value=Reflect.get(stmt,method,stmt);if(typeof value!=='function')return value;return (...parameters)=>{const result=native(handle,'statement.'+String(method),sql,()=>value.apply(stmt,parameters));if(method!=='iterate')return result;const iteratorProxy=new Proxy(result,{get(iterator,action){if(action===Symbol.iterator)return ()=>iteratorProxy;const fn=Reflect.get(iterator,action,iterator);return typeof fn==='function'?(...values)=>native(handle,'iterator.'+String(action),sql,()=>fn.apply(iterator,values)):fn;}});return iteratorProxy;};}});};
+      if(key==='prepare')return sql=>{checkSql(sql);const statement=native(handle,'prepare',sql,()=>target.prepare(sql)),prepare_sequence=sequence;return new Proxy(statement,{get(stmt,method){const value=Reflect.get(stmt,method,stmt);if(typeof value!=='function')return value;return (...parameters)=>{const result=native(handle,'statement.'+String(method),sql,()=>value.apply(stmt,parameters),{prepare_sequence});if(method!=='iterate')return result;const iterator_sequence=sequence;const iteratorProxy=new Proxy(result,{get(iterator,action){if(action===Symbol.iterator)return ()=>iteratorProxy;const fn=Reflect.get(iterator,action,iterator);return typeof fn==='function'?(...values)=>native(handle,'iterator.'+String(action),sql,()=>fn.apply(iterator,values),{prepare_sequence,iterator_sequence}):fn;}});return iteratorProxy;};}});};
       if(key==='exec')return sql=>{checkSql(sql);return native(handle,'exec',sql,()=>target.exec(sql));};
       if(key==='close')return ()=>{const result=native(handle,'close',null,()=>target.close());handle.closed=true;return result;};
       const value=Reflect.get(target,key,target);if(typeof value!=='function')return value;
@@ -120,6 +120,40 @@ async function readerConsumerCalibration({run,archive,receipt,probeRead,negative
   const negative=await negativeRead();assert.equal(negative.error.code,'EVIDENCE_UNAVAILABLE');const negativeObservation=receipt.read_only_observations.at(-1),negativePair=receipt.requests.find(pair=>pair.request.request_id===negativeObservation.request_id);assert.equal(negativeObservation.passed,false);assert.equal(negativeObservation.outcome.category,'EXPECTED_NEGATIVE');assert.equal(builder.validateReaderCorpus([{r:{requests:[negativePair],read_only_observations:[negativeObservation]}}])[0].category,'EXPECTED_NEGATIVE');receipt.expected_negative={pair:negativePair,observation:negativeObservation};
   assert.deepEqual(accepted,[],'Both actual wrappers and the effective closure consumer must reject incomplete proofs');assert.deepEqual(unexpected,[],'Rejection must come from complete reader-control validation');
 }
+
+async function readerExecutionCalibration({receipt,probeRead}){
+  receipt.validation_role='REPAIR_R3_EXECUTION_PROVENANCE';const builderPath=process.env.AFH_READER_CLOSURE_BUILDER;assert.ok(builderPath);const builder=await import(pathToFileURL(builderPath).href);receipt.closure_consumer={ref:builderPath,sha256:hash(fs.readFileSync(builderPath)),export:'validateReaderCorpus'};
+  await probeRead(null);await probeRead(null);const baseline=structuredClone(receipt.read_only_observations.at(-1)),pair=structuredClone(receipt.requests.find(p=>p.request.request_id===baseline.request_id));assert.equal(builder.validateReaderCorpus([{r:{requests:[pair],read_only_observations:[baseline]}}])[0].category,'POSITIVE_READ');
+  const execute=c=>['statement.get','statement.all','iterator.next'].includes(c.method),lifecycle=c=>['constructor','close'].includes(c.method);
+  function prune(o,keep,{retainPhases=false}={}){const prior=o.native_calls,oCalls=prior.filter(keep);assert.ok(oCalls.length<prior.length,'Negative must remove native events');const map=new Map(oCalls.map((c,i)=>[c.sequence,i+1]));o.native_calls=oCalls.map((c,i)=>({...c,sequence:i+1,...(c.prepare_sequence?{prepare_sequence:map.get(c.prepare_sequence)??-1}:{}),...(c.iterator_sequence?{iterator_sequence:map.get(c.iterator_sequence)??-1}:{})}));if(!retainPhases)o.inventories=o.inventories.flatMap(item=>{const m=/^DURING_(\d+)_(.+)$/.exec(item.phase);return !m?[item]:map.has(Number(m[1]))?[{...item,phase:'DURING_'+map.get(Number(m[1]))+'_'+m[2]}]:[];});o.comparison=compareReadInventory(o);}
+  const mutations=[
+    ['lifecycle_only_stale_during',o=>{prune(o,lifecycle,{retainPhases:true});assert.ok(o.native_calls.every(lifecycle));}],
+    ['lifecycle_only_bound_during',o=>{prune(o,lifecycle);assert.ok(o.native_calls.every(lifecycle));}],
+    ['transactions_without_query',o=>{prune(o,c=>lifecycle(c)||c.method==='exec');assert.ok(!o.native_calls.some(c=>c.method==='prepare'||execute(c)));}],
+    ['prepare_without_execution',o=>{prune(o,c=>!c.method.startsWith('statement.')&&!c.method.startsWith('iterator.'));assert.ok(o.native_calls.some(c=>c.method==='prepare')&&!o.native_calls.some(execute));}],
+    ['iterator_without_advance',o=>{prune(o,c=>!execute(c));assert.ok(o.native_calls.some(c=>c.method==='statement.iterate')&&!o.native_calls.some(execute));}],
+    ['execution_without_prepare',o=>{prune(o,c=>c.method!=='prepare');assert.ok(o.native_calls.some(execute)&&!o.native_calls.some(c=>c.method==='prepare'));}],
+    ['execution_other_handle',o=>{const c=o.native_calls.find(execute),other=o.handles.find(h=>h.id!==c.handle_id);assert.ok(other);c.handle_id=other.id;}],
+    ['execution_other_sql',o=>{const c=o.native_calls.find(execute);assert.notEqual(c.sql,'SELECT 1');c.sql='SELECT 1';}],
+    ['execution_other_preparation',o=>{const c=o.native_calls.find(execute);c.prepare_sequence=0;}],
+    ['iterator_other_creation',o=>{const c=o.native_calls.find(c=>c.method==='iterator.next');assert.ok(c);c.iterator_sequence=0;}],
+    ['sql_on_lifecycle_only',o=>{const sql=o.native_calls.find(c=>c.method==='prepare').sql;prune(o,lifecycle);o.native_calls[0].sql=sql;assert.ok(!o.native_calls.some(execute));}],
+    ['execution_failed',o=>{const c=o.native_calls.find(execute);c.completed=false;c.error={code:'ERR_SQLITE_ERROR',message:'Derived failed execution'};}],
+    ['during_removed_event',o=>{const item=o.inventories.find(i=>i.phase.startsWith('DURING_'));assert.ok(item);item.phase='DURING_999999_statement.get';}],
+    ['during_incompatible_method',o=>{const item=o.inventories.find(i=>i.phase.startsWith('DURING_'));assert.ok(item);item.phase='DURING_1_constructor';}],
+  ];
+  const failures=[];receipt.execution_calibrations=[];
+  for(const [name,mutate]of mutations){let wrapperRejected=false,closureRejected=false,wrapperChange=null;const checked=observed=>{const before=digest(observed.observation);mutate(observed.observation);assert.notEqual(digest(observed.observation),before,'No-op negative '+name);wrapperChange={before,after:digest(observed.observation)};};
+    try{await probeRead(checked);}catch(error){if(error.code==='READ_CONTROL_REJECTED')wrapperRejected=true;else throw error;}
+    const mutant=structuredClone(baseline),before=digest(mutant);mutate(mutant);assert.notEqual(digest(mutant),before,'No-op closure negative '+name);try{builder.validateReaderCorpus([{r:{requests:[pair],read_only_observations:[mutant]}}]);}catch(error){if(error.code==='READ_CONTROL_REJECTED')closureRejected=true;else throw error;}
+    receipt.execution_calibrations.push({name,classification:'DERIVED_OMISSION_FROM_REAL_EXECUTED_READ',baseline,mutant,wrapper_change:wrapperChange,closure_change:{before,after:digest(mutant)},wrapperRejected,closureRejected});if(!wrapperRejected||!closureRejected)failures.push({name,wrapperRejected,closureRejected});
+  }
+  assert.deepEqual(failures,[],'Complete execution evidence required by both actual consumers');
+  receipt.real_execution_positive={pair,observation:baseline,methods:[...new Set(baseline.native_calls.filter(execute).map(c=>c.method))],zero_row_iterations:baseline.native_calls.filter(c=>c.method==='iterator.next'&&c.row_count===0&&c.iterator_done===true).length};
+  assert.deepEqual(receipt.real_execution_positive.methods.sort(),['iterator.next','statement.all','statement.get']);assert.ok(receipt.real_execution_positive.zero_row_iterations>0,'Actual empty-table iteration is still a successful executed read');
+}
+
+test('M02-R3 residual execution provenance harness02',async t=>scenario(t,'AFH-02-T17',readerExecutionCalibration));
 test('M02-R3 actual harness02 and closure consumer reject incomplete read proofs',async t=>scenario(t,'AFH-02-T17',readerConsumerCalibration));
 async function scenario(t,id,body){
   const base=process.env.AFH_ACCEPTANCE_RUN||os.tmpdir();fs.mkdirSync(base,{recursive:true});
@@ -184,6 +218,35 @@ test('M02-R1 exact published integrity rejects missing extra shifted and altered
   // A later corrupted fact is outside an intact earlier cut; the current cut
   // still must reject it. This is distinct from silently ignoring missing rows.
   const historical=path.join(run,'historical-cut');fs.cpSync(archive,historical,{recursive:true,errorOnExist:true,force:false});const db=new DatabaseSync(path.join(historical,'ledger.sqlite'));try{db.exec('DELETE FROM session_version WHERE commit_seq=4');}finally{db.close();}const old=await call('archive.verify',{deep:true},{},first.data.revision_id,historical);assert.equal(old.data.passed,true);receipt.historical_cut={revision:first.data.revision_id,response:old};assert.deepEqual(falsePasses,[],'Every altered published fact must fail exact closure in both modes');
+}));
+
+
+test('M02-R2 residual embedded owners respect idempotency precedence without changing published evidence',async t=>scenario(t,'AFH-02-T11',async({run,archive,call,receipt})=>{
+  receipt.validation_role='REPAIR_R2_EMBEDDED_IDEMPOTENCE';receipt.channels=[];
+  for(const harness of ['generic','codex','claude']){
+    const body=harness==='codex'?'{"type":"session_meta","payload":{"id":"owner-a"}}\n':'{"session_id":"owner-a","role":"user","content":"unchanged owner"}\n',input={...source(run,harness+'-embedded.jsonl',body.replaceAll('\\n','\n')),harness,native_id:'owner-a'},params={sources:[input],include_children:false,idempotency_key:harness+'-first'};
+    if(harness!=='generic'){const p=JSON.parse(fs.readFileSync(path.join(archive,'archive.json')));const originDomain=p.origin_domains?.find(o=>o.harness===harness);if(originDomain)input.origin_domain_id=originDomain.id;}
+    // Each harness uses its own configured archive; input domain must match.
+    const target=harness==='generic'?archive:path.join(run,harness+'-archive');if(target!==archive)assert.equal((await call('archive.init',{idempotency_key:'init',origin_domains:[{id:origin,harness,descriptor:'Synthetic embedded native owner'}]},{},null,target)).error,null);
+    const invoke=p=>call('archive.ingest',p,{},null,target),first=await invoke(params);assert.equal(first.error,null);const m=manifest(target,first.data.source_revisions[0]),pointer=fs.readFileSync(path.join(target,'archive.json')),manifestBytes=fs.readFileSync(path.join(target,'bronze/sources',m.source_revision_id+'.json')),captureBytes=fs.readFileSync(path.join(target,'revisions',first.data.revision_id+'.json'));const replay=await invoke(params);assert.deepEqual(replay.data,first.data);assert.deepEqual(replay.receipt,first.receipt);
+    const changed={...params,sources:[{...input,native_id:'owner-b'}]},sameKey=await invoke(changed),newKey=await invoke({...changed,idempotency_key:harness+'-retarget'});receipt.channels.push({harness,first,replay,sameKey,newKey});
+    assert.deepEqual(fs.readFileSync(path.join(target,'archive.json')),pointer);assert.deepEqual(fs.readFileSync(path.join(target,'bronze/sources',m.source_revision_id+'.json')),manifestBytes);assert.deepEqual(fs.readFileSync(path.join(target,'revisions',first.data.revision_id+'.json')),captureBytes);
+    const after=await invoke(params);assert.deepEqual(after.data,first.data);assert.deepEqual(after.receipt,first.receipt);for(const record of m.records){const read=await call('evidence.read',{uri:record.evidence_ref.uri,format:'base64'},{},first.data.revision_id,target);assert.equal(read.error,null);}assert.equal((await call('archive.verify',{deep:true},{},null,target)).data.passed,true);
+    receipt.channels.at(-1).preserved={pointer:true,manifest:true,capture:true,uris:m.records.length,replay_after:after,occurrences:first.data.delta.new_occurrences};
+  }
+  assert.deepEqual(receipt.channels.map(c=>({harness:c.harness,same:c.sameKey.error?.code,fresh:c.newKey.error?.code})),['generic','codex','claude'].map(harness=>({harness,same:'IDEMPOTENCY_CONFLICT',fresh:'AMBIGUOUS_IDENTITY'})));
+  receipt.semantic_channels=[];
+  for(const mode of ['history_versus_embedded','embedded_versus_embedded']){
+    const original='{"session_id":"owner-a","role":"user","content":"captured owner"}\n',input=source(run,mode+'.jsonl',original),params={sources:[input],include_children:false,idempotency_key:mode},first=await call('archive.ingest',params);assert.equal(first.error,null);const pointer=fs.readFileSync(path.join(archive,'archive.json')),m=manifest(archive,first.data.source_revisions[0]);
+    fs.writeFileSync(input.path,mode==='history_versus_embedded'?original.replace('owner-a','owner-b'):original+original.replace('owner-a','owner-b'));
+    const sameKey=await call('archive.ingest',params),newKey=await call('archive.ingest',{...params,idempotency_key:mode+'-new'});assert.equal(sameKey.error?.code,'IDEMPOTENCY_CONFLICT');assert.equal(newKey.error?.code,'AMBIGUOUS_IDENTITY');assert.deepEqual(fs.readFileSync(path.join(archive,'archive.json')),pointer);
+    const evidence=await call('evidence.read',{uri:m.records[0].evidence_ref.uri,format:'base64'});assert.equal(Buffer.from(evidence.data.payload,'base64').toString(),original);fs.writeFileSync(input.path,original);const replay=await call('archive.ingest',params);assert.deepEqual(replay.data,first.data);assert.deepEqual(replay.receipt,first.receipt);receipt.semantic_channels.push({mode,first,sameKey,newKey,evidence,replay,pointer_preserved:true});
+  }
+  const invalid=source(run,'invalid-native.jsonl','{"session_id":7}\n'),limited=source(run,'limited-owner.jsonl','{"session_id":"owner-b"}\n'),corrupt=source(run,'corrupt-owner.gz',Buffer.from('not a valid gzip stream'));
+  receipt.acquisition_errors=[];
+  for(const [name,input,expected] of [['invalid_native',invalid,'INVALID_REQUEST'],['corrupt_compression',{...corrupt,native_id:'owner-a'},'INTEGRITY_FAILED']]){const pointer=fs.readFileSync(path.join(archive,'archive.json')),response=await call('archive.ingest',{sources:[input],include_children:false,idempotency_key:'generic-first'});assert.equal(response.error?.code,expected);assert.deepEqual(fs.readFileSync(path.join(archive,'archive.json')),pointer);receipt.acquisition_errors.push({name,response,expected,pointer_preserved:true});}
+  const limitedArchive=path.join(run,'limited-archive');assert.equal((await call('archive.init',{idempotency_key:'limited-init',origin_domains:[{id:origin,harness:'generic',descriptor:'Synthetic acquisition boundary'}],limits:{max_decoded_source_bytes:128}},{},null,limitedArchive)).error,null);
+  const limitedParams={sources:[{...limited,native_id:'owner-b'}],include_children:false,idempotency_key:'limited-first'},limitedFirst=await call('archive.ingest',limitedParams,{},null,limitedArchive);assert.equal(limitedFirst.error,null);const limitedPointer=fs.readFileSync(path.join(limitedArchive,'archive.json'));fs.appendFileSync(limited.path,' '.repeat(512));const limitedResult=await call('archive.ingest',{...limitedParams,sources:[{...limited,native_id:'owner-a'}]},{},null,limitedArchive);assert.equal(limitedResult.error?.code,'LIMIT_EXCEEDED');assert.deepEqual(fs.readFileSync(path.join(limitedArchive,'archive.json')),limitedPointer);receipt.acquisition_errors.push({name:'decoded_limit',response:limitedResult,expected:'LIMIT_EXCEEDED',pointer_preserved:true});
 }));
 
 test('M02-R2 effective identity configuration publishes confirmation and rejects incompatible retargeting',async t=>scenario(t,'AFH-02-T11',async({run,archive,call,receipt})=>{
