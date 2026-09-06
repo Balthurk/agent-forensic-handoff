@@ -220,10 +220,47 @@ test('AFH-03-T04 session-qualified call identities prevent cross-session results
  const f=ctx.fixture.input,caseDir=await legacyCapture(ctx,null,{sessions:f.sessions.map((id,i)=>({id,records:[meta(id),request(f.call_id,1),result(f.call_id,f.codes[i],2)]}))}),executions=rows(caseDir,'SELECT * FROM tool_execution'),links=rows(caseDir,'SELECT t.id,t.session_id,c.session_id AS call_session,r.session_id AS result_session,r.id AS result_id FROM tool_execution t LEFT JOIN event c ON c.id=t.call_event_id LEFT JOIN event r ON r.id=t.result_event_id');ctx.receipt.rows=executions;for(const [i,id]of f.sessions.entries()){const matching=executions.filter(e=>e.session_id==='ses:codex:'+id);if(matching.length)assert.equal(matching[0].exit_code,f.codes[i]);}expect(ctx,{executions:executions.length,results_per_session:f.sessions.map(id=>links.filter(e=>e.session_id==='ses:codex:'+id&&e.result_id).length),cross_session_links:links.filter(e=>e.call_session!==e.session_id||e.result_session!==e.session_id).length});
 }));
 test('AFH-03-T05 repeated call ID in a new native turn creates a new epoch',async t=>scenario(t,'AFH-03-T05',async ctx=>{
- const f=ctx.fixture.input,records=f.turns.flatMap((turn,i)=>{const end=result(f.call_id,i,i*2+2);end.payload.turn_id=turn;return [request(f.call_id,i*2+1,'npm test',turn),end];}),x=await ingest(ctx,records),values=[];for(const e of toolEvents(x))values.push(await show(ctx,e));expect(ctx,{executions:new Set(values.map(v=>v.occurrence.id)).size,epochs:new Set(values.map(v=>v.occurrence.identity_epoch)).size});assert.equal(new Set(values.map(v=>v.event.id)).size,4);
+ const f=ctx.fixture.input,records=f.turns.flatMap((turn,i)=>{const end=result(f.call_id,i,i*2+2);end.payload.turn_id=turn;return [request(f.call_id,i*2+1,'npm test',turn),end];}),x=await ingest(ctx,records),values=[],bindings=[];
+ assert.equal(toolEvents(x).length,4);assert.equal(x.source.records.length,records.length+1);
+ // Bind expectations to the fixture's turn/role and the acquired raw record.
+ // Response cardinalities cannot establish which terminal belongs to a request.
+ for(const [i,turn]of f.turns.entries()){
+  const pair={turn};
+  for(const [offset,role,kind]of [[0,'request','tool.requested'],[1,'terminal','tool.completed']]){
+   const record=x.source.records[1+i*2+offset],raw=await ctx.call('evidence.read',{uri:record.evidence_ref.uri,format:'text'});assert.equal(raw.error,null);
+   const input=JSON.parse(raw.data.payload);assert.deepEqual(input,records[i*2+offset]);assert.equal(input.payload.turn_id,turn);assert.equal(input.payload.call_id,f.call_id);
+   assert.equal(record.events.length,1);const acquired={...record.events[0],raw_ref:record.evidence_ref};assert.equal(acquired.kind,kind);
+   const value=await show(ctx,acquired);assert.equal(value.event.id,acquired.id,'T05_EVENT_ID: response must identify the acquired '+role);assert.equal(value.event.kind,kind,'T05_ROLE');assert.equal(value.event.session_id,acquired.session_id,'T05_SESSION');
+   assert.ok(value.evidence_refs.some(ref=>ref.uri===record.evidence_ref.uri&&ref.record_sha256===record.evidence_ref.record_sha256),'T05_EVIDENCE: own raw record must remain registered');
+   assert.ok(value.representations.some(rep=>rep.event_id===acquired.id&&rep.raw_ref.uri===record.evidence_ref.uri),'T05_EVIDENCE: representation must bind this acquired event');
+   pair[role]={acquired,value};values.push(value);
+  }
+  assert.equal(pair.terminal.value.occurrence.id,pair.request.value.occurrence.id,'T05_OCCURRENCE: same turn request and terminal must share the occurrence');
+  assert.equal(pair.terminal.value.occurrence.identity_epoch,pair.request.value.occurrence.identity_epoch,'T05_EPOCH: same turn request and terminal must share the epoch');
+  bindings.push(pair);
+ }
+ assert.notEqual(bindings[0].request.value.occurrence.id,bindings[1].request.value.occurrence.id,'T05_OCCURRENCE: distinct native turns remain separate');
+ assert.notEqual(bindings[0].request.value.occurrence.identity_epoch,bindings[1].request.value.occurrence.identity_epoch,'T05_EPOCH: distinct native turns retain separate epochs');
+ for(const pair of bindings){
+  const links=pair.terminal.value.relations.filter(r=>r.type==='RESULT_OF');assert.equal(links.length,1,'T05_RESULT_OF: exactly one terminal-to-request relation is required');
+  assert.equal(links[0].from_id,pair.terminal.acquired.id,'T05_RESULT_OF: relation source must be the acquired terminal');assert.equal(links[0].to_id,pair.request.acquired.id,'T05_RESULT_OF: relation target must be the acquired request of this turn');
+  for(const value of values)for(const relation of value.relations.filter(r=>r.type==='RESULT_OF'&&r.from_id===pair.terminal.acquired.id))assert.equal(relation.to_id,pair.request.acquired.id,'T05_RESULT_OF: no cross-turn target in any returned relation');
+ }
+ ctx.receipt.correlation_bindings=bindings.map(pair=>({turn:pair.turn,request_event_id:pair.request.acquired.id,terminal_event_id:pair.terminal.acquired.id,request_raw_ref:pair.request.acquired.raw_ref,terminal_raw_ref:pair.terminal.acquired.raw_ref,occurrence_id:pair.request.value.occurrence.id,identity_epoch:pair.request.value.occurrence.identity_epoch}));
+ expect(ctx,{executions:new Set(values.map(v=>v.occurrence.id)).size,epochs:new Set(values.map(v=>v.occurrence.identity_epoch)).size});assert.equal(new Set(values.map(v=>v.event.id)).size,4);
 }));
 test('AFH-03-T06 an unresolved terminal remains an ambiguous orphan',async t=>scenario(t,'AFH-03-T06',async ctx=>{
- const x=await ingest(ctx,[request('open-a',1),request('open-b',2),result(ctx.fixture.input.orphan_call,1,3)]),values=[];for(const e of toolEvents(x))values.push(await show(ctx,e));const orphan=values.at(-1);assert.ok(orphan.evidence_refs.length);expect(ctx,{orphan_preserved:!!orphan.occurrence.id,assigned_to_last_command:orphan.occurrence.id===values[1].occurrence.id||orphan.relations.some(r=>r.type==='RESULT_OF'&&r.to_id===values[1].event.id),correlation:orphan.occurrence.reason});
+ const x=await ingest(ctx,[request('open-a',1),request('open-b',2),result(ctx.fixture.input.orphan_call,1,3)]),events=toolEvents(x),values=[];assert.equal(events.length,3);assert.deepEqual(events.map(e=>e.kind),['tool.requested','tool.requested','tool.completed']);
+ for(const event of events){const value=await show(ctx,event);assert.equal(value.event.id,event.id,'T06_EVENT_ID: every response must identify its acquired event');values.push(value);}
+ const orphan=values[2],terminal=events[2],open=values.slice(0,2);assert.equal(new Set(values.map(v=>v.event.id)).size,3,'T06_EVENT_ID: orphan event remains distinct');assert.ok(orphan.occurrence.id);
+ assert.ok(orphan.evidence_refs.some(ref=>ref.uri===terminal.raw_ref.uri&&ref.record_sha256===terminal.raw_ref.record_sha256),'T06_EVIDENCE: orphan keeps its own terminal raw reference');
+ assert.ok(orphan.representations.some(rep=>rep.event_id===terminal.id&&rep.raw_ref.uri===terminal.raw_ref.uri),'T06_EVIDENCE: orphan representation identifies its acquired terminal');
+ assert.notEqual(open[0].occurrence.id,open[1].occurrence.id,'T06_OPEN_CALLS: both open calls remain distinct');
+ for(const call of open)assert.notEqual(orphan.occurrence.id,call.occurrence.id,'T06_ORPHAN_OCCURRENCE: ambiguous terminal cannot belong to any open call');
+ assert.equal(orphan.relations.filter(r=>r.type==='RESULT_OF').length,0,'T06_ORPHAN_RESULT_OF: ambiguous terminal has no resolved request');
+ for(const value of values)assert.equal(value.relations.filter(r=>r.type==='RESULT_OF'&&[terminal.id,orphan.occurrence.id].includes(r.from_id)).length,0,'T06_ORPHAN_RESULT_OF: no orphan link may be hidden on another event');
+ ctx.receipt.orphan_binding={terminal_event_id:terminal.id,terminal_raw_ref:terminal.raw_ref,occurrence_id:orphan.occurrence.id,open_calls:open.map(call=>({event_id:call.event.id,occurrence_id:call.occurrence.id}))};
+ expect(ctx,{orphan_preserved:!!orphan.occurrence.id,assigned_to_last_command:orphan.occurrence.id===values[1].occurrence.id||orphan.relations.some(r=>r.type==='RESULT_OF'&&r.to_id===values[1].event.id),correlation:orphan.occurrence.reason});
 }));
 test('AFH-03-T07 unknown validation preserves exact occurrence and evidence',async t=>scenario(t,'AFH-03-T07',async ctx=>{
  const f=ctx.fixture.input,caseDir=await legacyCapture(ctx,[meta('synthetic-unknown'),observed('unknown-execution',f.exit_code,1,{status:f.status,command:f.tool})]),values=rows(caseDir,"SELECT v.status,v.evidence_event_id,t.id AS occurrence_id FROM validation v JOIN event e ON e.id=v.evidence_event_id JOIN tool_execution t ON t.result_event_id=e.id WHERE v.level='HISTORICAL'"),execs=rows(caseDir,'SELECT id FROM tool_execution');ctx.receipt.rows=values;assert.equal(values.length,1,'UNKNOWN must remain an actual validation row');const refs=rows(caseDir,'SELECT uri FROM evidence_ref WHERE event_id=?',[values[0].evidence_event_id]);assert.ok(refs.length>=ctx.expected.evidence_refs_gte);expect(ctx,{validations:values.length,outcome:values[0].status,pass_count:values.filter(v=>v.status==='PASS'||v.status==='OBSERVED_PASS').length,same_occurrence:execs.length===1&&execs[0].id===values[0].occurrence_id,evidence_refs_gte:refs.length});
