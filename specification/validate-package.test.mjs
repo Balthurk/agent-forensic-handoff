@@ -203,6 +203,16 @@ test('AFH-01-T22 runtime change or removal between captures invalidates evidence
 const snapshot='d'.repeat(64);
 const gateContext=()=>({phase:'specification',authorization_ref:{status:'ACTIVE',scope:['afh-v0.4.0'],source_ref:'synthetic-authorization-ref'},review_ref:{result:'SATISFACTORY',snapshot_sha256:snapshot,source_ref:'synthetic-review-ref',reviewer:'independent-test-reviewer',material_findings:0},evidence:['openspec','schema','package_tests','traceability','oracle_review'].map(check=>({check,result:check==='oracle_review'?'SATISFACTORY':'PASS',evidence_class:check==='oracle_review'?'SEMANTIC_REVIEW':'PACKAGE_VALIDATION',snapshot_sha256:snapshot,source_ref:check==='oracle_review'?'synthetic-review-ref':'synthetic-'+check,mechanical_errors:0}))});
 const gate=(context,change_id=null,r=registry)=>evaluateGate({registry:r,validation:{passed:true},snapshot_sha256:snapshot,context,change_id});
+test('SCOPE03 exact integration permission requires current writer and applicable package evidence',()=>{
+  const change=registry.changes.find(c=>c.order===3),extra=['src/archive/engine.js','src/archive/storage.js','src/archive/verify.js','src/archive/reader-observation.js'];
+  assert.equal(change.write_set.length,12);for(const file of extra)assert.ok(change.write_set.includes(file));
+  const context=acceptedContext();context.writer={task_id:'synthetic-exclusive03',exclusive:true,write_set:change.write_set.filter(file=>!extra.includes(file))};
+  assert.ok(gate(context,change.id).blockers.includes('WRITER_OR_WRITE_SET'));
+  context.writer.write_set=[...change.write_set];assert.equal(gate(context,change.id).state,'IMPLEMENTATION_READY');
+  context.review_ref.snapshot_sha256='old-package';assert.ok(gate(context,change.id).blockers.includes('SEMANTIC_REVIEW_PENDING_OR_STALE'));
+  context.review_ref.snapshot_sha256=snapshot;context.evidence.find(e=>e.check==='schema').snapshot_sha256='old-package';assert.ok(gate(context,change.id).blockers.includes('EVIDENCE_SCHEMA'));
+  assert.equal(acceptancePlan(registry).filter(s=>s.milestone===3&&s.stage==='CHANGE_EXIT').length,21);
+});
 test('gate accepts full spec and01 without requiring fourteen GREEN',()=>{const c=gateContext();assert.equal(gate(c).state,'SPECIFICATION_READY');c.writer={task_id:'test-writer',exclusive:true,write_set:registry.changes[0].write_set};assert.equal(gate(c,registry.changes[0].id).state,'IMPLEMENTATION_READY');});
 test('gate02 requires predecessor01 and exact exclusive writer',()=>{const c=gateContext();c.writer={task_id:'test-writer',exclusive:true,write_set:registry.changes[1].write_set};assert.ok(gate(c,registry.changes[1].id).blockers.some(x=>x.startsWith('PREDECESSOR_')));c.writer.exclusive=false;assert.ok(gate(c,registry.changes[1].id).blockers.includes('WRITER_OR_WRITE_SET'));});
 test('scope authorization persists when review digest becomes stale',()=>{const c=gateContext();c.authorization_ref.snapshot_sha256='old';assert.equal(gate(c).state,'SPECIFICATION_READY');c.review_ref.snapshot_sha256='old';const g=gate(c);assert.ok(g.blockers.includes('SEMANTIC_REVIEW_PENDING_OR_STALE'));assert.ok(!g.blockers.includes('AUTHORIZATION_SCOPE'));});

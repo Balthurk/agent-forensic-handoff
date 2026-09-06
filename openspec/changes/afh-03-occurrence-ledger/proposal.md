@@ -20,4 +20,4 @@ No existing OpenSpec requirement is removed; legacy behavior remains covered by 
 
 ## Impact
 
-Interfaces: auditSession, archive.ingest, event.show, stats. Write set: src/adapters.js, src/audit.js, src/reducers.js, src/database.js, src/archive/ledger.js, src/archive/occurrences.js, test/acceptance/afh-03.test.mjs, test/acceptance/afh-02.test.mjs. Dependencies: afh-01-native-identity, afh-02-incremental-archive. All shared profiles are normative: writer.
+Interfaces: auditSession, archive.ingest, event.show, stats. Write set: src/adapters.js, src/audit.js, src/reducers.js, src/database.js, src/archive/ledger.js, src/archive/occurrences.js, test/acceptance/afh-03.test.mjs, test/acceptance/afh-02.test.mjs, src/archive/engine.js, src/archive/storage.js, src/archive/verify.js, src/archive/reader-observation.js. Dependencies: afh-01-native-identity, afh-02-incremental-archive. All shared profiles are normative: writer.

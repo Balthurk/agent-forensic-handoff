@@ -44,7 +44,7 @@ Corregir nuevas capturas audit para que los probes se vuelvan GREEN; campos/stat
 
 Cada delta compromete ocurrencia+eventos+refs en la misma transacción. Resultado tardío añade revisión; readers de snapshot anterior siguen viendo INCOMPLETE. Repetir entrega técnica no duplica acto. Recovery posterior a terminal no mezcla con siguiente reutilización del ID.
 
-Expected write set: src/adapters.js, src/audit.js, src/reducers.js, src/database.js, src/archive/ledger.js, src/archive/occurrences.js, test/acceptance/afh-03.test.mjs, test/acceptance/afh-02.test.mjs.
+Expected write set: src/adapters.js, src/audit.js, src/reducers.js, src/database.js, src/archive/ledger.js, src/archive/occurrences.js, test/acceptance/afh-03.test.mjs, test/acceptance/afh-02.test.mjs, src/archive/engine.js, src/archive/storage.js, src/archive/verify.js, src/archive/reader-observation.js.
 
 ## Risks / Trade-offs
 
