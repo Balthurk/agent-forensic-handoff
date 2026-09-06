@@ -56,9 +56,13 @@ export async function acquireSource(root,input,previousSources,limits,{signal,on
     parser.finish(limits.max_record_bytes);
     let prefix=0;for(const record of parser.records){const old=previous?.records[prefix];if(!old||old.sha256!==record.sha256||old.byte_length!==record.byte_length)break;prefix++;}
     const location={host_id:boundary.host_id,path:boundary.path},locations=[...(previous?.location_observations??[])];if(!locations.some(item=>item.host_id===location.host_id&&item.path===location.path))locations.push(location);
-    const unchanged=previous&&raw.sha256===previous.raw_sha256&&raw.bytes===previous.raw_bytes&&locations.length===previous.location_observations?.length;
     const continuous=previous&&prefix===previous.records.length&&previous.records.every(r=>r.includes_terminator)&&raw.bytes>=previous.raw_bytes;
     const sessionId=native?nativeSessionId({harness:input.harness,origin_domain_id:input.origin_domain_id,native_id:native}):'ses4-'+digest([input.harness,input.origin_domain_id,'provisional',lineage]);
+    const effective={harness:input.harness,origin_domain_id:input.origin_domain_id,source_lineage_id:lineage,native_id:native,session_id:sessionId,codec,identity_status:native?'VERIFIED':'UNCERTAIN',provisional:native===null};
+    const unchanged=previous&&raw.sha256===previous.raw_sha256&&raw.bytes===previous.raw_bytes&&locations.length===previous.location_observations?.length&&Object.entries(effective).every(([field,value])=>previous[field]===value);
+    // Defer this conflict until the engine has compared the idempotency digest
+    // of all captured inputs. Nothing from this acquisition is published yet.
+    const identityConflict=previous?.native_id!==null&&previous?.native_id!==undefined&&previous.native_id!==native?{source_lineage_id:lineage,established_native_id:previous.native_id,requested_native_id:native,origin_domain_id:input.origin_domain_id,harness:input.harness}:null;
     const counts={records_preserved:parser.records.length,records_parsed:0,records_unparsed:0,records_normalized:0,records_unsupported:0};
     const records=[],normalizer=byteRecords(record=>{
       const index=record.ordinal-1;record.value=parseRecord(record.raw);
@@ -77,6 +81,6 @@ export async function acquireSource(root,input,previousSources,limits,{signal,on
     if(unchanged)return {manifest:previous,unchanged:true,bytes_read:raw.bytes*2,late_bytes:late,new_records:0,new_occurrences:0,reused_objects:raw.objects.length,prefix_bytes_verified:raw.bytes};
     let decodedManifestId=null;if(codec!=='none'){const payload={schema_version:4,raw_sha256:decoded.sha256,raw_bytes:decoded.bytes,objects:decoded.objects,codec:'none'};decodedManifestId='dec4-'+digest(payload);writeJson(inside(root,'bronze/sources',decodedManifestId+'.json'),payload);}
     const manifest=saveSourceManifest(root,{schema_version:4,source_lineage_id:lineage,harness:input.harness,origin_domain_id:input.origin_domain_id,native_id:native,session_id:sessionId,identity_status:native?'VERIFIED':'UNCERTAIN',provisional:native===null,raw_sha256:raw.sha256,raw_bytes:raw.bytes,codec,objects:raw.objects,decoded_manifest_id:decodedManifestId,decoded_sha256:decoded.sha256,decoded_bytes:decoded.bytes,decoded_objects:codec==='none'?[]:decoded.objects,boundary,location_observations:locations,late_bytes:late,prefix_relation:{kind:previous?continuous?'APPEND':'DIVERGENT':'NEW',previous_source_revision_id:previous?.source_revision_id??null,reused_records:prefix,verified_bytes:prefix?records[prefix-1].byte_offset+records[prefix-1].byte_length:0},records,counts});
-    return {manifest,unchanged:false,bytes_read:raw.bytes*2,late_bytes:late,new_records:records.length-prefix,new_occurrences:records.slice(prefix).reduce((n,r)=>n+r.events.filter(e=>!e.kind.startsWith('forensic.')).length,0),reused_objects:raw.reused+(codec==='none'?0:decoded.reused),prefix_bytes_verified:manifest.prefix_relation.verified_bytes};
+    return {manifest,unchanged:false,identity_conflict:identityConflict,bytes_read:raw.bytes*2,late_bytes:late,new_records:records.length-prefix,new_occurrences:records.slice(prefix).reduce((n,r)=>n+r.events.filter(e=>!e.kind.startsWith('forensic.')).length,0),reused_objects:raw.reused+(codec==='none'?0:decoded.reused),prefix_bytes_verified:manifest.prefix_relation.verified_bytes};
   }finally{fs.closeSync(fd);}
 }

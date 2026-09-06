@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {assertReadObservation,compareReadInventory} from '../../src/archive/reader-observation.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -57,35 +58,7 @@ function readerAuxiliaryInventory(root){
     const stat=fs.lstatSync(file,{bigint:true});return [{path:name,type:stat.isSymbolicLink()?'link':stat.isFile()?'file':'unknown',bytes:Number(stat.size),identity:stat.dev+':'+stat.ino,sha256:stat.isFile()&&!stat.isSymbolicLink()?hash(fs.readFileSync(file)):null}];
   });
 }
-function readerCompare(observation){
-  const reasons=[],add=reason=>{if(!reasons.includes(reason))reasons.push(reason);},before=observation.inventories[0].rows;
-  const protectedRows=rows=>rows.filter(row=>!readerAuxiliaryNames.has(row.path));
-  for(const snapshot of observation.inventories){
-    if(snapshot.rows.some(row=>!['file','directory'].includes(row.type)))add('UNSUPPORTED_FILE_TYPE');
-    if(snapshot.rows.some(row=>readerAuxiliaryNames.has(row.path)&&row.type!=='file'))add('NONREGULAR_AUXILIARY');
-    if(digest(protectedRows(snapshot.rows))!==digest(protectedRows(before)))add('PROTECTED_INVENTORY_CHANGE');
-  }
-  const auxiliarySnapshots=[before.filter(row=>readerAuxiliaryNames.has(row.path)),...observation.native_calls.flatMap(call=>[call.before,call.after]),observation.inventories.at(-1).rows.filter(row=>readerAuxiliaryNames.has(row.path))];
-  const firstWal=auxiliarySnapshots[0].find(row=>row.path==='ledger.sqlite-wal')??null;
-  for(const rows of auxiliarySnapshots){
-    if(rows.some(row=>row.type!=='file'))add('NONREGULAR_AUXILIARY');
-    const wal=rows.find(row=>row.path==='ledger.sqlite-wal')??null;
-    if(firstWal?.bytes>0){if(digest(wal)!==digest(firstWal))add('NONEMPTY_WAL_CHANGED');}
-    else if(wal&&wal.bytes!==0)add('ZERO_WAL_GAINED_DATA');
-  }
-  const changed=auxiliarySnapshots.some(rows=>digest(rows)!==digest(auxiliarySnapshots[0]));
-  if(changed){
-    if(!observation.writer_observation.quiet)add('WRITER_NOT_OBSERVED_QUIET');
-    if(!observation.handles.length||observation.handles.some(handle=>!handle.readOnly||handle.location!==observation.database||!handle.closed))add('NATIVE_READONLY_HANDLE_UNPROVEN');
-    if(observation.unattributed_boundaries.length)add('UNATTRIBUTED_AUXILIARY_CHANGE');
-    for(const call of observation.native_calls){
-      if(digest(call.before)!==digest(call.after)&&!observation.handles.some(handle=>handle.id===call.handle_id&&handle.readOnly&&handle.location===observation.database))add('UNATTRIBUTED_NATIVE_CHANGE');
-    }
-  }
-  if(observation.filesystem_mutations.length)add('JAVASCRIPT_FILESYSTEM_MUTATION');
-  if(!observation.sql_probes&&observation.sql_mutations.length)add('SQL_MUTATION_ATTEMPT');
-  return {preserved:reasons.length===0,reasons,auxiliary_changes:changed,nonempty_wal_protected:firstWal?.bytes>0};
-}
+function readerCompare(observation){return compareReadInventory(observation);}
 async function observeArchiveReader(root,body,{sqlProbes=false}={}){
   root=path.resolve(root);const database=path.join(root,'ledger.sqlite'),originalConstructor=sqlite.DatabaseSync;
   const report={root,pid:process.pid,database,decision:'AFH-02-READONLY-WAL-INTERPRETATION-01',inventories:[{phase:'BEFORE',rows:readerInventory(root)}],handles:[],native_calls:[],filesystem_mutations:[],sql_mutations:[],errors:[],unattributed_boundaries:[],sql_probes:sqlProbes};
@@ -130,6 +103,24 @@ async function observeArchiveReader(root,body,{sqlProbes=false}={}){
   report.comparison=readerCompare(report);report.operation_error=operationError?errorValue(operationError):result?.error??null;report.passed=report.comparison.preserved&&report.writer_observation.quiet&&!report.operation_error&&result?.data?.passed!==false&&report.errors.length===0&&report.handles.length>0&&report.handles.every(handle=>handle.readOnly&&handle.closed)&&!sqlProbes;
   return {result,error:operationError,observation:report};
 }
+async function readerConsumerCalibration({run,archive,receipt,probeRead,negativeRead}){
+  receipt.validation_role='REPAIR_R3_ACTUAL_READER_CONSUMERS';const builderPath=process.env.AFH_READER_CLOSURE_BUILDER;if(!builderPath)throw Object.assign(new Error('Exact successor closure builder required for consumer calibration'),{code:'UNAVAILABLE'});const builder=await import(pathToFileURL(builderPath).href);receipt.closure_consumer={ref:builderPath,sha256:hash(fs.readFileSync(builderPath)),export:'validateReaderCorpus'};
+  await probeRead(null);const baselineObservation=structuredClone(receipt.read_only_observations.at(-1)),baselinePair=structuredClone(receipt.requests.find(pair=>pair.request.request_id===baselineObservation.request_id));assert.equal(baselineObservation.passed,true);assert.equal(builder.validateReaderCorpus([{r:{requests:[baselinePair],read_only_observations:[baselineObservation]}}])[0].category,'POSITIVE_READ');
+  const mutations=[['native_boundary_gap',r=>{const rows=r.observation.native_calls[0].before;if(rows.length)rows[0].sha256=rows[0].sha256==='0'.repeat(64)?'1'.repeat(64):'0'.repeat(64);else rows.push({path:'ledger.sqlite-shm',type:'file',bytes:0,identity:'derived-gap:0',sha256:hash('')});}],['foreign_auxiliary_frame',r=>{r.observation.native_calls[0].before.push({path:'foreign.sqlite-shm',type:'file',bytes:0,identity:'0:0',sha256:'0'.repeat(64)});}],['known_running_writer',r=>{r.observation.writer_observation.phase={state:'RUNNING',pid:process.pid};}],['quiet_false',r=>{r.observation.writer_observation.quiet=false;r.observation.passed=false;}],['quiet_contradictory_passed',r=>{r.observation.writer_observation.quiet=false;r.observation.passed=true;}],['sql_error',r=>{r.observation.errors.push({code:'ERR_SQLITE_ERROR',message:'calibration SQL failure'});r.observation.passed=false;}],['verification_false',r=>{r.result.data.passed=false;r.observation.passed=false;}],['missing_handles',r=>{r.observation.handles=[];r.observation.passed=false;}],['foreign_handle',r=>{r.observation.handles[0].location=path.join(run,'foreign.sqlite');}],['unclosed_handle',r=>{r.observation.handles[0].closed=false;}],['writable_constructor',r=>{r.observation.handles[0].options.readOnly=false;}],['missing_native_calls',r=>{r.observation.native_calls=[];}],['unproven_isolation',r=>{r.observation.writer_observation.contained=false;}],['failed_native_call',r=>{r.observation.native_calls[0].error={code:'ERR_SQLITE_ERROR'};}],['missing_during_inventory',r=>{r.observation.inventories=r.observation.inventories.filter(item=>!item.phase.startsWith('DURING_'));}],['passed_false',r=>{r.observation.passed=false;}]];
+  const accepted=[],unexpected=[];receipt.consumer_calibrations=[];
+  for(const [name,mutate]of mutations){let wrapperRejected=false,builderRejected=false;try{await probeRead(mutate);}catch(error){wrapperRejected=true;if(error.code!=='READ_CONTROL_REJECTED')unexpected.push({name,consumer:'wrapper',code:error.code,message:error.message});}
+    const mutant={result:structuredClone(baselinePair.response),observation:structuredClone(baselineObservation)};mutate(mutant);try{builder.validateReaderCorpus([{r:{requests:[{request:baselinePair.request,response:mutant.result}],read_only_observations:[mutant.observation]}}]);}catch(error){builderRejected=true;if(error.code!=='READ_CONTROL_REJECTED')unexpected.push({name,consumer:'closure',code:error.code,message:error.message});}
+    if(!wrapperRejected||!builderRejected)accepted.push({name,wrapperRejected,builderRejected});receipt.consumer_calibrations.push({name,classification:'DERIVED_MUTANT_OF_REAL_NATIVE_OBSERVATION',original:baselineObservation,mutant:mutant.observation,mutant_response:mutant.result,wrapperRejected,builderRejected});
+  }
+  receipt.closure_structure_calibrations=[];for(const [name,mutate]of [['missing_observation',r=>{r.read_only_observations=[];}],['orphan_observation',r=>{r.requests=[];}],['duplicate_observation',r=>{r.read_only_observations.push(structuredClone(r.read_only_observations[0]));}],['missing_outcome',r=>{delete r.read_only_observations[0].outcome;}],['changed_outcome',r=>{r.read_only_observations[0].outcome.response_sha256='0'.repeat(64);}]] ){
+    const corpus={requests:[structuredClone(baselinePair)],read_only_observations:[structuredClone(baselineObservation)]};mutate(corpus);assert.throws(()=>builder.validateReaderCorpus([{r:corpus}]),error=>error.code==='READ_CONTROL_REJECTED');receipt.closure_structure_calibrations.push({name,rejected:true,corpus});
+  }
+  const lock=path.join(archive,'writer.lock');fs.writeFileSync(lock,JSON.stringify({pid:process.pid,job_id:'unobserved-calibration-writer',nonce:'unobserved-calibration-nonce'}),{flag:'wx'});let realRejected=false;try{await probeRead(null);}catch(error){realRejected=true;if(error.code!=='READ_CONTROL_REJECTED')unexpected.push({name:'real_unobserved_writer',code:error.code});}finally{fs.unlinkSync(lock);}if(!realRejected)accepted.push({name:'real_unobserved_writer'});receipt.real_unobserved_writer_rejected=realRejected;
+  await assert.rejects(()=>negativeRead('ANY_ERROR'),error=>error.code==='READ_CONTROL_REJECTED');await assert.rejects(()=>negativeRead('INTEGRITY_FAILED'),error=>error.code==='READ_CONTROL_REJECTED');
+  const negative=await negativeRead();assert.equal(negative.error.code,'EVIDENCE_UNAVAILABLE');const negativeObservation=receipt.read_only_observations.at(-1),negativePair=receipt.requests.find(pair=>pair.request.request_id===negativeObservation.request_id);assert.equal(negativeObservation.passed,false);assert.equal(negativeObservation.outcome.category,'EXPECTED_NEGATIVE');assert.equal(builder.validateReaderCorpus([{r:{requests:[negativePair],read_only_observations:[negativeObservation]}}])[0].category,'EXPECTED_NEGATIVE');receipt.expected_negative={pair:negativePair,observation:negativeObservation};
+  assert.deepEqual(accepted,[],'Both actual wrappers and the effective closure consumer must reject incomplete proofs');assert.deepEqual(unexpected,[],'Rejection must come from complete reader-control validation');
+}
+test('M02-R3 actual harness02 and closure consumer reject incomplete read proofs',async t=>scenario(t,'AFH-02-T17',readerConsumerCalibration));
 async function scenario(t,id,body){
   const base=process.env.AFH_ACCEPTANCE_RUN||os.tmpdir();fs.mkdirSync(base,{recursive:true});
   const run=fs.mkdtempSync(path.join(base,id+'-')),contract=registry.scenarios.find(s=>s.id===id),fixture=fixtures.cases[id];
@@ -139,11 +130,11 @@ async function scenario(t,id,body){
     assert.equal(digest(fixture),contract.fixture_ref.sha256);assert.equal(digest(fixtures.oracles[id]),contract.oracle_ref.sha256);assert.equal(digest(fixtures.datasets[fixture.dataset_ref.split('/').at(-1)]),fixture.dataset_sha256);
     if(typeof publicApi.archiveRequest!=='function')throw Object.assign(new Error('Canonical public archiveRequest export is absent'),{code:'NOT_IMPLEMENTED'});
     readerFixtureRoots.add(run);const archive=path.join(run,'archive');let requestIndex=0;
-    const call=async(operation,params,options={},revision_id=null,target=archive,engine=publicApi.archiveRequest)=>{
+    const call=async(operation,params,options={},revision_id=null,target=archive,engine=publicApi.archiveRequest,expectation=null,transform=null)=>{
       const request={kind:'request',schema_version:4,protocol_version:'4.0',request_id:id+'-'+(++requestIndex),operation,archive:target,revision_id,params};
       const requestValidation=validateWire(request,'Request');assert.equal(requestValidation.passed,true,JSON.stringify(requestValidation.errors));
       const readOnly=['evidence.read','archive.verify','scope.resolve'].includes(operation);let response;
-      if(readOnly){const observed=await observeArchiveReader(target,()=>engine(request,options));response=observed.result;(receipt.read_only_observations??=[]).push({operation,...observed.observation});if(observed.error)throw observed.error;assert.equal(observed.observation.comparison.preserved,true,JSON.stringify(observed.observation.comparison));}
+      if(readOnly){const observed=await observeArchiveReader(target,()=>engine(request,options));const original=transform?structuredClone(observed):null;if(transform)transform(observed);response=observed.result;const observation={operation,request_id:request.request_id,expectation,...observed.observation};try{if(observed.error)throw observed.error;observation.outcome=assertReadObservation({request,response,observation,expectation});(receipt.read_only_observations??=[]).push(observation);}catch(error){(receipt.read_only_rejections??=[]).push({request,response,observation,error:{code:error.code,message:error.message},...(original?{calibration_original:original}: {})});throw error;}}
       else response=await engine(request,options);receipt.requests.push({request,response});
       const responseValidation=validateWire(response,'Response');
       if(!responseValidation.passed)throw Object.assign(new Error(JSON.stringify(responseValidation.errors)),{code:'SCHEMA_PRECONDITION'});
@@ -156,7 +147,7 @@ async function scenario(t,id,body){
     const initialized=await call('archive.init',{idempotency_key:'init',origin_domains:[{id:origin,harness:'generic',descriptor:'Frozen synthetic acceptance fixture'}]});
     assert.equal(initialized.error,null);assert.equal(initialized.data.schema_version,4);
     receipt.phase='BEHAVIOR';
-    await body({run,archive,call,fixture,expected:fixtures.oracles[id].expected,receipt});
+    await body({run,archive,call,probeRead:(transform)=>call('archive.verify',{deep:true},{},null,archive,publicApi.archiveRequest,null,transform),negativeRead:(expected='EVIDENCE_UNAVAILABLE')=>call('evidence.read',{uri:'afh://evidence/sha256/'+'0'.repeat(64)+'/record/1#bytes=0:1',format:'base64'},{},null,archive,publicApi.archiveRequest,expected),fixture,expected:fixtures.oracles[id].expected,receipt});
     receipt.status='GREEN_BEHAVIOR';
   }catch(error){
     receipt.status=['NOT_IMPLEMENTED','UNAVAILABLE'].includes(error.code)?error.code:error.code==='ERR_ASSERTION'&&receipt.phase==='BEHAVIOR'?'RED_BEHAVIOR':'ERROR_MECHANICAL_OR_PRECONDITION';receipt.reason=error.message;
@@ -171,6 +162,53 @@ function source(run,name,bytes){
   const file=path.join(run,name);fs.writeFileSync(file,bytes,{flag:'wx'});
   return {path:file,harness:'generic',origin_domain_id:origin};
 }
+
+test('M02-R1 exact published integrity rejects missing extra shifted and altered ledger facts',async t=>scenario(t,'AFH-02-T17',async({run,archive,call,receipt})=>{
+  receipt.validation_role='REPAIR_R1_EXACT_PUBLISHED_CLOSURE';receipt.mutations=[];
+  const input=source(run,'closure.jsonl','{"role":"user","content":"published closure"}\n'),first=await call('archive.ingest',{sources:[input],include_children:false,idempotency_key:'first'});assert.equal(first.error,null);const firstSource=manifest(archive,first.data.source_revisions[0]);
+  const change={association_id:'closure-association',expected_revision_id:null,branch_id:'main',session_id:firstSource.session_id,project_id:'closure-project',workspace:null,checkout:null,association_state:'associated',valid_from:{kind:'unknown',value:null,precision:'order_only',timezone:null},valid_to:{kind:'open',value:null,precision:'order_only',timezone:null},evidence_refs:[firstSource.records[0].evidence_ref]};assert.equal((await call('association.record',{idempotency_key:'association',changes:[change]})).error,null);
+  const later=source(run,'later-closure.jsonl','{"role":"assistant","content":"later closure"}\n');assert.equal((await call('archive.ingest',{sources:[later],include_children:false,idempotency_key:'later'})).error,null);assert.equal((await call('archive.verify',{deep:true})).data.passed,true);
+  const mutations=[];
+  for(const table of ['source_revision','session_version','logical_event','association_version'])for(const kind of ['missing','extra','shifted','content'])mutations.push({table,kind});
+  mutations.push({table:'logical_event',kind:'reference'},{table:'association_version',kind:'reference'});const falsePasses=[];
+  for(const {table,kind}of mutations){const target=path.join(run,table+'-'+kind);fs.cpSync(archive,target,{recursive:true,errorOnExist:true,force:false});const db=new DatabaseSync(path.join(target,'ledger.sqlite'));let changed;
+    try{const row=db.prepare('SELECT * FROM '+table+' ORDER BY commit_seq LIMIT 1').get();
+      if(kind==='missing')changed=db.prepare('DELETE FROM '+table+' WHERE id=?').run(row.id);
+      if(kind==='extra'){const clone={...row,id:'extra-'+row.id};changed=db.prepare('INSERT INTO '+table+' ('+Object.keys(clone).join(',')+') VALUES('+Object.keys(clone).map(()=>'?').join(',')+')').run(...Object.values(clone));}
+      if(kind==='shifted')changed=db.prepare('UPDATE '+table+' SET commit_seq=1 WHERE id=?').run(row.id);
+      if(kind==='content'||kind==='reference'){const column=table==='source_revision'?'manifest_json':'data_json',value=JSON.parse(row[column]);if(kind==='reference'){const refs=table==='logical_event'?value.evidence_refs:value.change.evidence_refs;refs[0].record_sha256='f'.repeat(64);}else value.uncommitted_field='altered';changed=db.prepare('UPDATE '+table+' SET '+column+'=? WHERE id=?').run(JSON.stringify(value),row.id);}
+      assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check,'ok');
+    }finally{db.close();}
+    assert.ok(changed.changes>0);for(const deep of [false,true]){const response=await call('archive.verify',{deep},{},null,target,publicApi.archiveRequest,'PUBLISHED_INTEGRITY_FAILURE');receipt.mutations.push({table,kind,deep,changed,response});if(response.data?.passed!==false||!response.data.checks.some(check=>check.id==='integrity.failure'&&check.observed==='INTEGRITY_FAILED'))falsePasses.push({table,kind,deep,passed:response.data?.passed});}
+  }
+  // A later corrupted fact is outside an intact earlier cut; the current cut
+  // still must reject it. This is distinct from silently ignoring missing rows.
+  const historical=path.join(run,'historical-cut');fs.cpSync(archive,historical,{recursive:true,errorOnExist:true,force:false});const db=new DatabaseSync(path.join(historical,'ledger.sqlite'));try{db.exec('DELETE FROM session_version WHERE commit_seq=4');}finally{db.close();}const old=await call('archive.verify',{deep:true},{},first.data.revision_id,historical);assert.equal(old.data.passed,true);receipt.historical_cut={revision:first.data.revision_id,response:old};assert.deepEqual(falsePasses,[],'Every altered published fact must fail exact closure in both modes');
+}));
+
+test('M02-R2 effective identity configuration publishes confirmation and rejects incompatible retargeting',async t=>scenario(t,'AFH-02-T11',async({run,archive,call,receipt})=>{
+  receipt.validation_role='REPAIR_R2_EFFECTIVE_CONFIGURATION';const input=source(run,'identity-config.jsonl','{"role":"user","content":"native owner learned later"}\n'),params={sources:[input],include_children:false,idempotency_key:'initial'},first=await call('archive.ingest',params);assert.equal(first.error,null);const old=manifest(archive,first.data.source_revisions[0]);assert.equal(old.provisional,true);
+  const same=await call('archive.ingest',params);assert.deepEqual(same.receipt,first.receipt);assert.deepEqual(same.data,first.data);const noChange=await call('archive.ingest',{...params,idempotency_key:'same-effective-config'});assert.equal(noChange.data.revision_id,first.data.revision_id);assert.equal(noChange.data.delta.new_occurrences,0);
+  const confirmation={sources:[{...input,native_id:'confirmed-owner'}],include_children:false,idempotency_key:'confirmation'},confirmed=await call('archive.ingest',confirmation);assert.equal(confirmed.error,null);const current=manifest(archive,confirmed.data.source_revisions[0]);receipt.confirmation={first,confirmed,old_source:old,current_source:current};assert.equal(current.native_id,'confirmed-owner','A new effective identity must not be discarded as NO_CHANGE');assert.equal(current.provisional,false);assert.equal(current.identity_status,'VERIFIED');assert.notEqual(current.source_revision_id,old.source_revision_id);assert.notEqual(confirmed.data.revision_id,first.data.revision_id);assert.equal(current.source_lineage_id,old.source_lineage_id);assert.deepEqual(current.records.flatMap(r=>r.events.map(e=>e.id)),old.records.flatMap(r=>r.events.map(e=>e.id)));assert.equal(confirmed.data.delta.new_occurrences,0);assert.equal(confirmed.data.delta.new_records,0);
+  assert.deepEqual(manifest(archive,old.source_revision_id),old);assert.deepEqual(await readManifestBytes((op,p)=>call(op,p,{},first.data.revision_id),old),fs.readFileSync(input.path));assert.equal((await call('archive.verify',{deep:true},{},first.data.revision_id)).data.passed,true);assert.equal((await call('archive.verify',{deep:true})).data.passed,true);
+  const repeat=await call('archive.ingest',confirmation);assert.deepEqual(repeat.receipt,confirmed.receipt);assert.deepEqual(repeat.data,confirmed.data);const repeatedConfig=await call('archive.ingest',{...confirmation,idempotency_key:'repeat-config'});assert.equal(repeatedConfig.data.revision_id,confirmed.data.revision_id);assert.equal(repeatedConfig.data.delta.new_occurrences,0);
+  const inheritedIdentity=await call('archive.ingest',{...params,idempotency_key:'omitted-but-effective-same'});assert.equal(inheritedIdentity.data.revision_id,confirmed.data.revision_id);
+  const before=fs.readFileSync(path.join(archive,'archive.json')),incompatible={...confirmation,sources:[{...input,native_id:'different-owner'}]};const keyConflict=await call('archive.ingest',incompatible);assert.equal(keyConflict.error?.code,'IDEMPOTENCY_CONFLICT');const identityConflict=await call('archive.ingest',{...incompatible,idempotency_key:'incompatible-owner'});assert.equal(identityConflict.error?.code,'AMBIGUOUS_IDENTITY');assert.ok(identityConflict.error.message.includes('identity')||identityConflict.error.message.includes('owner'));assert.deepEqual(fs.readFileSync(path.join(archive,'archive.json')),before);receipt.conflicts={keyConflict,identityConflict};
+  const distinct=await call('archive.ingest',{sources:[{...input,native_id:'different-owner',source_lineage_id:'00000000-0000-4000-8000-000000000499'}],include_children:false,idempotency_key:'distinct-lineage'});assert.equal(distinct.error,null);const distinctSource=manifest(archive,distinct.data.source_revisions[0]);assert.notEqual(distinctSource.source_lineage_id,current.source_lineage_id);assert.equal(distinctSource.native_id,'different-owner');assert.equal((await call('archive.verify',{deep:true})).data.passed,true);
+  const contradictory=source(run,'conflicting-owners.jsonl','{"session_id":"owner-a","role":"user","content":"a"}\n{"session_id":"owner-b","role":"user","content":"b"}\n'),pointer=fs.readFileSync(path.join(archive,'archive.json')),conflictingSource=await call('archive.ingest',{sources:[contradictory],include_children:false,idempotency_key:'contradictory-source'});assert.equal(conflictingSource.error?.code,'AMBIGUOUS_IDENTITY');assert.deepEqual(fs.readFileSync(path.join(archive,'archive.json')),pointer);receipt.additional_identity_boundaries={distinct,conflictingSource};
+}));
+
+test('M02-R1 committed legacy aliases and revision rows are exact while shallow verification preserves its scope',async t=>scenario(t,'AFH-02-T17',async({run,archive,call,receipt})=>{
+  receipt.validation_role='REPAIR_R1_LEGACY_AND_DEPTH';receipt.mutations=[];const report=process.env.AFH_LEGACY_FIXTURES;if(!report)throw Object.assign(new Error('Pinned legacy fixtures required'),{code:'UNAVAILABLE'});const legacy=JSON.parse(fs.readFileSync(report)).versions[0],original=inventory(legacy.case_dir);assert.equal((await call('archive.import_case',{case_path:legacy.case_dir,idempotency_key:'legacy'})).error,null);assert.equal((await call('archive.verify',{deep:true})).data.passed,true);
+  for(const table of ['legacy_alias','archive_commit'])for(const kind of ['missing','extra','shifted','content']){
+    const target=path.join(run,table+'-'+kind);fs.cpSync(archive,target,{recursive:true,errorOnExist:true,force:false});const db=new DatabaseSync(path.join(target,'ledger.sqlite'));
+    try{const row=db.prepare('SELECT * FROM '+table+' LIMIT 1').get();if(table==='legacy_alias'){
+      if(kind==='missing')db.exec('DELETE FROM legacy_alias');if(kind==='extra')db.prepare('INSERT INTO legacy_alias VALUES(?,?,?,?,?)').run(row.case_hash,'extra-alias',row.event_id,row.commit_seq,row.evidence_json);if(kind==='shifted')db.exec('UPDATE legacy_alias SET commit_seq=1');if(kind==='content')db.exec("UPDATE legacy_alias SET evidence_json='[]'");
+    }else{if(kind==='missing')db.exec('DELETE FROM archive_commit WHERE seq=1');if(kind==='extra')db.prepare('INSERT INTO archive_commit VALUES(?,?,?,?,?)').run(0,'extra-commit',row.manifest_sha256,row.recorded_at,row.job_id);if(kind==='shifted')db.exec('UPDATE archive_commit SET seq=0 WHERE seq=1');if(kind==='content')db.exec("UPDATE archive_commit SET job_id='uncommitted-job' WHERE seq=1");}assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check,'ok');}finally{db.close();}
+    const response=await call('archive.verify',{deep:true},{},null,target,publicApi.archiveRequest,'PUBLISHED_INTEGRITY_FAILURE');assert.equal(response.data.passed,false);receipt.mutations.push({table,kind,response});
+  }
+  const target=path.join(run,'depth-cut');fs.cpSync(archive,target,{recursive:true,errorOnExist:true,force:false});const file=objectFiles(target)[0],bytes=fs.readFileSync(file);bytes[0]^=1;fs.writeFileSync(file,bytes);const shallow=await call('archive.verify',{deep:false},{},null,target),deep=await call('archive.verify',{deep:true},{},null,target,publicApi.archiveRequest,'PUBLISHED_INTEGRITY_FAILURE');assert.equal(shallow.data.passed,true);assert.equal(deep.data.passed,false);receipt.depth_boundary={shallow,deep};assert.deepEqual(inventory(legacy.case_dir),original);
+}));
 
 test('Archive reader control attributes native auxiliaries and rejects physical and SQL counterexamples',async t=>scenario(t,'AFH-02-T17',async({run,archive,call,receipt})=>{
   receipt.validation_role='INHERITED_READ_ONLY_INVENTORY';
@@ -263,7 +301,7 @@ test('Archive bounded controls discover only observed children and disclose the 
 test('Archive integrity control rejects a changed logical ledger row despite SQLite structural health',async t=>scenario(t,'AFH-02-T17',async({run,archive,call,receipt})=>{
   receipt.validation_role='INHERITED_LEDGER_INTEGRITY';const input=source(run,'ledger-integrity.jsonl','{"role":"user","content":"original evidence"}\n'),result=await call('archive.ingest',{sources:[input],include_children:false,idempotency_key:'ingest'});assert.equal(result.error,null);
   const db=new DatabaseSync(path.join(archive,'ledger.sqlite'));try{const row=db.prepare('SELECT id,commit_seq,data_json FROM logical_event LIMIT 1').get(),event=JSON.parse(row.data_json);event.input='tampered derived row';db.prepare('UPDATE logical_event SET data_json=? WHERE id=? AND commit_seq=?').run(JSON.stringify(event),row.id,row.commit_seq);assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check,'ok');}finally{db.close();}
-  const verified=await call('archive.verify',{deep:true});assert.equal(verified.data.passed,false,'Structural SQLite health cannot establish manifest/ledger provenance integrity');receipt.observed={tampered_ledger_rejected:true,checks:verified.data.checks};
+  const verified=await call('archive.verify',{deep:true},{},null,archive,publicApi.archiveRequest,'PUBLISHED_INTEGRITY_FAILURE');assert.equal(verified.data.passed,false,'Structural SQLite health cannot establish manifest/ledger provenance integrity');receipt.observed={tampered_ledger_rejected:true,checks:verified.data.checks};
 }));
 test('Archive writer controls: idempotence no-change and staged disk failure preserve recoverability',async t=>scenario(t,'AFH-02-T11',async({run,archive,call,receipt})=>{
   receipt.validation_role='INHERITED_WRITER_CONTROLS';const input=source(run,'controls.jsonl','{"role":"user","content":"control"}\n'),params={sources:[input],include_children:false,idempotency_key:'first'};
@@ -356,11 +394,11 @@ test('Archive concurrency control pins readers and excludes committed rows beyon
       const plan=JSON.parse(fs.readFileSync(path.join(archive,'jobs',barrier.job_id,'checkpoint.json'))).payload.plan;newSource=manifest(archive,plan.result.data.source_revisions[0]);assert.equal(JSON.parse(fs.readFileSync(path.join(archive,'archive.json'))).published_seq,oldPointer.published_seq);
       const raw=await observeArchiveReader(archive,()=>{const db=new sqlite.DatabaseSync(path.join(archive,'ledger.sqlite'),{readOnly:true});try{db.exec('BEGIN');const unfiltered=db.prepare('SELECT id,commit_seq FROM source_revision ORDER BY id').all(),filtered=db.prepare('SELECT id,commit_seq FROM source_revision WHERE commit_seq<=? ORDER BY id').all(oldPointer.published_seq);db.exec('COMMIT');return {unfiltered,filtered};}finally{db.close();}});
       assert.equal(raw.observation.passed,true,JSON.stringify(raw.observation.comparison));assert.equal(raw.observation.comparison.nonempty_wal_protected,true);assert.equal(raw.result.unfiltered.length,2,'The negative unfiltered query must actually see the unpublished commit');assert.equal(raw.result.filtered.length,1);assert.equal(pinnedRows().length,1);
-      const hidden=await call('evidence.read',{uri:newSource.records[0].evidence_ref.uri,format:'base64'});assert.equal(hidden.error?.code,'EVIDENCE_UNAVAILABLE');assert.deepEqual(await readManifestBytes(call,oldSource),fs.readFileSync(oldInput.path));assert.equal((await call('archive.verify',{deep:true})).data.passed,true);
+      const hidden=await call('evidence.read',{uri:newSource.records[0].evidence_ref.uri,format:'base64'},{},null,archive,publicApi.archiveRequest,'EVIDENCE_UNAVAILABLE');assert.equal(hidden.error?.code,'EVIDENCE_UNAVAILABLE');assert.deepEqual(await readManifestBytes(call,oldSource),fs.readFileSync(oldInput.path));assert.equal((await call('archive.verify',{deep:true})).data.passed,true);
       receipt.phases.push({phase:'WRITER_COMMITTED_POINTER_OLD',writer_barrier:barrier,pointer:JSON.parse(fs.readFileSync(path.join(archive,'archive.json'))),raw_queries:raw.result,reader_observation:raw.observation,pinned_rows:pinnedRows()});
     }});assert.equal(committed.error,null);assert.equal(pinnedRows().length,1,'An existing transaction must remain pinned after publication');assert.equal(JSON.parse(fs.readFileSync(path.join(archive,'archive.json'))).published_seq,oldPointer.published_seq+1);
     const fresh=await call('evidence.read',{uri:newSource.records[0].evidence_ref.uri,format:'base64'});assert.equal(fresh.error,null);assert.deepEqual(Buffer.from(fresh.data.payload,'base64'),fs.readFileSync(next.path));
-    const historical=await call('evidence.read',{uri:newSource.records[0].evidence_ref.uri,format:'base64'},{},oldPointer.revision_id);assert.equal(historical.error?.code,'EVIDENCE_UNAVAILABLE');assert.equal((await call('archive.verify',{deep:true},{},oldPointer.revision_id)).data.passed,true);
+    const historical=await call('evidence.read',{uri:newSource.records[0].evidence_ref.uri,format:'base64'},{},oldPointer.revision_id,archive,publicApi.archiveRequest,'EVIDENCE_UNAVAILABLE');assert.equal(historical.error?.code,'EVIDENCE_UNAVAILABLE');assert.equal((await call('archive.verify',{deep:true},{},oldPointer.revision_id)).data.passed,true);
     closeBefore=readerInventory(archive);receipt.phases.push({phase:'WRITER_CLOSED_READER_STILL_PINNED',pinned_rows:pinnedRows(),inventory:closeBefore});
   }finally{pin.close();}
   const readerClosed=readerInventory(archive);assert.deepEqual(readerClosed,closeBefore,'Closing the pinned native readOnly handle must not checkpoint or remove a nonempty WAL');receipt.phases.push({phase:'PINNED_READER_CLOSED',inventory:readerClosed});
@@ -476,7 +514,7 @@ test('AFH-02-T17 corrupted CAS object never returns unverified payload',async t=
   const ingested=await call('archive.ingest',{sources:[input],include_children:false,idempotency_key:'ingest'});assert.equal(ingested.error,null);
   const captured=manifest(archive,ingested.data.source_revisions[0]),files=objectFiles(archive);assert.ok(files.length>0);
   const before=fs.readFileSync(files[0]),damaged=Buffer.from(before);damaged[damaged.length-1]^=1;fs.writeFileSync(files[0],damaged);
-  const response=await call('evidence.read',{uri:captured.records[0].evidence_ref.uri,format:'base64'});
+  const response=await call('evidence.read',{uri:captured.records[0].evidence_ref.uri,format:'base64'},{},null,archive,publicApi.archiveRequest,'INTEGRITY_FAILED');
   receipt.observed={error:response.error?.code,unverified_payload_returned:response.data!==null};assert.deepEqual(receipt.observed,expected);
   receipt.corruption={object:files[0],before_sha256:hash(before),after_sha256:hash(damaged)};
 }));
@@ -558,5 +596,5 @@ test('AFH-02-T16 UTF8 fragments preserve Unicode and reject a cursor on a differ
   const fragments=[];let cursor;do{const fragment=await call('evidence.read',{uri:escapedRecord.evidence_ref.uri,format:'text',max_bytes:7,...(cursor?{continuation:cursor}:{})});assert.equal(fragment.error,null,'A fragment ending within a UTF8 codepoint must trim without replacing bytes');fragments.push(Buffer.from(fragment.data.payload));cursor=fragment.data.continuation;}while(cursor);
   assert.deepEqual(Buffer.concat(fragments),escapedBytes);
   const other=source(run,'other.jsonl','{"role":"user","content":"new revision"}\n');assert.equal((await call('archive.ingest',{sources:[other],include_children:false,idempotency_key:'next'})).error,null);
-  const stale=await call('evidence.read',{uri:item.records[0].evidence_ref.uri,format:'text',max_bytes:5,continuation:initial.data.continuation});receipt.observed={error:stale.error?.code,lossy_decode:!actual.equals(bytes.subarray(0,actual.length))};assert.deepEqual(receipt.observed,expected);
+  const stale=await call('evidence.read',{uri:item.records[0].evidence_ref.uri,format:'text',max_bytes:5,continuation:initial.data.continuation},{},null,archive,publicApi.archiveRequest,'CONTINUATION_MISMATCH');receipt.observed={error:stale.error?.code,lossy_decode:!actual.equals(bytes.subarray(0,actual.length))};assert.deepEqual(receipt.observed,expected);
 }));
