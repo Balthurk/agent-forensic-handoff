@@ -10,7 +10,7 @@ const bin = path.join(root, "bin", "afh.js");
 test("CLI supports conventional help and version flags", () => {
   const version = spawnSync(process.execPath, [bin, "--version"], { encoding: "utf8" });
   assert.equal(version.status, 0);
-  assert.equal(version.stdout.trim(), "0.3.0");
+  assert.equal(version.stdout.trim(), "0.4.0");
 
   const help = spawnSync(process.execPath, [bin, "--help"], { encoding: "utf8" });
   assert.equal(help.status, 0);

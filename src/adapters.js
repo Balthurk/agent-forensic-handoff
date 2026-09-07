@@ -12,6 +12,50 @@ function timestampOf(record, payload = {}) {
 
 function normalized({ kind, subtype = null, actor: eventActor, input = "", output = "", status = null, nativeId = null, callId = null, turnId = null, phase = null, metadata = {}, artifacts = [], session = null, sessionEdges = [], pointer = "" }, record, payload) {
   const time = timestampOf(record, payload);
+  turnId ??= payload.turn_id ?? record.turn_id ?? null;
+  // Acquisition retains metadata verbatim. Keep the native correlation and
+  // unrounded measurement fields here, before the legacy display conversion.
+  const item = payload.item ?? payload;
+  const result = typeof payload.output === 'string' ? safeJson(payload.output, null) : payload.output;
+  const terminal = result && typeof result === 'object' ? result : item;
+  const parts = [];
+  const part = (role, value, jsonPointer) => {
+    if (typeof value === 'string') parts.push({role, text:value, json_pointer:jsonPointer});
+  };
+  if (payload.item) {
+    part('stdout', item.stdout, '/payload/item/stdout');
+    part('stderr', item.stderr, '/payload/item/stderr');
+    part('result', item.aggregated_output, '/payload/item/aggregated_output');
+    part('result', item.output, '/payload/item/output');
+  } else if (record.type === 'response_item') {
+    part('arguments', payload.arguments, '/payload/arguments');
+    part('input', payload.input, '/payload/input');
+    part('result', payload.output, '/payload/output');
+    if (payload.output && typeof payload.output === 'object') {
+      part('stdout', payload.output.stdout, '/payload/output/stdout');
+      part('stderr', payload.output.stderr, '/payload/output/stderr');
+    }
+    if (typeof payload.output === 'string' && result && typeof result === 'object') {
+      for (const role of ['stdout','stderr']) if (typeof result[role] === 'string') {
+        // RFC6901 points to the original string container. The committed
+        // extraction rule identifies the second JSON decode and stream field.
+        parts.push({role,text:result[role],json_pointer:'/payload/output',extraction:{rule_id:'JSON_STRING_FIELD',rule_version:'1',field:role}});
+      }
+    }
+  }
+  if(kind==='tool.fragment')part(payload.stream==='stderr'?'stderr':'stdout',payload.delta,'/payload/delta');
+  metadata = {...metadata, occurrence_v1:{
+    native_call_id:callId, turn_id:turnId, encoding:subtype ?? metadata.origin ?? kind,
+    timestamp_raw:record.timestamp ?? payload.timestamp ?? null,
+    clock_domain:item.clock_domain ?? payload.clock_domain ?? record.clock_domain ?? null,
+    duration:terminal.duration ?? null, duration_ms:terminal.duration_ms ?? terminal.durationMs ?? null,
+    terminal_status:terminal.status ?? null, approval_denied:terminal.approval_denied === true,
+    cancelled:terminal.cancelled === true, timed_out:terminal.timed_out === true,
+    explicit_success:typeof terminal.success === 'boolean' ? terminal.success : null,
+    explicit_error:terminal.isError === true || terminal.is_error === true,
+    exit_code:Number.isInteger(terminal.exit_code) ? terminal.exit_code : Number.isInteger(terminal.exitCode) ? terminal.exitCode : null,
+    cwd:typeof terminal.cwd === 'string' ? terminal.cwd : null, parts,
+  }};
   return {
     kind, subtype, actor: eventActor, input, output, status, nativeId, callId,
     turnId, phase, metadata, artifacts, session, sessionEdges, pointer,
@@ -93,7 +137,7 @@ function normalizeCompletedItem(record, payload, ctx) {
       ...common, kind: "tool.observed", subtype: "item_completed.CommandExecution",
       actor: actor("act:tool:exec", ACTOR_KINDS.TOOL, "tool", "command execution"),
       input: command, output: item.aggregated_output ?? `${item.stdout ?? ""}${item.stderr ? `\n${item.stderr}` : ""}`,
-      status: String(item.status ?? (item.exit_code === 0 ? "completed" : "failed")).toUpperCase(),
+      status: String(item.status ?? (Number.isInteger(item.exit_code) ? item.exit_code === 0 ? "completed" : "failed" : "unknown")).toUpperCase(),
       metadata: {
         toolName: "exec", command, exitCode: item.exit_code ?? null,
         cwd: String(item.cwd ?? "").replace(/^file:\/\/\//i, ""), durationMs: durationMs(item.duration),
@@ -267,6 +311,13 @@ function codexResponseItem(record, payload, ctx) {
 }
 
 function codexEventMessage(record, payload, ctx) {
+  if (payload.type === 'exec_command_output_delta') return [normalized({
+    kind:'tool.fragment', subtype:'exec_command_output_delta',
+    actor:actor('act:tool:exec_command',ACTOR_KINDS.TOOL,'tool'),
+    output:typeof payload.delta==='string'?payload.delta:'',status:'RUNNING',
+    callId:payload.call_id??null, pointer:'/payload/delta',
+    metadata:{stream:payload.stream??'stdout',fragment_id:payload.fragment_id??null}
+  },record,payload)];
   if (payload.type === "item_completed") return normalizeCompletedItem(record, payload, ctx);
   if (payload.type === "user_message") return [normalized({
     kind: "message.user", subtype: "event_msg", actor: actor("act:user", ACTOR_KINDS.USER, "user"),

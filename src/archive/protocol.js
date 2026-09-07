@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import validation from './wire-validation.cjs';
 import { canonicalIdentityJson } from './identity.js';
+import { AFH_VERSION } from '../constants.js';
 
 const build=JSON.parse(fs.readFileSync(new URL('./wire-build.json',import.meta.url)));
 const schemaBytes=fs.readFileSync(new URL('../../schemas/archive-v4.schema.json',import.meta.url)),schema=JSON.parse(schemaBytes);
@@ -23,7 +24,7 @@ export function validateRequest(request){
   return request;
 }
 export function coverage(values={}){return {status:'COMPLETE_WITHIN_OBSERVED_BOUNDARY',sources_acquired:0,sources_known_omitted:0,universe_total:null,records_preserved:0,records_parsed:0,records_normalized:0,records_unsupported:0,records_unparsed:0,eligible_chunks:0,indexed_chunks:0,excluded:[],observed_through:null,...values};}
-export function makeReceipt(snapshot=null,extra={}){const limits=Object.fromEntries(Object.entries(snapshot?.limits??{}).map(([key,value])=>['limit_'+key,{value,unit:key.endsWith('ratio')?'ratio':'bytes',status:'OBSERVED',method:'Validated immutable archive policy'}]));return {archive_id:snapshot?.archive_id??null,revision_id:snapshot?.revision_id??null,ledger_sha256:snapshot?.ledger_sha256??null,projection_ids:[],engine_version:'0.4.0-dev',requested_mode:null,effective_mode:null,scope:null,time:null,coverage:coverage(snapshot?.coverage),warnings:[],metrics:limits,evidence_refs:[],input_class:'PRIVATE_REAL',runtime_class:'REAL_AFH',provider_class:'NONE',model_identity:null,...extra};}
+export function makeReceipt(snapshot=null,extra={}){const limits=Object.fromEntries(Object.entries(snapshot?.limits??{}).map(([key,value])=>['limit_'+key,{value,unit:key.endsWith('ratio')?'ratio':'bytes',status:'OBSERVED',method:'Validated immutable archive policy'}]));return {archive_id:snapshot?.archive_id??null,revision_id:snapshot?.revision_id??null,ledger_sha256:snapshot?.ledger_sha256??null,projection_ids:[],engine_version:AFH_VERSION,requested_mode:null,effective_mode:null,scope:null,time:null,coverage:coverage(snapshot?.coverage),warnings:[],metrics:limits,evidence_refs:[],input_class:'PRIVATE_REAL',runtime_class:'REAL_AFH',provider_class:'NONE',model_identity:null,...extra};}
 export function response(request,data,receipt,status='OK'){
   const result={kind:'response',schema_version:4,protocol_version:'4.0',request_id:request.request_id,operation:request.operation,status,data,error:null,receipt};
   return checkResponse(result);

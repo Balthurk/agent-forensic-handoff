@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process';
 import sqlite from 'node:sqlite';
 import { assertSourcePath } from '../discovery.js';
 import { canonical,digest,hash,failure } from './protocol.js';
+import {occurrenceTables} from './occurrences.js';
 
 export const CHUNK_BYTES=4*1024*1024;
 export function localRoot(value){
@@ -45,7 +46,9 @@ export function readObject(root,object){
 }
 export function sourceManifest(root,id){
   if(!/^src4-[a-f0-9]{64}$/.test(id))throw failure('INTEGRITY_FAILED','Invalid source manifest identifier');
-  const manifest=readJson(inside(root,'bronze/sources',id+'.json'));
+  const manifest=readJson(inside(root,'bronze/sources',id+'.json'));return validateSourceManifest(manifest,id);
+}
+export function validateSourceManifest(manifest,id=manifest.source_revision_id){
   const {source_revision_id,...payload}=manifest;payload.records=payload.records.map(({evidence_ref,...record})=>record);
   if(source_revision_id!==id||'src4-'+digest(payload)!==id)throw failure('INTEGRITY_FAILED','Source manifest digest differs');
   for(const record of manifest.records)if(canonical(record.evidence_ref)!==canonical(recordReference(manifest,record)))throw failure('INTEGRITY_FAILED','Derived record reference differs');return manifest;
@@ -75,7 +78,22 @@ export function initializeLedger(root){
     CREATE TABLE logical_event(id TEXT NOT NULL,commit_seq INTEGER NOT NULL,data_json TEXT NOT NULL,PRIMARY KEY(id,commit_seq));
     CREATE TABLE association_version(id TEXT NOT NULL,branch_id TEXT NOT NULL,commit_seq INTEGER NOT NULL,data_json TEXT NOT NULL,PRIMARY KEY(id,branch_id,commit_seq));
     CREATE TABLE legacy_alias(case_hash TEXT NOT NULL,old_event_id TEXT NOT NULL,event_id TEXT NOT NULL,commit_seq INTEGER NOT NULL,evidence_json TEXT NOT NULL,PRIMARY KEY(case_hash,old_event_id));
-    CREATE TABLE mutation_receipt(operation TEXT NOT NULL,idempotency_key TEXT NOT NULL,request_sha256 TEXT NOT NULL,response_json TEXT NOT NULL,commit_seq INTEGER NOT NULL,PRIMARY KEY(operation,idempotency_key));`);db.close();
+    CREATE TABLE mutation_receipt(operation TEXT NOT NULL,idempotency_key TEXT NOT NULL,request_sha256 TEXT NOT NULL,response_json TEXT NOT NULL,commit_seq INTEGER NOT NULL,PRIMARY KEY(operation,idempotency_key));`);
+  initializeOccurrenceTables(db);
+  db.close();
+}
+// Only archive writers call this, inside their publication transaction when
+// upgrading a pre-extension archive. Ordinary readers never migrate a store.
+export function initializeOccurrenceTables(db){
+  for(const table of occurrenceTables)db.exec('CREATE TABLE IF NOT EXISTS '+table+'(id TEXT NOT NULL,commit_seq INTEGER NOT NULL,data_json TEXT NOT NULL,PRIMARY KEY(id,commit_seq))');
+  db.exec(`CREATE INDEX IF NOT EXISTS occurrence_scope_idx ON occurrence_version(json_extract(data_json,'$.session_id'),commit_seq);
+    CREATE INDEX IF NOT EXISTS occurrence_state_idx ON occurrence_version(json_extract(data_json,'$.kind'),json_extract(data_json,'$.lifecycle'),commit_seq);
+    CREATE INDEX IF NOT EXISTS representation_event_idx ON representation(json_extract(data_json,'$.event_id'),commit_seq);
+    CREATE INDEX IF NOT EXISTS representation_occurrence_idx ON representation(json_extract(data_json,'$.occurrence_id'),commit_seq);
+    CREATE INDEX IF NOT EXISTS payload_occurrence_idx ON occurrence_payload(json_extract(data_json,'$.occurrence_id'),commit_seq);
+    CREATE INDEX IF NOT EXISTS identity_alias_cut_idx ON identity_binding(json_extract(data_json,'$.namespace'),json_extract(data_json,'$.acquired_alias'),commit_seq);
+    CREATE INDEX IF NOT EXISTS identity_target_cut_idx ON identity_binding(json_extract(data_json,'$.canonical_target'),commit_seq);
+    CREATE INDEX IF NOT EXISTS identity_representation_idx ON identity_binding(json_extract(data_json,'$.representation_id'),commit_seq)`);
 }
 export function processIdentity(pid){
   try{

@@ -1,6 +1,6 @@
 {
   "name": "agent-forensic-handoff",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Evidence-backed forensic reconstruction and context hydration for agent sessions.",
   "type": "module",
   "bin": {
@@ -13,22 +13,32 @@
     "bin",
     "src",
     "skills",
-    "docs",
+    "docs/architecture.md",
+    "docs/benchmark.md",
+    "docs/context-hydration.md",
+    "docs/evidence-contract.md",
+    "docs/recoverability.md",
+    "docs/release-v0.4.0.md",
+    "docs/roadmap.md",
+    "docs/threat-model.md",
+    "docs/vector-runtime-decision-v0.3.0.md",
     "benchmarks",
     "schemas",
     "scripts",
     "test/fixtures",
+    "CHANGELOG.md",
     "LICENSE",
     "README.md",
     "SECURITY.md"
   ],
   "scripts": {
-    "test": "node --test",
+    "test": "node ./scripts/run-check.mjs",
     "benchmark": "node ./bin/afh.js benchmark",
     "benchmark:retrieval": "node ./bin/afh.js retrieval-benchmark",
     "doctor": "node ./bin/afh.js doctor",
     "validate:skill": "node ./scripts/validate-skill.mjs",
-    "check": "node --check ./bin/afh.js && node --check ./src/cli.js && node --test",
+    "check": "node --check ./bin/afh.js && node --check ./src/cli.js && node ./scripts/run-check.mjs",
+    "check:acceptance:private": "node ./scripts/run-private-acceptance.mjs",
     "release:check": "npm run check && npm run validate:skill && npm run benchmark"
   },
   "engines": {

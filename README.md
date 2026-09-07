@@ -5,6 +5,8 @@
 
 Evidence-backed reconstruction and progressive context hydration for historical agent sessions.
 
+> **v0.4.0 scope:** this stable release makes milestones 1–3 usable from the CLI: durable archive initialization/acquisition, incremental identity and occurrence preservation, integrity/recovery, event display, statistics, and bounded evidence reads. Step 4 temporal validity, knowledge-time reconstruction, and provenance extensions are not included; advanced archive querying/context and steps 5–14 also remain future work. The existing `afh query` command continues to query legacy forensic cases only.
+
 Agent Forensic Handoff (`afh`) turns persisted session evidence into a deterministic case: a normalized timeline, actor and tool ledgers, artifact provenance, an evidence-backed graph, current-state checks, a bounded successor context, and resolvable links back to the original records. Optional local embeddings add multilingual semantic and hybrid retrieval without making vector similarity an authority.
 
 It is deliberately **not** a chat summarizer. It never claims to recover events a harness did not persist.
@@ -41,7 +43,7 @@ flowchart TD
 Requirements: Node.js 22.15 or newer. The core audit and lexical retrieval path uses only Node built-ins. The package installs optional local semantic dependencies; if they are unavailable, core auditing remains usable and semantic modes report `UNAVAILABLE`.
 
 ```bash
-npm install -g github:Balthurk/agent-forensic-handoff
+npm install -g github:Balthurk/agent-forensic-handoff#v0.4.0
 afh doctor
 ```
 
@@ -80,6 +82,39 @@ Or call the deterministic CLI directly:
 afh audit 0199...session-id
 afh audit /path/to/transcript.jsonl --harness generic --workspace /path/to/repo
 ```
+
+### Incremental archive workflow (milestones 1–3)
+
+The archive CLI uses the implemented v4 wire contract and prints one JSON response. Mutation commands require an idempotency key so a retry is explicit and safe. `init` creates one origin domain automatically; later `ingest` commands infer it when the archive has exactly one domain for that harness.
+
+```bash
+# Create a durable archive. Paths containing spaces are supported.
+afh archive init ./my-afh-archive --idempotency-key init-2026-09-07
+
+# Ingest one or more JSONL/NDJSON sources. Repeat after a real append.
+afh archive ingest ./my-afh-archive ./session.jsonl --idempotency-key ingest-1 --no-children
+afh archive ingest ./my-afh-archive ./session.jsonl --idempotency-key ingest-2 --no-children
+
+# Close and reopen freely: every command is a new process.
+afh archive verify ./my-afh-archive
+afh archive stats ./my-afh-archive --metric executions
+```
+
+The ingest response returns `revision_id` and `source_revisions`. Each verified source manifest lives at `bronze/sources/<source_revision_id>.json` and contains the acquired event anchors and bounded `evidence_ref.uri` values. Use them without editing the archive:
+
+```bash
+afh archive show ./my-afh-archive evt4-... --revision cap4-...
+afh archive evidence ./my-afh-archive 'afh://evidence/sha256/...' --revision cap4-... --format base64
+```
+
+`show`, `stats`, `evidence`, and `verify` are read-only. Evidence payloads are untrusted historical bytes and can contain private data. `recover` is an operator action and requires the exact `job_id` and owner token from an interrupted writer:
+
+```bash
+afh archive recover ./my-afh-archive --idempotency-key recover-1 \
+  --job-id job-... --owner-token '<exact token>' --action resume
+```
+
+For complete or advanced request parameters, pass a params object with `--request params.json`, or pass an exact wire envelope through `afh archive request --file request.json`. The CLI fails nonzero on protocol errors and on `verify` results whose `passed` value is false. It does not expose an advanced incremental-archive query/context interface in this release.
 
 The command prints a short human receipt and creates a private case under `~/.afh/cases/` by default. To hydrate or investigate it:
 

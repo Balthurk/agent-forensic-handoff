@@ -37,7 +37,7 @@ export function assertReadObservation({request,response,observation:o,expectatio
   const reasons=[],need=(condition,reason)=>{if(!condition)reasons.push(reason);};
   const reject=()=>{if(reasons.length)throw Object.assign(new Error('Reader control rejected: '+[...new Set(reasons)].join(', ')),{code:'READ_CONTROL_REJECTED',details:{reasons:[...new Set(reasons)]}});};
   need(!!request&&!!response&&!!o,'MISSING_REQUEST_RESPONSE_OBSERVATION');reject();
-  need(['archive.verify','evidence.read','scope.resolve'].includes(request.operation),'UNSUPPORTED_READ_OPERATION');
+  need(['archive.verify','evidence.read','scope.resolve','event.show','stats','ledger.occurrences'].includes(request.operation),'UNSUPPORTED_READ_OPERATION');
   need(o.operation===request.operation&&o.request_id===request.request_id&&response.operation===request.operation&&response.request_id===request.request_id,'REQUEST_RESPONSE_BINDING');
   need(typeof request.archive==='string'&&path.resolve(request.archive)===o.root&&o.database===path.join(o.root,'ledger.sqlite'),'ARCHIVE_BINDING');
   for(const field of ['handles','native_calls','inventories','errors','filesystem_mutations','sql_mutations','unattributed_boundaries'])need(Array.isArray(o[field]),'MISSING_'+field.toUpperCase());reject();
@@ -66,7 +66,7 @@ export function assertReadObservation({request,response,observation:o,expectatio
     if(['constructor','close'].includes(method))need(call.sql===null&&call.prepare_sequence===undefined&&call.iterator_sequence===undefined,'LIFECYCLE_IS_NOT_SQL_EXECUTION');
     if(method==='exec')need(/^(BEGIN|COMMIT|ROLLBACK)$/i.test(sql),'TRANSACTION_IS_NOT_QUERY_EXECUTION');
     if(method==='prepare'){
-      need(/^SELECT\b/i.test(sql)||request.operation==='archive.verify'&&/^PRAGMA\s+integrity_check$/i.test(sql),'OPERATION_READ_SQL_REQUIRED');preparations.set(call.sequence,call);
+      need(/^SELECT\b/i.test(sql)||['archive.verify','event.show','stats','ledger.occurrences'].includes(request.operation)&&/^PRAGMA\s+integrity_check$/i.test(sql),'OPERATION_READ_SQL_REQUIRED');preparations.set(call.sequence,call);
     }
     if(statement||iterator){
       const prepared=preparations.get(call.prepare_sequence);need(!!prepared&&prepared.sequence<call.sequence&&prepared.handle_id===call.handle_id&&prepared.sql===call.sql,'EXECUTION_PREPARATION_BINDING');
@@ -95,7 +95,15 @@ export function assertReadObservation({request,response,observation:o,expectatio
   }else{
     category='EXPECTED_NEGATIVE';need(o.passed===false,'NEGATIVE_CANNOT_CLAIM_POSITIVE_PASS');
     if(expectation==='PUBLISHED_INTEGRITY_FAILURE')need(request.operation==='archive.verify'&&response.error===null&&o.operation_error===null&&response.data?.passed===false&&response.data.checks?.some(check=>check.id==='integrity.failure'&&check.ok===false&&check.observed==='INTEGRITY_FAILED'),'EXPECTED_PUBLISHED_INTEGRITY_FAILURE_NOT_OBSERVED');
-    else if(['EVIDENCE_UNAVAILABLE','INTEGRITY_FAILED','CONTINUATION_MISMATCH'].includes(expectation))need(request.operation==='evidence.read'&&response.data===null&&response.error?.code===expectation&&digest(o.operation_error)===digest(response.error),'EXPECTED_EVIDENCE_ERROR_NOT_OBSERVED');
+    else if(expectation==='PRE_OCCURRENCE_EXTENSION'){
+      const details=response.error?.details;
+      need(['event.show','stats','ledger.occurrences'].includes(request.operation)&&response.data===null&&response.error?.code==='NOT_IMPLEMENTED'&&details?.format==='PRE_OCCURRENCE_EXTENSION'&&Number.isSafeInteger(details.commit_seq)&&details.commit_seq>0&&/^cap4-[a-f0-9]{64}$/.test(details.revision_id??'')&&(!request.revision_id||request.revision_id===details.revision_id)&&digest(o.operation_error)===digest(response.error),'EXPECTED_PRE_OCCURRENCE_AVAILABILITY_NOT_OBSERVED');
+      need(o.native_calls.some(call=>call.completed&&['statement.get','statement.all','iterator.next'].includes(call.method)&&/\barchive_commit\b/i.test(call.sql??'')),'PRE_OCCURRENCE_COMMIT_READ_NOT_OBSERVED');
+    }
+    else if(['EVIDENCE_UNAVAILABLE','INTEGRITY_FAILED','CONTINUATION_MISMATCH'].includes(expectation)){
+      const applicable=request.operation==='evidence.read'||request.operation==='event.show'&&['EVIDENCE_UNAVAILABLE','INTEGRITY_FAILED'].includes(expectation)||['stats','ledger.occurrences'].includes(request.operation)&&expectation==='INTEGRITY_FAILED';
+      need(applicable&&response.data===null&&response.error?.code===expectation&&digest(o.operation_error)===digest(response.error),'EXPECTED_EVIDENCE_ERROR_NOT_OBSERVED');
+    }
     else need(false,'UNKNOWN_NEGATIVE_EXPECTATION');
   }
   reject();const outcome={category,expectation,request_sha256:digest(request),response_sha256:digest(response)};

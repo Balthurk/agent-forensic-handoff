@@ -1,0 +1,577 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-forensic-handoff.local/specification/identity03-contract.schema.json",
+  "title": "Identity03 internal policy and snapshot binding; not a wire entity",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "policy_id",
+    "policy_version",
+    "serialization",
+    "decision_id",
+    "recipes",
+    "profiles",
+    "roles",
+    "decoder",
+    "resolution",
+    "representation_measures",
+    "vectors",
+    "cases",
+    "lookup_budget"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "policy_id": {
+      "const": "afh-identity03"
+    },
+    "policy_version": {
+      "const": "afh-identity03-v1"
+    },
+    "serialization": {
+      "const": "afh-cjson-v1"
+    },
+    "decision_id": {
+      "const": "AFH-M03-IDENTITY-ALIGNMENT-01"
+    },
+    "recipes": {
+      "const": {
+        "native_event": {
+          "prefix": "evt4-",
+          "fields": [
+            "session_id",
+            "identity_epoch",
+            "event_kind",
+            "native_item_or_call_id",
+            "logical_role"
+          ]
+        },
+        "occurrence": {
+          "prefix": "occ4-",
+          "fields": [
+            "session_id",
+            "identity_epoch",
+            "execution_or_message_id"
+          ]
+        },
+        "representation": {
+          "prefix": "rep4-",
+          "fields": [
+            "source_revision_id",
+            "record_ordinal",
+            "json_pointer",
+            "event_subindex"
+          ]
+        },
+        "fallback_event": {
+          "prefix": "evt4-",
+          "fields": [
+            "source_lineage_id",
+            "verified_prefix_epoch",
+            "record_ordinal",
+            "json_pointer",
+            "event_subindex",
+            "logical_role"
+          ]
+        },
+        "qualified_epoch": {
+          "prefix": "epoch:",
+          "fields": [
+            "policy_version",
+            "session_id",
+            "turn_id",
+            "qualified_start_locator"
+          ]
+        },
+        "acquired_anchor02": {
+          "prefix": "evt4-",
+          "fields": [
+            "source_lineage_id",
+            "record_identity_epoch",
+            "record_ordinal",
+            "json_pointer",
+            "event_subindex",
+            "event_kind"
+          ]
+        },
+        "session": {
+          "prefix": "ses4-",
+          "fields": [
+            "harness",
+            "origin_domain_id",
+            "native_id"
+          ]
+        }
+      }
+    },
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "harness",
+          "producer_version",
+          "evidence_scope",
+          "guarantee_ref",
+          "message_id_uniqueness",
+          "execution_id_uniqueness",
+          "default_epoch"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "harness": {
+            "type": "string",
+            "minLength": 1
+          },
+          "producer_version": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence_scope": {
+            "enum": [
+              "SYNTHETIC_FIXTURE_ONLY",
+              "NO_NATIVE_UNIQUENESS_ASSERTED"
+            ]
+          },
+          "guarantee_ref": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message_id_uniqueness": {
+            "enum": [
+              "session",
+              "turn",
+              "none"
+            ]
+          },
+          "execution_id_uniqueness": {
+            "enum": [
+              "session",
+              "turn",
+              "none"
+            ]
+          },
+          "default_epoch": {
+            "const": "qualified_start"
+          }
+        }
+      }
+    },
+    "roles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kinds",
+          "role",
+          "namespace",
+          "producers"
+        ],
+        "properties": {
+          "kinds": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "role": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "namespace": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "producers": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "decoder": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version",
+        "require_recomputed_anchor",
+        "filtered_subindex_forbidden",
+        "unresolved",
+        "producers"
+      ],
+      "properties": {
+        "id": {
+          "const": "acquired02-raw-locator"
+        },
+        "version": {
+          "const": "1"
+        },
+        "require_recomputed_anchor": {
+          "const": true
+        },
+        "filtered_subindex_forbidden": {
+          "const": true
+        },
+        "unresolved": {
+          "const": "EVIDENCE_UNAVAILABLE"
+        },
+        "producers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "producer",
+              "pointer",
+              "subindex",
+              "kind"
+            ],
+            "properties": {
+              "producer": {
+                "type": "string",
+                "minLength": 1
+              },
+              "pointer": {
+                "type": "string",
+                "pattern": "^(?:/(?:[^~]|~[01])*)*$"
+              },
+              "subindex": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "kind": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "resolution": {
+      "const": {
+        "namespaces": [
+          "CANONICAL_EVENT",
+          "ACQUIRED_ANCHOR"
+        ],
+        "at_cut": true,
+        "distinct_target_conflict": "AMBIGUOUS_IDENTITY",
+        "absent": "EVIDENCE_UNAVAILABLE",
+        "priority_forbidden": true,
+        "reader_migration_forbidden": true,
+        "provisional_confirmation": "EXPLICIT_NEW_COMMIT_REPLACEMENT_WITH_EQUIVALENCE_PROOF",
+        "replacement_invalid": "INTEGRITY_FAILED",
+        "replacement_requires": "VISIBLE_EARLIER_SAME_ALIAS_WITH_RESOLVABLE_EQUIVALENCE_EVIDENCE",
+        "cycle": "INTEGRITY_FAILED",
+        "future_rows": "IGNORED_BEFORE_VALIDATION"
+      }
+    },
+    "representation_measures": {
+      "const": {
+        "rows": "ALL_VISIBLE_REVISION_PLACEMENTS",
+        "technical": "VERIFIED_PREFIX_LOCATOR_EQUIVALENCE_CLASSES",
+        "stats_representations": "technical",
+        "denominator": "technical",
+        "s1_s2_s3": {
+          "occurrences": [
+            1,
+            1,
+            2
+          ],
+          "technical": [
+            2,
+            3,
+            5
+          ],
+          "rows": [
+            2,
+            5,
+            10
+          ]
+        }
+      }
+    },
+    "vectors": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "recipe",
+          "inputs",
+          "canonical_utf8",
+          "expected"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "recipe": {
+            "enum": [
+              "native_event",
+              "occurrence",
+              "representation",
+              "fallback_event",
+              "qualified_epoch",
+              "acquired_anchor02",
+              "session"
+            ]
+          },
+          "inputs": {
+            "type": "array"
+          },
+          "canonical_utf8": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expected": {
+            "type": "string",
+            "pattern": "^(evt4-|occ4-|rep4-|ses4-|epoch:)[a-f0-9]{64}$"
+          }
+        }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "scenario_id",
+          "kind",
+          "steps",
+          "expected"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scenario_id": {
+            "type": "string",
+            "pattern": "^AFH-0[23]-T[0-9]{2}$"
+          },
+          "kind": {
+            "type": "string",
+            "minLength": 1
+          },
+          "steps": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "expected": {
+            "type": "object",
+            "minProperties": 1
+          }
+        }
+      }
+    },
+    "lookup_budget": {
+      "const": {
+        "scope": "EVENT_SHOW_IDENTITY_RESOLUTION_BRONZE_IO",
+        "source_counts": [
+          1,
+          8
+        ],
+        "unrelated_bronze_reads": 0,
+        "raw_byte_multiplier": 4,
+        "sql": "NATIVE_EXECUTED_IDENTITY_BINDING",
+        "performance_claim": "NO_GENERAL_SQL_COMPLEXITY_OR_LATENCY_CLAIM"
+      }
+    }
+  },
+  "$defs": {
+    "Locator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_revision_id",
+        "source_lineage_id",
+        "record_identity_epoch",
+        "record_ordinal",
+        "json_pointer",
+        "event_subindex",
+        "record_sha256"
+      ],
+      "properties": {
+        "source_revision_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_lineage_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "record_identity_epoch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "record_ordinal": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "json_pointer": {
+          "type": "string",
+          "pattern": "^(?:/(?:[^~]|~[01])*)*$"
+        },
+        "event_subindex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "record_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "IdentityBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "namespace",
+        "acquired_alias",
+        "canonical_target",
+        "locator",
+        "representation_id",
+        "rule_id",
+        "rule_version",
+        "decoder_id",
+        "decoder_version",
+        "commit_seq",
+        "supersedes_binding_id",
+        "equivalence_proof_refs",
+        "acquisition_json_pointer"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^bind4-[a-f0-9]{64}$"
+        },
+        "namespace": {
+          "const": "ACQUIRED_ANCHOR"
+        },
+        "acquired_alias": {
+          "type": "string",
+          "pattern": "^evt4-[a-f0-9]{64}$"
+        },
+        "canonical_target": {
+          "type": "string",
+          "pattern": "^evt4-[a-f0-9]{64}$"
+        },
+        "locator": {
+          "$ref": "#/$defs/Locator"
+        },
+        "representation_id": {
+          "type": "string",
+          "pattern": "^rep4-[a-f0-9]{64}$"
+        },
+        "rule_id": {
+          "const": "afh-identity03"
+        },
+        "rule_version": {
+          "const": "afh-identity03-v1"
+        },
+        "decoder_id": {
+          "enum": [
+            "acquired02-raw-locator",
+            "legacy-preserved-locator"
+          ]
+        },
+        "decoder_version": {
+          "const": "1"
+        },
+        "commit_seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "supersedes_binding_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^bind4-[a-f0-9]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "equivalence_proof_refs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^afh://evidence/sha256/[a-f0-9]{64}/record/[1-9][0-9]*(?:\\?source=src4-[a-f0-9]{64})?#bytes=[0-9]+:[1-9][0-9]*$"
+          },
+          "uniqueItems": true
+        },
+        "acquisition_json_pointer": {
+          "$ref": "#/$defs/Locator/properties/json_pointer"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "supersedes_binding_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "supersedes_binding_id"
+            ]
+          },
+          "then": {
+            "properties": {
+              "equivalence_proof_refs": {
+                "type": "array",
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

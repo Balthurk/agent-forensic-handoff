@@ -96,11 +96,28 @@ export function validateNormativeExamples(root=ROOT){
   for(const [index,match]of examples.entries())try{const value=JSON.parse(match[1]);const result=validateWire(value,'Request',root);if(!result.passed)throw new Error(JSON.stringify(result.errors));const issues=temporalChecks(value);if(issues.length)throw new Error(issues.join(','));}catch(e){errors.push('example '+index+': '+e.message);}
   return {passed:errors.length===0,count:examples.length,errors};
 }
+export function validateIdentity03(policy,{root=ROOT,registry=null}={}){
+  const errors=[],check=(name,fn)=>{try{fn();}catch(e){errors.push(name+': '+e.message);}};
+  check('identity03-schema',()=>{const ajv=ajvInstance(),v=ajv.compile(readJson(path.join(root,'specification/identity03-contract.schema.json')));if(!v(policy))throw new Error(ajv.errorsText(v.errors,{separator:'; '}));});
+  if(errors.length)return {passed:false,errors};
+  const unique=(rows,name)=>{if(new Set(rows.map(x=>x.id)).size!==rows.length)throw new Error('duplicate '+name);};
+  check('identity03-vectors',()=>{unique(policy.vectors,'vector');for(const [recipe,r]of Object.entries(policy.recipes)){
+    const vectors=policy.vectors.filter(v=>v.recipe===recipe);if(!vectors.length)throw new Error('missing vector '+recipe);
+    for(const v of vectors){if(v.inputs.length!==r.fields.length)throw new Error('arity '+v.id);if(v.canonical_utf8!==canonical(v.inputs))throw new Error('canonical bytes '+v.id);if(v.expected!==r.prefix+digest(v.canonical_utf8))throw new Error('digest '+v.id);}
+  }});
+  check('identity03-profiles',()=>{unique(policy.profiles,'profile');const fallback=policy.profiles.find(p=>p.id==='unknown-version-conservative');if(!fallback||fallback.harness!=='*'||fallback.message_id_uniqueness!=='none'||fallback.execution_id_uniqueness!=='none'||fallback.guarantee_ref!==null)throw new Error('unknown version must not claim uniqueness');for(const p of policy.profiles)if(p.message_id_uniqueness!=='none'||p.execution_id_uniqueness!=='none'){if(!p.guarantee_ref||p.evidence_scope!=='SYNTHETIC_FIXTURE_ONLY'||p.producer_version!=='synthetic-spec-v1')throw new Error('unbacked native uniqueness');resolveDoc(root,p.guarantee_ref);}});
+  check('identity03-roles',()=>{const seen=new Set();for(const r of policy.roles){for(const kind of r.kinds){if(seen.has(kind))throw new Error('duplicate kind');seen.add(kind);}if(r.role.length===0||r.namespace.length<2)throw new Error('empty role/namespace');}
+    const role=kind=>policy.roles.find(r=>r.kinds.includes(kind));if(canonical(role('tool.requested')?.role)!=='["request"]'||canonical(role('tool.completed')?.role)!=='["terminal"]')throw new Error('request/terminal roles');if(canonical(role('message.user')?.namespace)!=='["message","user","item"]'||canonical(role('tool.requested')?.namespace)!=='["execution","call"]')throw new Error('message/call collision');if(canonical(role('tool.fragment')?.role)!=='["fragment","$stream","$fragment_key"]')throw new Error('fragment identity omitted');
+  });
+  check('identity03-cases',()=>{unique(policy.cases,'case');const kinds=new Set(policy.cases.map(x=>x.kind));for(const k of ['native_link','distinct_native_ids','namespace_collision','reuse','ambiguous_starts','fragments','fallback_append','fallback_divergence','unproven_copy','recapture','absent_alias','ambiguous_alias','namespace_conflict','namespace_same','historical_alias','provisional_native','legacy_chain','exact_closure','atomic_recovery','locator_decoder','indexed_resolution'])if(!kinds.has(k))throw new Error('missing directed case '+k);if(registry)for(const c of policy.cases)if(!registry.scenarios.some(s=>s.id===c.scenario_id))throw new Error('unknown original scenario '+c.scenario_id);const recapture=policy.cases.find(c=>c.kind==='recapture').expected;if(canonical(recapture)!==canonical({occurrences:[1,1,2],technical_representations:[2,3,5],revision_rows:[2,5,10]}))throw new Error('recapture metric conflation');});
+  return {passed:errors.length===0,errors,vectors:policy.vectors.length,cases:policy.cases.length};
+}
 export function validateRegistry(registry,{root=ROOT,checkGenerated=true}={}){
   const errors=[];const check=(name,fn)=>{try{fn();}catch(e){errors.push(name+': '+e.message);}};
   const jsonCache=new Map();const fixtureJson=file=>{if(!jsonCache.has(file))jsonCache.set(file,readJson(file));return jsonCache.get(file);};
   check('registry-schema',()=>{const ajv=ajvInstance();const v=ajv.compile(readJson(path.join(root,'specification/contracts.schema.json')));if(!v(registry))throw new Error(ajv.errorsText(v.errors,{separator:'; '}));});
   if(errors.length)return {passed:false,errors};
+  check('identity03-contract',()=>{const v=validateIdentity03(readJson(localPath(root,'specification/fixtures/identity03-contract.json')),{root,registry});if(!v.passed)throw new Error(v.errors.join('; '));});
   check('acceptance-schedule',()=>{acceptancePlan(registry,{root});});
   check('acceptance-write-set',()=>{const problems=acceptanceWriteSetProblems(registry,{root});if(problems.length)throw new Error(problems.join('; '));});
   check('control-applicability',()=>{controlPlan(registry,{root});resolveDoc(root,registry.acceptance_policy.control_applicability.interpretation_ref);});

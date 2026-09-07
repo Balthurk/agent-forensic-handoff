@@ -121,15 +121,9 @@ function substantiveUserText(input) {
 }
 
 function deriveHistoricalValidations(db) {
-  const observed = db.all("SELECT * FROM event WHERE canonical=1 AND kind='tool.observed' ORDER BY COALESCE(observed_at,''),source_id,record_ordinal");
-  const observedKeys = new Set(observed.map((event) => {
-    const metadata = JSON.parse(event.metadata_json || "{}");
-    return historicalCommandKey(event.session_id, metadata.command || event.input_preview);
-  }));
   const tools = db.all("SELECT * FROM tool_execution WHERE command_text IS NOT NULL ORDER BY COALESCE(started_at,''),id");
   for (const tool of tools) {
     if (!looksLikeValidation(tool.command_text)) continue;
-    if (observedKeys.has(historicalCommandKey(tool.session_id, tool.command_text))) continue;
     const eventId = tool.result_event_id || tool.call_event_id;
     const event = eventId ? db.get("SELECT observed_at FROM event WHERE id=$id", { id: eventId }) : null;
     db.insertValidation({
@@ -139,19 +133,6 @@ function deriveHistoricalValidations(db) {
       result: tool.semantic_extract || `recorded status=${tool.status}; exit_code=${tool.exit_code ?? "UNAVAILABLE"}`,
       observedAt: event?.observed_at || tool.ended_at || tool.started_at || "ORDER_ONLY",
       freshness: null, status: validationStatus(tool.status, tool.exit_code), event: eventId,
-    });
-  }
-  for (const event of observed) {
-    const metadata = JSON.parse(event.metadata_json || "{}");
-    const command = metadata.command || event.input_preview;
-    if (!looksLikeValidation(command)) continue;
-    db.insertValidation({
-      id: `val-${shortHash(["historical-observation", event.id])}`,
-      target: validationTarget(command), level: "HISTORICAL",
-      method: "direct item_completed observation; not rerun by AFH", command,
-      result: event.output_preview || `recorded status=${event.status}; exit_code=${metadata.exitCode ?? "UNAVAILABLE"}`,
-      observedAt: event.observed_at || "ORDER_ONLY", freshness: null,
-      status: validationStatus(event.status, metadata.exitCode), event: event.id,
     });
   }
 }
@@ -174,7 +155,7 @@ function validationStatus(status, exitCode) {
   if (Number.isInteger(exitCode)) return exitCode === 0 ? "OBSERVED_PASS" : "OBSERVED_FAIL";
   if (String(status).toUpperCase() === "FAILED") return "OBSERVED_FAIL";
   if (String(status).toUpperCase() === "INCOMPLETE") return "INCOMPLETE";
-  return "OBSERVED_PASS";
+  return "UNKNOWN";
 }
 
 function advanceRequestedTasks(db) {
@@ -366,10 +347,17 @@ export function computeCaseMetrics(db) {
 }
 
 export function loopGroups(db) {
-  return db.all(`SELECT invocation_fingerprint, tool_name, COUNT(*) AS attempts,
+  const groups = db.all(`SELECT invocation_fingerprint, tool_name, COUNT(*) AS attempts,
     SUM(CASE WHEN status='FAILED' THEN 1 ELSE 0 END) AS failures,
-    MIN(started_at) AS first_at, MAX(COALESCE(ended_at,started_at)) AS last_at,
-    MAX(status) AS terminal_status
+    MIN(started_at) AS first_at, MAX(COALESCE(ended_at,started_at)) AS last_at
     FROM tool_execution GROUP BY invocation_fingerprint,tool_name HAVING COUNT(*) >= 3
     ORDER BY attempts DESC, tool_name`);
+  for (const group of groups) {
+    const members = db.all(`SELECT t.status,e.source_id,e.record_ordinal,e.subordinal FROM tool_execution t
+      LEFT JOIN event e ON e.id=COALESCE(t.result_event_id,t.call_event_id)
+      WHERE t.invocation_fingerprint=$fingerprint AND t.tool_name=$tool`, { fingerprint: group.invocation_fingerprint, tool: group.tool_name });
+    const comparable = members.every(row => row.source_id && Number.isInteger(row.record_ordinal)) && new Set(members.map(row => row.source_id)).size === 1;
+    group.terminal_status = comparable ? members.sort((a,b) => a.record_ordinal-b.record_ordinal || a.subordinal-b.subordinal).at(-1).status : "UNKNOWN";
+  }
+  return groups;
 }

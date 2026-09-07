@@ -243,9 +243,9 @@ function insertNormalizedEvent(db, evidence, { source, sourceId, session, normal
   const outputBlob = normalized.output ? evidence.digestText(normalized.output) : null;
   const inputProjection = normalized.input ? preview(normalized.input) : { text: null, findings: [], truncated: false };
   const outputProjection = normalized.output ? preview(normalized.output) : { text: null, findings: [], truncated: false };
-  const fingerprint = shortHash([normalized.kind, normalized.actor.id, inputBlob?.sha256, outputBlob?.sha256, normalized.callId, normalized.status], 32);
+  const fingerprint = shortHash([session.id, normalized.kind, normalized.nativeId, normalized.turnId, normalized.actor.id, inputBlob?.sha256, outputBlob?.sha256, normalized.status], 32);
   const prior = dedupe.get(fingerprint);
-  const duplicate = prior && decoded.ordinal - prior.ordinal <= 20 && ["message.user", "message.agent", "tool.completed", "session.compacted"].includes(normalized.kind);
+  const duplicate = Boolean(normalized.nativeId && prior && ["message.user", "message.agent", "session.compacted"].includes(normalized.kind));
   if (!duplicate) dedupe.set(fingerprint, { id: eventId, ordinal: decoded.ordinal });
   const event = {
     id: eventId, sessionId: session.id, sourceId, recordOrdinal: decoded.ordinal, subordinal,
@@ -298,18 +298,27 @@ function evidenceUri(rawHash, decoded) {
 function processTool(db, event, normalized) {
   const correlatedPatch = event.kind === "filesystem.patch" && Boolean(event.callId);
   if (!correlatedPatch && !["tool.requested", "tool.completed", "mcp.completed", "tool.observed"].includes(event.kind)) return;
-  const callId = event.callId || event.id;
+  const nativeId = event.callId || normalized.nativeId || null;
   const observedCommand = normalized.metadata?.command || extractCommand(normalized.input) || null;
-  const observedMatch = event.kind === "tool.observed" && observedCommand
-    ? db.get(`SELECT * FROM tool_execution WHERE session_id=$session AND command_text=$command
-        ORDER BY COALESCE(ended_at,started_at,'') DESC,id DESC LIMIT 1`, { session: event.sessionId, command: observedCommand })
-    : null;
-  const toolId = observedMatch?.id || `tex-${shortHash(callId, 24)}`;
-  const existing = observedMatch || db.get("SELECT * FROM tool_execution WHERE id=$id", { id: toolId });
-  const toolName = normalized.metadata?.toolName || existing?.tool_name || normalized.subtype || "unknown";
+  // Native correlation is local to the observed session/source and turn.
+  // Command text is a grouping attribute, never an execution identity.
+  db.executionBindings ??= new Map();
+  const bindingKey = stableStringify([event.sessionId, event.sourceId, nativeId || event.id, event.turnId ?? null]);
+  const bindings = db.executionBindings.get(bindingKey) ?? [];
+  const requested = event.kind === "tool.requested";
+  const open = bindings.filter(binding => !binding.terminal);
+  let binding = requested ? null : open.length === 1 ? open[0] : open.length === 0 && bindings.length === 1 ? bindings[0] : null;
+  if (!binding) {
+    binding = { id: `tex-${shortHash([bindingKey, event.id], 24)}`, terminal: false };
+    bindings.push(binding); db.executionBindings.set(bindingKey, bindings);
+  }
+  if (!requested) binding.terminal = true;
+  const toolId = binding.id;
+  const existing = db.get("SELECT * FROM tool_execution WHERE id=$id", { id: toolId });
+  const toolName = existing?.tool_name || normalized.metadata?.toolName || normalized.subtype || "unknown";
   const command = observedCommand || existing?.command_text || null;
   const exitCode = normalized.metadata?.exitCode ?? existing?.exit_code ?? null;
-  const status = event.kind === "tool.requested" ? (existing?.status ?? "REQUESTED") : (event.status || "COMPLETED");
+  const status = requested ? "INCOMPLETE" : (event.status || "UNKNOWN");
   const semantic = event.outputPreview ? semanticExtract(event.outputPreview, status, exitCode) : existing?.semantic_extract ?? null;
   db.upsertTool({
     id: toolId, sessionId: event.sessionId, actorId: event.actorId,

@@ -2,16 +2,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {validateRequest,response,errorResponse,makeReceipt,coverage,hash,digest,failure} from './protocol.js';
-import {localRoot,inside,readJson,writeJson,readObject,sourceManifest,revisionManifest,openSnapshot,openLedger,initializeLedger,acquireLock,releaseLock,checkpoint,claimRecovery,readCheckpoint} from './storage.js';
+import {localRoot,inside,readJson,writeJson,readObject,putObject,sourceManifest,revisionManifest,openSnapshot,openLedger,initializeLedger,initializeOccurrenceTables,acquireLock,releaseLock,checkpoint,claimRecovery,readCheckpoint} from './storage.js';
 import {acquisitionLimits,acquireSource} from './acquisition.js';
 import {readArchiveEvidence} from './read-evidence.js';
 import {inspectLegacy,prepareLegacyImport} from './legacy.js';
 import {prepareAssociations,resolveScope} from './associations.js';
 import {verifyPublishedArchive} from './verify.js';
 import {acquireObservedChildren} from './children.js';
+import {prepareOccurrenceFacts,prepareOccurrenceDelta,emptyOccurrenceState,occurrenceTables} from './occurrences.js';
+import {insertOccurrenceFacts,verifyCommittedOccurrenceFacts,showArchiveEvent,archiveStats,acquiredSourceHistory,publishedOccurrenceState} from './ledger.js';
 
 function timestamp(clock){const value=clock?clock():Date.now();const date=value instanceof Date?value:new Date(value);if(!Number.isFinite(date.valueOf()))throw failure('INVALID_REQUEST','Clock is invalid');return date.toISOString();}
-function sumCoverage(sources,observedThrough){const c=coverage({sources_acquired:sources.length,observed_through:observedThrough});for(const source of sources)for(const [key,value]of Object.entries(source.counts))c[key]+=value;if(c.records_unsupported||c.records_unparsed)c.status='PARTIAL';return c;}
+function sumCoverage(sources,observedThrough){const c=coverage({sources_acquired:sources.length,observed_through:observedThrough});for(const source of sources)for(const [key,value]of Object.entries(source.counts))c[key]+=value;if(c.records_unsupported||c.records_unparsed||sources.some(source=>source.late_bytes>0))c.status='PARTIAL';return c;}
 function requestDigest(request,sourceHashes=[]){return digest({operation:request.operation,params:request.params,source_hashes:sourceHashes});}
 function durableResponse(root,request,sha,snapshot){const db=openLedger(root,true);try{const row=db.prepare('SELECT * FROM mutation_receipt WHERE operation=? AND idempotency_key=? AND commit_seq<=?').get(request.operation,request.params.idempotency_key,snapshot.commit_seq);if(!row)return null;if(row.request_sha256!==sha)throw failure('IDEMPOTENCY_CONFLICT','Idempotency key is bound to different input');const prior=JSON.parse(row.response_json);return response(request,prior.data,prior.receipt,prior.status);}finally{db.close();}}
 function createRevision(snapshot,sourceIds,jobId,time,changes){const payload={schema_version:4,archive_id:snapshot.archive_id,access_domain_id:snapshot.access_domain_id,parent_revision_id:snapshot.revision_id??null,commit_seq:(snapshot.commit_seq??0)+1,recorded_at:time,source_manifest_ids:sourceIds,limits:snapshot.limits,origin_domains:snapshot.origin_domains,ledger_sha256:digest({parent:snapshot.ledger_sha256??null,changes}),ledger_changes:changes,job_id:jobId,coverage:changes.coverage};return {revision_id:'cap4-'+digest(payload),...payload};}
@@ -26,6 +28,8 @@ async function commitPlan(root,plan,fault){
     const exists=db.prepare('SELECT revision_id FROM archive_commit WHERE seq=?').get(plan.manifest.commit_seq);
     if(exists&&exists.revision_id!==plan.manifest.revision_id)throw failure('REVISION_CONFLICT','Another commit occupies the staged sequence');
     if(!exists){insertSources(db,plan.changed_sources,plan.manifest.commit_seq);for(const alias of plan.legacy?.events??[])db.prepare('INSERT INTO legacy_alias VALUES(?,?,?,?,?)').run(plan.legacy.case_hash,alias.legacy_event_id,alias.event_id,plan.manifest.commit_seq,JSON.stringify(alias.evidence_refs));db.prepare('INSERT INTO archive_commit VALUES(?,?,?,?,?)').run(plan.manifest.commit_seq,plan.manifest.revision_id,digest(plan.manifest),plan.manifest.recorded_at,plan.job_id);db.prepare('INSERT INTO mutation_receipt VALUES(?,?,?,?,?)').run(plan.request.operation,plan.request.params.idempotency_key,plan.request_sha256,JSON.stringify(plan.result),plan.manifest.commit_seq);}
+    if(!exists&&plan.occurrence_facts){initializeOccurrenceTables(db);insertOccurrenceFacts(db,plan.occurrence_facts,plan.manifest.ledger_changes.occurrence_facts_sha256);}
+    if(exists&&plan.occurrence_facts)verifyCommittedOccurrenceFacts(db,plan.occurrence_facts,plan.manifest.commit_seq,plan.manifest.ledger_changes.occurrence_facts_sha256);
     if(!exists)for(const association of plan.associations??[])db.prepare('INSERT INTO association_version VALUES(?,?,?,?)').run(association.change.association_id,association.change.branch_id,plan.manifest.commit_seq,JSON.stringify(association));
     db.exec('COMMIT');
   }catch(error){try{db.exec('ROLLBACK');}catch{}throw error;}finally{db.close();}
@@ -50,9 +54,12 @@ async function importLegacyArchive(root,request,options,services){
     const now=timestamp(options.clock);if(now<snapshot.recorded_at)throw failure('CLOCK_REGRESSION','Clock precedes the latest committed observation');
     const sources=[...snapshot.source_manifest_ids.map(id=>sourceManifest(root,id)),...imported.sources],c=sumCoverage(sources,now);
     const legacy={case_hash:imported.metadata.caseHash,schema_version:imported.metadata.schemaVersion,source_inventory_sha256:imported.source_inventory_before,original_report:imported.metadata,events:imported.aliases,artifacts:imported.artifacts};
-    const manifest=createRevision(snapshot,sources.map(s=>s.source_revision_id),jobId,now,{coverage:c,legacy_case_hash:imported.metadata.caseHash,legacy_sha256:digest(legacy),inventory:imported.source_inventory_before});
+    verifyPublishedArchive(root,snapshot,{deep:false});
+    const {facts,contents}=prepareOccurrenceFacts([...acquiredSourceHistory(root,snapshot),...imported.sources],snapshot.commit_seq+1,now,root,publishedOccurrenceState(root,snapshot).state),occurrenceFacts=prepareOccurrenceDelta(facts,publishedOccurrenceState(root,snapshot).state);
+    for(const [sha,bytes]of contents)if(putObject(root,bytes).sha256!==sha)throw failure('INTEGRITY_FAILED','Imported payload CAS commitment differs');
+    const manifest=createRevision(snapshot,sources.map(s=>s.source_revision_id),jobId,now,{coverage:c,legacy_case_hash:imported.metadata.caseHash,legacy_sha256:digest(legacy),inventory:imported.source_inventory_before,occurrence_facts_sha256:digest(occurrenceFacts)});
     const result=response(request,{revision_id:manifest.revision_id,legacy_case_hash:legacy.case_hash,alias_count:legacy.events.length,source_inventory_before:imported.source_inventory_before,source_inventory_after:imported.source_inventory_after},makeReceipt(manifest,{warnings:['LEGACY_NORMALIZATION_PRESERVED: original report and known producer limitations remain applicable']}));
-    const plan={job_id:jobId,manifest,request,request_sha256:sha,result,changed_sources:imported.sources,legacy,limits:snapshot.limits,origin_domains:snapshot.origin_domains};checkpoint(root,jobId,{state:'STAGED',owner:lock,plan});retainLock=true;await services.fault?.('objects_fsync',plan);await commitPlan(root,plan,services.fault);checkpoint(root,jobId,{state:'COMPLETED',owner:lock,plan});retainLock=false;return result;
+    const plan={job_id:jobId,manifest,request,request_sha256:sha,result,changed_sources:imported.sources,occurrence_facts:occurrenceFacts,legacy,limits:snapshot.limits,origin_domains:snapshot.origin_domains};checkpoint(root,jobId,{state:'STAGED',owner:lock,plan});retainLock=true;await services.fault?.('objects_fsync',plan);await commitPlan(root,plan,services.fault);checkpoint(root,jobId,{state:'COMPLETED',owner:lock,plan});retainLock=false;return result;
   }finally{if(!retainLock)releaseLock(root,lock);}
 }
 async function recordAssociations(root,request,options,services){
@@ -74,9 +81,10 @@ async function initArchive(root,request,options,services){
   fs.mkdirSync(root);const archiveId=randomUUID(),accessId=request.params.access_domain_id??randomUUID(),jobId='job-'+randomUUID();const lock=acquireLock(root,archiveId,jobId);let retainLock=false;
   try{
     for(const dir of ['bronze/objects','bronze/sources','revisions','projections','jobs'])fs.mkdirSync(inside(root,dir),{recursive:true});initializeLedger(root);
-    const now=timestamp(options.clock),manifest=createRevision({archive_id:archiveId,access_domain_id:accessId,limits,origin_domains:origins},[],jobId,now,{coverage:coverage({observed_through:now}),sources:[]});
+    const occurrenceFacts=Object.fromEntries(occurrenceTables.map(table=>[table,[]]));
+    const now=timestamp(options.clock),manifest=createRevision({archive_id:archiveId,access_domain_id:accessId,limits,origin_domains:origins},[],jobId,now,{coverage:coverage({observed_through:now}),sources:[],occurrence_facts_sha256:digest(occurrenceFacts)});
     const result=response(request,{archive_id:archiveId,revision_id:manifest.revision_id,schema_version:4},makeReceipt(manifest));
-    const plan={job_id:jobId,manifest,request,request_sha256:sha,result,changed_sources:[],limits,origin_domains:origins};checkpoint(root,jobId,{state:'STAGED',owner:lock,plan});retainLock=true;await services.fault?.('objects_fsync',plan);await commitPlan(root,plan,services.fault);checkpoint(root,jobId,{state:'COMPLETED',owner:lock,plan});retainLock=false;return result;
+    const plan={job_id:jobId,manifest,request,request_sha256:sha,result,changed_sources:[],occurrence_facts:occurrenceFacts,limits,origin_domains:origins};checkpoint(root,jobId,{state:'STAGED',owner:lock,plan});retainLock=true;await services.fault?.('objects_fsync',plan);await commitPlan(root,plan,services.fault);checkpoint(root,jobId,{state:'COMPLETED',owner:lock,plan});retainLock=false;return result;
   }finally{if(!retainLock)releaseLock(root,lock);}
 }
 async function ingestArchive(root,request,options,services){
@@ -92,7 +100,14 @@ async function ingestArchive(root,request,options,services){
       const item=await acquireSource(root,input,previous,snapshot.limits,{signal:options.signal,onBoundary:boundary=>services.fault?.('source_boundary',{job_id:jobId,boundary})});bytes+=item.manifest.raw_bytes;if(bytes>snapshot.limits.max_job_bytes)throw failure('LIMIT_EXCEEDED','Job byte limit exceeded');return item;
     };for(const input of request.params.sources)acquired.push(await acquire(input));
     const childCoverage=await acquireObservedChildren(acquired,previous,request.params,acquire);
-    const sha=requestDigest(request,acquired.map(x=>x.manifest.raw_sha256)),prior=durableResponse(root,request,sha,snapshot);if(prior)return prior;
+    const sha=requestDigest(request,acquired.map(x=>x.manifest.raw_sha256)),prior=durableResponse(root,request,sha,snapshot);
+    if(prior){
+      // A confirmed replay has no new recovery work. Remove only this writer's
+      // initial checkpoint; never remove a staged plan or another job's files.
+      const saved=readCheckpoint(root,jobId),jobRoot=inside(root,'jobs',jobId);
+      if(saved.state!=='STARTED'||digest(saved.owner)!==digest(lock)||fs.readdirSync(jobRoot).length!==1)throw failure('INTEGRITY_FAILED','Replay checkpoint ownership or contents differ');
+      fs.unlinkSync(inside(root,'jobs',jobId,'checkpoint.json'));fs.rmdirSync(jobRoot);return prior;
+    }
     const conflict=acquired.find(item=>item.identity_conflict);if(conflict)throw failure('AMBIGUOUS_IDENTITY','Native session owners conflict within the acquired source lineage',conflict.identity_conflict);
     if(now<snapshot.recorded_at)throw failure('CLOCK_REGRESSION','Clock precedes the latest committed observation');
     const delta={bytes_read:acquired.reduce((n,x)=>n+x.bytes_read,0),prefix_bytes_verified:acquired.reduce((n,x)=>n+x.prefix_bytes_verified,0),new_records:acquired.reduce((n,x)=>n+x.new_records,0),new_occurrences:acquired.reduce((n,x)=>n+x.new_occurrences,0),reused_objects:acquired.reduce((n,x)=>n+x.reused_objects,0)};
@@ -103,11 +118,17 @@ async function ingestArchive(root,request,options,services){
       const result=response(request,{revision_id:snapshot.revision_id,source_revisions:acquired.map(x=>x.manifest.source_revision_id),delta,coverage:snapshot.coverage,job_id:jobId},makeReceipt(snapshot,{warnings:['NO_CHANGE: source bytes and configuration match the published revision']}),snapshot.coverage.status==='PARTIAL'?'PARTIAL':'OK');
       const db=openLedger(root);try{db.prepare('INSERT INTO mutation_receipt VALUES(?,?,?,?,?)').run(request.operation,request.params.idempotency_key,sha,JSON.stringify(result),snapshot.commit_seq);}finally{db.close();}checkpoint(root,jobId,{state:'COMPLETED',owner:lock,result});return result;
     }
-    const manifest=createRevision(snapshot,sourceIds,jobId,now,{coverage:c,sources:changed.map(x=>x.source_revision_id)});
+    verifyPublishedArchive(root,snapshot,{deep:false});
+    const history=acquiredSourceHistory(root,snapshot),occurrencePrior=publishedOccurrenceState(root,snapshot),priorOccurrenceIds=occurrencePrior.present?new Set(occurrencePrior.state.occurrence_version.keys()):new Set(prepareOccurrenceFacts(history,snapshot.commit_seq,snapshot.recorded_at,root).facts.occurrence_version.map(row=>row.id));
+    const {facts,contents}=prepareOccurrenceFacts([...history,...changed],snapshot.commit_seq+1,now,root,occurrencePrior.state),occurrenceFacts=prepareOccurrenceDelta(facts,occurrencePrior.state);
+    const establishedAliases=new Set([...occurrencePrior.state.identity_binding.values()].map(b=>b.acquired_alias)),establishedTargets=new Set(facts.identity_binding.filter(row=>establishedAliases.has(row.data_json.acquired_alias)).map(row=>row.data_json.canonical_target)),establishedActs=new Set(facts.event_version.filter(row=>occurrencePrior.state.event_version.has(row.id)||establishedTargets.has(row.id)).map(row=>row.data_json.occurrence_id));
+    delta.new_occurrences=facts.occurrence_version.filter(row=>!priorOccurrenceIds.has(row.id)&&!establishedActs.has(row.id)).length;
+    for(const [sha,bytes]of contents)if(putObject(root,bytes).sha256!==sha)throw failure('INTEGRITY_FAILED','Payload CAS commitment differs');
+    const manifest=createRevision(snapshot,sourceIds,jobId,now,{coverage:c,sources:changed.map(x=>x.source_revision_id),occurrence_facts_sha256:digest(occurrenceFacts)});
     const warnings=acquired.filter(x=>x.late_bytes).map(x=>'Source grew by '+x.late_bytes+' bytes after its captured boundary');
     if(childCoverage.known)warnings.push('Child acquisition: '+childCoverage.children_acquired+' new, '+childCoverage.omitted+' known omitted; limit '+childCoverage.limit+'; '+childCoverage.resolution_boundary);
     const result=response(request,{revision_id:manifest.revision_id,source_revisions:acquired.map(x=>x.manifest.source_revision_id),delta,coverage:c,job_id:jobId},makeReceipt(manifest,{warnings}),c.status==='PARTIAL'?'PARTIAL':'OK');
-    const plan={job_id:jobId,manifest,request,request_sha256:sha,result,changed_sources:changed,limits:snapshot.limits,origin_domains:snapshot.origin_domains};checkpoint(root,jobId,{state:'STAGED',owner:lock,plan});retainLock=true;await services.fault?.('objects_fsync',plan);await commitPlan(root,plan,services.fault);checkpoint(root,jobId,{state:'COMPLETED',owner:lock,plan});retainLock=false;return result;
+    const plan={job_id:jobId,manifest,request,request_sha256:sha,result,changed_sources:changed,occurrence_facts:occurrenceFacts,limits:snapshot.limits,origin_domains:snapshot.origin_domains};checkpoint(root,jobId,{state:'STAGED',owner:lock,plan});retainLock=true;await services.fault?.('objects_fsync',plan);await commitPlan(root,plan,services.fault);checkpoint(root,jobId,{state:'COMPLETED',owner:lock,plan});retainLock=false;return result;
   }finally{if(!retainLock)releaseLock(root,lock);}
 }
 async function recoverArchive(root,request,services){
@@ -133,6 +154,12 @@ async function recoverArchive(root,request,services){
       if(request.params.action==='resume'){
         if(snapshot.revision_id!==plan.manifest.parent_revision_id&&snapshot.revision_id!==revision_id)throw failure('REVISION_CONFLICT','Recovery plan is not the latest pending revision');
         for(const item of plan.changed_sources){const source=sourceManifest(root,item.source_revision_id);if(digest(source)!==digest(item))throw failure('INTEGRITY_FAILED','Checkpoint source differs from immutable manifest');for(const object of [...source.objects,...source.decoded_objects])readObject(root,object);}
+        if(plan.manifest.ledger_changes.occurrence_facts_sha256){
+          const parent=plan.manifest.parent_revision_id?revisionManifest(root,plan.manifest.parent_revision_id):null;
+          const prepared=prepareOccurrenceFacts([...(parent?acquiredSourceHistory(root,parent):[]),...plan.changed_sources],plan.manifest.commit_seq,plan.manifest.recorded_at,root,parent?publishedOccurrenceState(root,parent).state:emptyOccurrenceState()),facts=prepareOccurrenceDelta(prepared.facts,parent?publishedOccurrenceState(root,parent).state:emptyOccurrenceState());
+          if(digest(facts)!==plan.manifest.ledger_changes.occurrence_facts_sha256||!plan.occurrence_facts||digest(plan.occurrence_facts)!==digest(facts))throw failure('INTEGRITY_FAILED','Recovery occurrence facts differ from acquired sources');
+          for(const row of prepared.facts.content_object)readObject(root,row.data_json.object);
+        }
         await commitPlan(root,plan,services.fault);latest=openSnapshot(root);
       }
     }else if(request.params.action==='resume')throw failure('EVIDENCE_UNAVAILABLE','Checkpoint has no fully staged acquisition to resume');
@@ -162,6 +189,7 @@ export function createArchiveEngine(services={}){return async function archiveRe
     if(request.operation==='scope.resolve')return resolveScope(root,request,openSnapshot(root,request.revision_id));
     if(request.operation==='archive.verify')return verifyArchive(root,request);
     if(request.operation==='evidence.read')return readArchiveEvidence(root,request,{receiptExtra:services.evidenceReceiptExtra});
+    if(request.operation==='event.show'||request.operation==='stats'){const snapshot=openSnapshot(root,request.revision_id);verifyPublishedArchive(root,snapshot,{deep:false});return request.operation==='event.show'?showArchiveEvent(root,request,snapshot):archiveStats(root,request,snapshot);}
     throw failure('NOT_IMPLEMENTED','Operation is not implemented in this candidate');
   }catch(error){
     const sqliteCode=error.code==='ERR_SQLITE_ERROR'?error.errcode&255:null;

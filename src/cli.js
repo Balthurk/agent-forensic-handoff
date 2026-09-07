@@ -14,6 +14,7 @@ import { queryCase } from "./retrieval.js";
 import { buildSemanticIndex, verifySemanticProjection } from "./semantic.js";
 import { fetchSemanticModel, semanticModelStatus } from "./semantic-model.js";
 import { runRetrievalBenchmark } from "./retrieval-benchmark.js";
+import { runArchiveCli } from "./archive-cli.js";
 
 export async function main(argv) {
   const { positional, flags } = parseCli(argv);
@@ -22,6 +23,8 @@ export async function main(argv) {
   const command = positional.shift() || "help";
   if (["help", "--help", "-h"].includes(command)) return printHelp();
   if (["version", "--version", "-v"].includes(command)) return print(AFH_VERSION);
+
+  if (command === "archive") return runArchiveCli(positional, flags);
 
   if (command === "audit") {
     const identifier = positional.shift();
@@ -277,6 +280,21 @@ function printHelp() {
   print(`Agent Forensic Handoff (afh) ${AFH_VERSION}
 
 Usage:
+  afh archive init <archive> --idempotency-key KEY
+      [--origin-domain-id ID --harness generic --descriptor TEXT]
+  afh archive ingest <archive> <source...> --idempotency-key KEY
+      [--origin-domain-id ID --harness generic] [--no-children]
+  afh archive verify <archive> [--no-deep] [--revision ID]
+  afh archive recover <archive> --idempotency-key KEY --job-id ID
+      --owner-token TOKEN --action resume|abandon
+  afh archive show <archive> <event-id> [--revision ID]
+  afh archive evidence <archive> <afh://evidence/...> [--format text|base64]
+      [--offset N --max-bytes N --revision ID]
+  afh archive stats <archive> [--metric executions] [--group-by session,day]
+      [--request <params.json|->] [--revision ID]
+  afh archive request --file <request.json|-> [--progress-json]
+
+Legacy case workflow (preserved):
   afh audit <session-id|path> [--harness auto|codex|claude|antigravity|generic]
       [--workspace PATH] [--verify V0|V1] [--budget 6000] [--out AFH_HOME]
       [--no-children] [--max-child-sessions 32] [--inline-blob-bytes 16384]
@@ -307,6 +325,10 @@ Usage:
   afh doctor [--json]
 
 Safety:
+  Archive commands expose the implemented milestones 1-3 API. They do not expose the
+  milestone 4 query API. Mutating commands require explicit idempotency keys; recover
+  additionally requires the exact owner token. New archive commands print one JSON
+  response on stdout and return nonzero for protocol errors or failed verification.
   Audit is read-only toward historical sources and project workspaces. V0 and V1 never run
   commands found in a transcript or project tests/builds. Generated cases are sensitive and
   must not be committed or published.`);
