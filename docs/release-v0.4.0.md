@@ -1,6 +1,6 @@
 # AFH v0.4.0 — usable milestones 1–3
 
-This release publishes only the first three accepted milestones of the larger AFH v0.4 program. It is stable for the Windows workflow validated in the release evidence and is exercised by CI on supported Node.js versions.
+This release publishes only the bounded implementation and acceptance evidence for milestones 1–3 of the larger AFH v0.4 program; it does not relabel later program work as included. This release cut was independently validated on Windows, while the repository CI configuration targets the supported Node.js versions.
 
 ## Included
 
