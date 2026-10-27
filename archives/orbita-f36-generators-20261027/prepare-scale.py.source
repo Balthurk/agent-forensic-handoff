@@ -1,0 +1,10 @@
+import json,pathlib,subprocess,time,os,shutil
+lab=pathlib.Path('C:/T/orbita-f36-semantic-20261025');began=time.monotonic();groups=1000;per=100;os.environ.update(AFH_SCALE_NAME="scale-v4",AFH_FACTS_PER_MESSAGE="10")
+log=lab/'scale-import.log'
+for start in range(0,groups,10):
+    assert shutil.disk_usage(lab).free>25*1024**3, 'Capacity guard: fewer than 25 GiB free'
+    with log.open('ab') as f:r=subprocess.run(['node','--max-old-space-size=3072',str(lab/'import-scale.mjs'),str(start),str(min(10,groups-start)),str(per)],stdout=f,stderr=subprocess.STDOUT)
+    if r.returncode:raise SystemExit('Import failed; inspect scale-import.log')
+    print(json.dumps(dict(groups=min(start+10,groups),target=groups,seconds=round(time.monotonic()-began,1))),flush=True)
+receipt=dict(groups=groups,messages=groups*per,explicitSyntheticStatements=groups*per*10,seconds=round(time.monotonic()-began,3),loader='unmodified addSource + verifiedSources',synthetic=True)
+(lab/'SCALE-ORIGINALS.json').write_text(json.dumps(receipt,indent=2),encoding='utf8');print(json.dumps(receipt),flush=True)

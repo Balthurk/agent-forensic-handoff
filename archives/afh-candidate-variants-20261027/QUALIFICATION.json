@@ -1,0 +1,12 @@
+{
+  "schema": "afh.historical.sources.qualification.v1",
+  "status": "PASS_REMOTE_SOURCE_RECONSTRUCTION",
+  "testedRemoteCommit": "76d6a8574b9aba78e53616020851892712241d27",
+  "reconstructionMapSha256": "e9c567d4bc278e10423a8791a7dbf1af5ab646368a539b308bb870219ef35b3e",
+  "files": 1067,
+  "bytes": 28214932,
+  "gitObjects": 206,
+  "originalSourcesUnchanged": true,
+  "dataAndIgnoredRuntimeIncluded": false,
+  "scope": "Byte-exact reconstruction of previously untracked source files only. Not complete restoration of ignored runtime or data."
+}

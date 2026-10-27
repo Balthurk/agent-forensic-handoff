@@ -1,0 +1,25 @@
+import datetime,json,os,pathlib,shutil,subprocess,time,uuid
+lab=pathlib.Path('C:/T/orbita-f36-semantic-20261025');base=pathlib.Path('C:/Skill AHF/outputs/orbita-f36-semantic-20261025');runtime=pathlib.Path('C:/Skill AHF/runtime/orbita-f36-semantic-20261025');python='C:/Skill AHF/runtime/orbita-f36-20261024/python/Scripts/python.exe';root=lab/'scale-v4/data';env=dict(os.environ,AFH_COSMOS_DATA=str(root),AFH_VOLUME_PYTHON=python)
+def run(name,args,stdin=None,timeout=7200):
+    start=time.monotonic();print(json.dumps(dict(phase=name,status='RUNNING',at=datetime.datetime.now(datetime.timezone.utc).isoformat())),flush=True)
+    with (lab/(name+'.log')).open('w',encoding='utf8') as output:
+        result=subprocess.run(args,env=env,input=stdin,stdout=output,stderr=subprocess.STDOUT,timeout=timeout)
+    assert result.returncode==0,(name,'failed: inspect preserved log')
+    print(json.dumps(dict(phase=name,status='COMPLETE',seconds=time.monotonic()-start)),flush=True)
+try:
+    deadline=time.monotonic()+7200
+    while not (lab/'SCALE-SEMANTICS.json').exists():
+        assert time.monotonic()<deadline,'FIXTURE_TIMEOUT';time.sleep(10)
+    fixture=json.loads((lab/'SCALE-SEMANTICS.json').read_text(encoding='utf8'));assert fixture['status']=='PASS' and fixture['semanticRecords']==1000000
+    assert shutil.disk_usage(lab).free>40*1024**3,'INSUFFICIENT_DISK_FOR_FULL_PROFILE'
+    run('scale-sqlite-baseline',['node',str(lab/'profile-f22.mjs'),'sqlite'])
+    config=runtime/'postgres-scale.json';assert not config.exists(),'EXISTING_CONFIG_REQUIRES_EXPLICIT_RESUME'
+    cfg=json.loads((runtime/'postgres-test.json').read_text());cfg['roots']={str(root):dict(namespace=uuid.uuid4().hex,active=False)};config.write_text(json.dumps(cfg),encoding='utf8');env['AFH_SEMANTIC_PG_CONFIG']=str(config)
+    run('scale-postgres-migration',[python,'-I','-B',str(base/'agent-forensic-handoff/python/semantic-storage-cli.py')],stdin=(json.dumps(dict(op='migrate',root=str(root)))+'\n').encode())
+    migration=json.loads((lab/'scale-postgres-migration.log').read_text());assert migration['ok'] and migration['result']['status']=='PASS';(lab/'SCALE-MIGRATION.json').write_text(json.dumps(migration['result'],indent=2))
+    run('scale-postgres-profile',['node',str(lab/'profile-f22.mjs'),'postgres'])
+    run('scale-backup-restore',['node',str(lab/'restore-scale.mjs')])
+    result=dict(status='PASS',at=datetime.datetime.now(datetime.timezone.utc).isoformat(),steps=['sqlite baseline','verified PostgreSQL migration','integral F22 profile','whole backup and independent process restore'])
+except Exception as e:
+    result=dict(status='FAIL',at=datetime.datetime.now(datetime.timezone.utc).isoformat(),error=str(e))
+(lab/'SCALE-PIPELINE.json').write_text(json.dumps(result,indent=2));print(json.dumps(result),flush=True);raise SystemExit(result['status']!='PASS')

@@ -1,0 +1,30 @@
+import fs from 'node:fs';import assert from 'node:assert/strict';import {createHash} from 'node:crypto';
+const lab='C:/T/orbita-f36-semantic-20261025',phase=process.argv[2]||'postgres',fixture=JSON.parse(fs.readFileSync(lab+'/SCALE-SEMANTICS.json'));
+assert.equal(fixture.semanticRecords,1000000);assert.equal(fixture.originalMessages,100000);
+const app='file:///C:/Skill%20AHF/outputs/orbita-f36-semantic-20261025/app/';const {retrievePackage,closeMemory}=await import(app+'memory.mjs'),{contextPage}=await import(app+'context.mjs'),{knowledgeOperation,verifiedSources}=await import(app+'knowledge.mjs');
+const hash=v=>createHash('sha256').update(JSON.stringify(v)).digest('hex');const options={mode:'lexical',maxBytes:200000,knownAt:'2099-01-01T00:00:00Z',validAt:'2026-10-25T00:00:00Z'};const results=[],pages=[];
+async function run(o,label,settings=options){const start=performance.now(),p=await retrievePackage(o.question,[o.conversationId],settings),ms=performance.now()-start;
+ if(phase==='sqlite'){assert.ok(p.backends.some(b=>b.channel==='semantic_records'&&b.status==='unavailable'&&b.reason.includes('CONTEXT_STATE_ROW_BUDGET')));assert.equal(p.knowledge.requiresAbstention,true);return {label,ms,semanticUnavailable:true,reason:'CONTEXT_STATE_ROW_BUDGET',rawEvidencePreserved:p.evidence.length};}
+ assert.ok(!p.backends.some(b=>b.status==='unavailable'),JSON.stringify(p.backends));assert.equal(p.knowledge.omittedClauses,0);assert.equal(p.knowledge.requiresAbstention,true);
+ assert.deepEqual(p.knowledge.items.map(i=>i.clauseVersionId).sort(),o.expected.map(i=>i.clauseVersionId).sort());
+ for(const x of o.expected){assert.ok(p.knowledge.items.some(i=>i.clauseVersionId===x.clauseVersionId&&i.text===x.quote));assert.ok(p.evidence.some(e=>e.text.includes(x.quote)));}
+ const {sources}=await verifiedSources([o.conversationId]);for(const e of p.evidence){const original=sources.find(s=>s.representation_id===e.representationId);assert.ok(original);assert.equal(e.text,original.text);assert.equal(e.payloadSha256,original.payload_sha256);}
+ assert.equal(p.context.coverage.completeness,'not_certified');const request={id:p.context.snapshot.id,conversationIds:[o.conversationId],limit:1,maxBytes:200000},page=await contextPage(request);assert.equal(page.freshness.current,true);assert.equal(page.executionAuthority,false);assert.equal(page.requiresAbstention,true);assert.ok(page.items.length);
+ pages.push({request,page});fs.writeFileSync(lab+'/scale-v4/'+label+'.json',JSON.stringify(p));return {label,ms,bytes:p.bytes,evidence:p.evidence.length,clauses:p.knowledge.items.length,sourceCount:p.sources.length,scanned:p.context.coverage.scanned,requiresAbstention:p.knowledge.requiresAbstention,pageHash:hash(page),snapshot:request.id};}
+if(phase==='sqlite')results.push(await run(fixture.oracles[0],'sqlite-before-migration'));
+else{
+ for(const [i,o] of fixture.oracles.entries()){results.push(await run(o,'group-'+i+'-first'));results.push(await run(o,'group-'+i+'-warm'));}
+ const a=fixture.oracles[0];results.push(await run(a,'current-cut',{...options,knownAt:null}));
+ const none=await retrievePackage('zzq_unknown_no_match',[a.conversationId],options);assert.equal(none.knowledge.items.length,0);assert.match(none.scope,/no_match does not establish global absence/);
+ const ids=[0,1,2,3,4,5].map(n=>JSON.parse(fs.readFileSync(lab+'/scale-v4/sources/'+String(n).padStart(4,'0')+'.json')).item.id);
+ const wide=await retrievePackage(a.question,ids,options);assert.ok(wide.backends.some(b=>b.channel==='semantic_records'&&b.status==='unavailable'&&b.reason.includes('SEMANTIC_QUERY_ROW_BUDGET')));assert.equal(wide.knowledge.requiresAbstention,true);
+ const old=await knowledgeOperation('get',[a.conversationId],{id:a.expected[0].recordId,version:1});const payload=structuredClone(old.payload);payload.text='Interpretación sintética revisada; vigencia y permiso siguen sin acreditarse.';
+ const changed=await knowledgeOperation('put',[a.conversationId],{payload,expectedVersion:1,requestId:'scale-one-correction'});assert.equal(changed.version,2);
+ for(const saved of pages){saved.page=await contextPage(saved.request);assert.equal(saved.page.freshness.current,false);}
+ const historical=await retrievePackage(a.question,[a.conversationId],{...options,knownAt:old.recorded_at});assert.equal(historical.knowledge.items.find(i=>i.clauseVersionId===a.expected[0].clauseVersionId).recordVersion,1);assert.equal(historical.knowledge.requiresAbstention,true);
+ const latest=await retrievePackage(a.question,[a.conversationId],options);assert.equal(latest.knowledge.items.find(i=>i.clauseVersionId===a.expected[0].clauseVersionId).recordVersion,2);assert.equal(latest.knowledge.requiresAbstention,true);
+ fs.writeFileSync(lab+'/SCALE-LATEST-PACKAGE.json',JSON.stringify(latest));fs.writeFileSync(lab+'/SCALE-HISTORICAL-PACKAGE.json',JSON.stringify(historical));
+ const currentRequest={id:latest.context.snapshot.id,conversationIds:[a.conversationId],limit:1,maxBytes:200000};pages.push({request:currentRequest,page:await contextPage(currentRequest)});
+ fs.writeFileSync(lab+'/SCALE-PAGES.json',JSON.stringify({pages,correction:{recordId:old.id,oldVersion:1,newVersion:2,oldCut:old.recorded_at},historicalExact:true,wideSelectionAbstains:true,noMatchIsNotAbsence:true}));
+}
+const receipt={status:'PASS',phase,synthetic:true,semanticRecords:1000000,originalMessages:100000,originalConversations:1000,newInferenceCalls:0,results,limits:'1..20 selected conversations; <=5000 selected semantic versions. A million stored proposed statements is not a million independent sources or a guarantee of semantic completeness. First means first query in this process, not an OS cold cache.'};fs.writeFileSync(lab+'/PROFILE-F22-'+phase.toUpperCase()+'.json',JSON.stringify(receipt,null,2));console.log(JSON.stringify(receipt));await closeMemory();

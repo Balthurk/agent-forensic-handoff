@@ -1,0 +1,59 @@
+{
+  "schema": "orbita.synthetic.generator.archive.v1",
+  "at": "2026-10-27T15:25:14.194862+00:00",
+  "status": "HISTORICAL_SOURCE_REVIEWED_NOT_PORTABLE_QUALIFICATION",
+  "historicalFixture": "F36 scale-v4; 1000 conversations, 100000 messages, 1000000 explicit synthetic statements",
+  "files": [
+    {
+      "file": "import-scale.mjs",
+      "archivedAs": "import-scale.mjs.source",
+      "sha256": "a8616e37d0a02cc9a8b84d83d34d3efa5b6882e0ef6279d6ce0b856b90d5c5ba",
+      "bytes": 2249
+    },
+    {
+      "file": "prepare-scale.py",
+      "archivedAs": "prepare-scale.py.source",
+      "sha256": "24420aad3d54d54abce68175fb4085599c3e9b2ae87f7d200a9ace49069e4713",
+      "bytes": 1078
+    },
+    {
+      "file": "load-scale-semantics.py",
+      "archivedAs": "load-scale-semantics.py.source",
+      "sha256": "80c8392bb746745c0acf66af4a114184fe540478a7ed02142ded261d6a9b6f0c",
+      "bytes": 4699
+    },
+    {
+      "file": "load-scale-resumed.py",
+      "archivedAs": "load-scale-resumed.py.source",
+      "sha256": "a7146ca11ae00cba8467349164284aa709ed1a34d7873f4f70ba7ee2088409de",
+      "bytes": 5619
+    },
+    {
+      "file": "profile-f22.mjs",
+      "archivedAs": "profile-f22.mjs.source",
+      "sha256": "975d54ffd425014bd89bfd7662f2add480125ad74515d29b4a772e68c9067fbe",
+      "bytes": 5844
+    },
+    {
+      "file": "scale-pipeline.py",
+      "archivedAs": "scale-pipeline.py.source",
+      "sha256": "52f42d89c68a3f657b7331b4b0cdda69abf43aa03ac4080b6d4c51e3bd38f78a",
+      "bytes": 2854
+    },
+    {
+      "file": "restore-scale.mjs",
+      "archivedAs": "restore-scale.mjs.source",
+      "sha256": "87181359ec1ef01061fc7618b5242497701435cd2c3d4b86efd564e34a25bddb",
+      "bytes": 2967
+    }
+  ],
+  "privacyReview": {
+    "fullSourcesRead": true,
+    "embeddedCredentials": false,
+    "privateCorpus": false,
+    "historicalAbsolutePathsPresent": true,
+    "runtimeConfigValuesIncluded": false
+  },
+  "execution": "Inactive .source files. Do not execute against historical paths. The full generation and PostgreSQL profile have not been rerun by this archive.",
+  "deletionAuthorization": false
+}

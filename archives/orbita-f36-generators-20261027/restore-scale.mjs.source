@@ -1,0 +1,15 @@
+import fs from 'node:fs';import assert from 'node:assert/strict';import {randomBytes} from 'node:crypto';import {execFileSync} from 'node:child_process';
+import {createBackup,restoreBackup} from 'file:///C:/Skill%20AHF/outputs/orbita-f36-semantic-20261025/app/recovery.mjs';
+const lab='C:/T/orbita-f36-semantic-20261025',source=lab+'/scale-v4/data',destination=lab+'/scale-restored/data',archive=lab+'/scale-full.orbita',password=randomBytes(32).toString('hex');
+let start=performance.now();const backup=await createBackup({source,archive,password}),backupMs=performance.now()-start;fs.writeFileSync(lab+'/SCALE-BACKUP.json',JSON.stringify({backup,backupMs,keyPersisted:false},null,2));console.log(JSON.stringify({phase:'backup',files:backup.files,bytes:backup.bytes,ms:backupMs}));
+start=performance.now();const restored=await restoreBackup({archive,destination,password}),restoreMs=performance.now()-start;fs.writeFileSync(lab+'/SCALE-RESTORED.json',JSON.stringify({restored,restoreMs},null,2));console.log(JSON.stringify({phase:'restored',files:restored.files,ms:restoreMs}));
+const reader=lab+'/scale-restored/read.mjs';fs.writeFileSync(reader,`import fs from 'node:fs';import assert from 'node:assert/strict';
+const lab=${JSON.stringify(lab)},app='file:///C:/Skill%20AHF/outputs/orbita-f36-semantic-20261025/app/';const {contextPage}=await import(app+'context.mjs'),{retrievePackage,closeMemory}=await import(app+'memory.mjs');
+const saved=JSON.parse(fs.readFileSync(lab+'/SCALE-PAGES.json'));let exactPages=0;for(const v of saved.pages){assert.deepEqual(await contextPage(v.request),v.page);exactPages++;}
+const oracle=JSON.parse(fs.readFileSync(lab+'/SCALE-SEMANTICS.json')).oracles[0];const options={mode:'lexical',maxBytes:200000,knownAt:'2099-01-01T00:00:00Z',validAt:'2026-10-25T00:00:00Z'};
+const begin=performance.now();const latest=await retrievePackage(oracle.question,[oracle.conversationId],options);assert.deepEqual(latest,JSON.parse(fs.readFileSync(lab+'/SCALE-LATEST-PACKAGE.json')));const latestMs=performance.now()-begin;
+const historical=await retrievePackage(oracle.question,[oracle.conversationId],{...options,knownAt:saved.correction.oldCut});assert.deepEqual(historical,JSON.parse(fs.readFileSync(lab+'/SCALE-HISTORICAL-PACKAGE.json')));
+console.log(JSON.stringify({status:'PASS',exactPages,latestExact:true,historicalExact:true,latestMs,externalConnections:0}));await closeMemory();`);
+const env={...process.env,AFH_COSMOS_DATA:destination};delete env.AFH_SEMANTIC_PG_CONFIG;
+const verified=JSON.parse(execFileSync(process.execPath,[reader],{env,encoding:'utf8',windowsHide:true,timeout:600000,maxBuffer:1000000}));
+const receipt={status:'PASS',backup,backupMs,restored,restoreMs,verified,newProcess:true,keyPersisted:false,externalAccess:false,automaticWork:false,synthetic:true};fs.writeFileSync(lab+'/SCALE-RESTORE-VERIFIED.json',JSON.stringify(receipt,null,2));console.log(JSON.stringify({status:'PASS',backupMs,restoreMs,verified}));

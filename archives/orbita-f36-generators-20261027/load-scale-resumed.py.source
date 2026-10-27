@@ -1,0 +1,56 @@
+"""Synthetic bulk fixture loader; every payload uses production compilation,
+validation and envelope checks. Not a measurement of interactive admission speed.
+"""
+import hashlib,json,os,pathlib,sqlite3,sys,time
+lab=pathlib.Path('C:/T/orbita-f36-semantic-20261025');base=pathlib.Path('C:/Skill AHF/outputs/orbita-f36-semantic-20261025')
+sys.path.insert(0,str(base/'agent-forensic-handoff/python'))
+from afh_semantic.host import AFHMemory,compile_act,now
+from afh_semantic.knowledge_records import KnowledgeRecords,_json
+from afh_semantic.postgres_backend import digest,atomic_json
+os.environ.pop('AFH_SEMANTIC_PG_CONFIG',None)
+root=lab/'scale-v4/data/semantic';root.mkdir(exist_ok=True);assert (root/'records.sqlite3').exists()
+with sqlite3.connect(root/'records.sqlite3') as check:
+    assert check.execute('PRAGMA integrity_check').fetchone()[0]=='ok'
+    resumed=check.execute('SELECT COUNT(*) FROM record_versions').fetchone()[0]
+    assert resumed%1000==0
+atomic_json(lab/'SCALE-RESUME.json',dict(committedRecords=resumed,integrity='ok',strategy='Recompile and validate every existing payload/envelope before append; immutable source binding cached per conversation only'))
+files=sorted((lab/'scale-v4/sources').glob('*.json'));assert len(files)==1000
+began=time.monotonic();total=0;prior=None;oracles=[];expected_stream=hashlib.sha256()
+for i,file in enumerate(files):
+    packet=json.loads(file.read_text(encoding='utf8'));sources=packet['sources'];assert len(sources)==100
+    memory=AFHMemory(root,sources,'afh-corpus',register=True);from functools import lru_cache;memory.evidence=lru_cache(maxsize=100)(memory.evidence);records=KnowledgeRecords(memory,root/'records.sqlite3');selected=[]
+    try:
+        records.db.execute('BEGIN IMMEDIATE');at=now()
+        for j,s in enumerate(sources):
+            quotes=s['text'].split('\\n');assert len(quotes)==10
+            for k,quote in enumerate(quotes):
+                n=i*1000+j*10+k;e=[dict(sourceId=s['id'],quote=quote)]
+                clause=dict(key='claim',quote=quote,predicate='synthetic_statement_'+str(n),polarity='negative' if n==1 else 'positive',resolution='resolved',arguments=[],conditions=[],temporal=[],relations=[])
+                if n<2:clause['arguments']=[dict(role='project',literal='Alfa',interpreted='',evidence=e)]
+                if n==0:clause['conditions']=[dict(literal='sólo si pasa QA',scope='Alfa',resolution='resolved',evidence=[dict(sourceId=s['id'],quote='sólo si pasa QA')])]
+                if n==1:clause['relations']=[dict(kind='retracts',targetClauseVersionId=prior,evidence=e)]
+                act=dict(key='synthetic-'+str(n),targetSourceId=s['id'],type='policy' if n<2 else 'fact',summary=quote,modality='directive' if n<2 else 'hypothetical',clauses=[clause])
+                p=compile_act(memory,act,'synthetic-scale-loader',packet['cut']);records._validate(p);u=p['semantic_unit'];c=u['clauses'][0]
+                if n==0:prior=c['clause_version_id']
+                encoded=_json(p);ph=hashlib.sha256(encoded.encode()).hexdigest();request='synthetic-scale-'+str(n)
+                if n<resumed:
+                    row=records.db.execute('SELECT rowid AS _rowid,* FROM record_versions WHERE record_id=?',(p['id'],)).fetchone()
+                    assert row is not None and row['payload']==encoded and row['payload_sha256']==ph
+                else:
+                    records.db.execute('INSERT INTO semantic_act_identity VALUES(?,?,?)',('afh-corpus',u['act_id'],p['id']))
+                    records.db.execute('INSERT INTO semantic_clause_identity VALUES(?,?,?,?)',('afh-corpus',c['semantic_clause_id'],u['act_id'],p['id']))
+                    records.db.execute('INSERT INTO semantic_clause_versions VALUES(?,?,?,?)',('afh-corpus',c['clause_version_id'],c['semantic_clause_id'],u['manifest']['entries'][0]['clause_sha256']))
+                    records.db.execute('INSERT INTO record_versions VALUES(?,?,?,?,?,?,?,?)',(p['id'],'afh-corpus',1,at,encoded,ph,request,hashlib.sha256(_json([p,0]).encode()).hexdigest()))
+                    row=records.db.execute('SELECT rowid AS _rowid,* FROM record_versions WHERE record_id=?',(p['id'],)).fetchone()
+                    records.db.execute('INSERT INTO record_envelopes VALUES(?,1,?)',(row['_rowid'],records._envelope_digest(row)))
+                    records._insert_g1_outbox(row,p)
+                verified=records._envelope(row);assert verified['integrity']=='envelope_v1'
+                expected_stream.update((p['id']+':'+ph+'\n').encode());total+=1
+                if i in (0,499,999) and j==0 and (k==0 or n==1):selected.append(dict(recordId=p['id'],clauseVersionId=c['clause_version_id'],quote=quote,source=s['id'],payloadHash=ph))
+        records.db.commit()
+        if selected:oracles.append(dict(conversationId=packet['item']['id'],question='q'+str(i*1000).zfill(7),expected=selected,sourceCut=packet['cut']))
+    finally:records.close();memory.close()
+    if i%10==9:print(json.dumps(dict(groups=i+1,records=total,seconds=round(time.monotonic()-began,1))),flush=True)
+assert total==1000000
+receipt=dict(status='PASS',synthetic=True,originalConversations=1000,originalMessages=100000,explicitStatements=1000000,semanticRecords=total,everyPayloadValidated=True,everyEnvelopeValidated=True,hash=expected_stream.hexdigest(),seconds=round(time.monotonic()-began,3),qualification='Bulk fixture construction, not interactive admission throughput',oracles=oracles)
+atomic_json(lab/'SCALE-SEMANTICS.json',receipt);print(json.dumps({k:v for k,v in receipt.items() if k!='oracles'}),flush=True)

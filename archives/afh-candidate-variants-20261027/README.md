@@ -11,3 +11,5 @@ Las diferencias revisadas tratan resolución de identidad nativa, correlación d
 RECONSTRUCTION.json mapea los 1.067 archivos de código, documentación y pruebas de las cinco candidatas (28.214.932 bytes). Conserva los casos de LF, CRLF y finales mezclados por archivo. Los objetos proceden de los commits f57332032badbfa040cc741f6d78752c60930ded y f4887f3c13221b13acaf19396aec47dbc013c13b del mismo repositorio. Si una descarga parcial no contiene el segundo, recuperarlo con git fetch origin f4887f3c13221b13acaf19396aec47dbc013c13b.
 
 Ejecutar python archives/afh-candidate-variants-20261027/restore_sources.py --destination RUTA_ABSOLUTA_NUEVA_FUERA_DEL_CHECKOUT. El programa verifica todos los objetos y hashes antes de crear archivos y vuelve a comprobar los bytes escritos. Rechaza un destino existente. Las dependencias instaladas, archivos ignorados y estado de ejecución quedan fuera de este inventario. Recuperar fuentes no acredita su funcionamiento ni autoriza eliminar las carpetas originales.
+
+The subsequent byte-exact reconstruction qualification is recorded in QUALIFICATION.json. RECONSTRUCTION.json remains the unchanged historical map used by that run.

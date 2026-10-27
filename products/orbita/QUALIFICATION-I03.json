@@ -1,0 +1,85 @@
+{
+  "schema": "orbita.public.qualification.v1",
+  "at": "2026-10-27T17:28:37.501659+00:00",
+  "status": "PASS_SCOPED_TECHNICAL_I03",
+  "testedRemoteCommit": "d45b5e96a2c435711e6865c775346d3bd47387e5",
+  "candidateSealSha256": "c03c2309e189ee55ff605f6b6fbaad52be0e23d08f899c8c5d5e51035a1ba9d5",
+  "publishedSourceFiles": 351,
+  "publishedSourcesUnchangedDuringTests": true,
+  "freshNodeDependencies": true,
+  "dependencyInstallationCommit": "76d6a8574b9aba78e53616020851892712241d27",
+  "installationReusedAfterPrerequisiteFailure": true,
+  "skillMetrics": {
+    "tests": 293,
+    "pass": 292,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 1,
+    "todo": 0
+  },
+  "orbitaSuites": [
+    {
+      "name": "core",
+      "tests": 130,
+      "passed": 129,
+      "skipped": 1
+    },
+    {
+      "name": "app",
+      "tests": 247,
+      "passed": 247,
+      "skipped": 0
+    },
+    {
+      "name": "python",
+      "tests": 230,
+      "passed": 230,
+      "skipped": 0
+    }
+  ],
+  "nativeUI": {
+    "status": "PASS_SCOPED_NATIVE_UI_FROM_REMOTE",
+    "originalByteExact": true,
+    "originalBytes": 207,
+    "providerCalls": 0
+  },
+  "workingRecovery": {
+    "files": 924,
+    "databases": 44,
+    "sources": 11,
+    "records": 1404,
+    "exactQueries": 37,
+    "keyRetained": true,
+    "keyProtection": "Windows DPAPI CurrentUser"
+  },
+  "scaleRecovery": {
+    "files": 20035,
+    "bytes": 13210004199,
+    "databases": 1003,
+    "exactPages": 8,
+    "currentAndHistoricalPackagesExact": true,
+    "backupMs": 1752658.2547,
+    "restoreMs": 2359486.0797,
+    "newRemotePerformanceClaim": false
+  },
+  "privateEvidencePublished": false,
+  "humanAcceptance": false,
+  "productivePromotion": false,
+  "remainingIncrements": [
+    "I04",
+    "I05",
+    "I06",
+    "I07",
+    "I08",
+    "I09",
+    "I10"
+  ],
+  "priorFailedAttemptsRetained": 5,
+  "remainingPlatformObservation": {
+    "nativeNodeExit": "0xc0000409",
+    "causeEstablished": false,
+    "unchangedScenarioPassedThreeIsolatedRuns": true,
+    "subsequentCompleteCumulativeSuitePassed": true,
+    "investigationIncrement": "I08"
+  }
+}

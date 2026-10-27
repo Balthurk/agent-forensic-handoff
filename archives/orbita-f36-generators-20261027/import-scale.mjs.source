@@ -1,0 +1,16 @@
+import fs from 'node:fs';import path from 'node:path';import assert from 'node:assert/strict';
+const lab='C:/T/orbita-f36-semantic-20261025',scale=process.env.AFH_SCALE_NAME||'scale-v2',root=lab+'/'+scale+'/data';process.env.AFH_COSMOS_DATA=root;
+const {addSource}=await import('file:///C:/Skill%20AHF/outputs/orbita-f36-semantic-20261025/app/corpus.mjs');
+const {verifiedSources}=await import('file:///C:/Skill%20AHF/outputs/orbita-f36-semantic-20261025/app/knowledge.mjs');
+const start=Number(process.argv[2]),count=Number(process.argv[3]),per=Number(process.argv[4]||1000);fs.mkdirSync(lab+'/'+scale+'/sources',{recursive:true});
+for(let i=start;i<start+count;i++){
+ const file=lab+'/'+scale+'/sources/'+String(i).padStart(4,'0')+'.json';if(fs.existsSync(file))continue;
+ const facts=Number(process.env.AFH_FACTS_PER_MESSAGE||1),mapping={};for(let j=0;j<per;j++){const n=i*per+j,id='m'+n,term='q'+String(n).padStart(7,'0');let text=`Registro sintético ${term}: hipótesis de laboratorio sin vigencia ni autorización demostradas.`;
+ if(n===0)text='Regla sintética q0000000: Alfa permite staging sólo si pasa QA.';
+ if(n===1)text='Retirada sintética q0000000: Alfa revoca staging hasta nueva revisión.';
+ if(facts>1){text=Array.from({length:facts},(_,k)=>{const x=(i*per+j)*facts+k,t='q'+String(x).padStart(7,'0');return x===0?'Regla sintética q0000000: Alfa permite staging sólo si pasa QA.':x===1?'Retirada sintética q0000000: Alfa revoca staging hasta nueva revisión.':'Declaración sintética '+t+': condición local '+x+' sin vigencia ni autorización demostradas.';}).join('\\n');}
+mapping[id]={id,parent:j?'m'+(n-1):null,children:j+1<per?['m'+(n+1)]:[],message:{id,author:{role:'user'},create_time:1792890000,content:{content_type:'text',parts:[text]}}};}
+ const item=await addSource({filename:'synthetic-'+i+'.json',content:JSON.stringify({id:'synthetic-scale-'+i,title:'LABORATORIO SINTÉTICO '+i,current_node:'m'+((i+1)*per-1),mapping})});
+ const verified=await verifiedSources([item.id]);assert.equal(verified.sources.length,per);fs.writeFileSync(file,JSON.stringify({item,cut:verified.cut,sources:verified.sources}),{flag:'wx'});
+ console.log(JSON.stringify({source:i,originalMessages:verified.sources.length,id:item.id}));
+}

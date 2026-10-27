@@ -19,3 +19,4 @@
 /scripts/acceptance-support/** -text
 /scripts/reader-corpus-consumer.mjs -text
 /scripts/build-legacy-fixtures.mjs -text
+/archives/orbita-f36-generators-20261027/** -text
