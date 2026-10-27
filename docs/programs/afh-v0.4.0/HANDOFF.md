@@ -29,3 +29,7 @@ La segunda tarea puede commitear, pushear y publicar el nuevo GitHub Release cua
 La entrega de esta fase es READY_FOR_COORDINATOR_REVIEW. Solo una revisión semántica satisfactoria del paquete exacto habilita SPECIFICATION_READY; la implementación y la aceptación0.4.0 todavía están pendientes.
 
 La corrección F1/F2 mantiene los288 escenarios y oráculos originales. Consultar TESTING y la asignación generada:35 integraciones se acreditan en el hito del consumidor disponible. Dos checks de14 necesitan publicación previa y siguen siendo obligatorios para el cierre. Los diez probes de baseline son diagnósticos y no cierran aceptación completa. review_ref debe enlazar el dictamen independiente aplicable; un log de tests no lo sustituye.
+
+## Aclaración de identidad03 y entrega
+
+Autorización operativa del usuario transmitida por el coordinador durante03: contratos y TDD aplicables preceden al producto; al sellar el delta se envía copia estable a la auditora y la reparación dependiente continúa sin relevo de autorización adicional. Hallazgos materiales bloquean el tramo afectado. Transiciones rutinarias quedan condicionalmente autorizadas sólo con aceptación independiente real del predecesor y gate sobre identidades correctas. Deltas mínimos de integración/proceso se justifican en los mecanismos existentes con dueño y pruebas; no autorizan otros proyectos, originales o instalaciones globales. Reutilizar evidencia sólo con aplicabilidad comprobada, sin reetiquetar hashes ni atribuirse dictámenes ajenos.

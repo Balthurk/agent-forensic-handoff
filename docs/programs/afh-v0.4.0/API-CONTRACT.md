@@ -92,3 +92,146 @@ Todo bloque JSON de este documento es normativo y se valida como Request contra 
 Cada respuesta evidence.read incluye `archive_id,revision_id,source_revision_id,uri,format,offset,request_extent_sha256,record_sha256,extent_bytes,original_extent_bytes`. `extent_bytes` es el total del rango capturado solicitado inicialmente, limitado por el manifest verificado; la continuación agota ese rango, no extiende el request. `original_extent_bytes=null` cuando el harness truncó y no conservó el tamaño original. La longitud capturada y remaining_bytes de transporte se conocen por los bytes archivados, aunque la longitud histórica original sea desconocida. No inferir ninguna de esas longitudes a partir del texto. Si el manifest no permite resolver el rango capturado, devolver evidencia UNAVAILABLE; no fabricar un cursor.
 
 El digest request_extent_sha256 es SHA256(afh-cjson-v1({archive_id,revision_id,source_revision_id,uri,json_pointer,format,initial_offset,extent_bytes,record_sha256})), con offsets/counts en representación canónica decimal string. Un request con continuation conserva sus identidades, formato, rango/digest y revision; offset omitido usa next_offset, offset explícito diferente falla. Responder partial exige bytes_returned>0. remaining_bytes = initial_offset + extent_bytes - (offset + bytes_returned); si llega a0 no hay cursor. El validador comprueba el par request/response frente al manifest/cursor verificado, además del schema y el frame completo.
+
+## Aclaración de identidad03 y entrega
+
+event.show acepta el Event.id canónico o un anchor adquirido. Resuelve ambos namespaces al mismo corte, exige prueba raw del alias y rechaza destinos distintos con AMBIGUOUS_IDENTITY; ausencia es EVIDENCE_UNAVAILABLE. stats.representations y su denominator cuentan clases técnicas de prefijo probado, mientras la lista de event.show conserva apariciones por revisión. Ver DATA-CONTRACT, Identidad canónica y anchors adquiridos; no se añaden campos wire obligatorios.
+# Temporal04 internal selector materialization contract
+
+The existing component operation `temporal.select` is materialized as the named
+`selectTemporal(revisions, selection)` export of `src/archive/temporal.js`.
+`revisions` contains acquired `TemporalRevision` values, preserving every schema
+field. `selection` contains `published_seq`, `known_at`, `valid_at` and
+`include_uncertain`. This is an internal component contract, not a new wire
+operation and not permission to implement the future query/context consumers.
+
+Return `{matches, presence, conflict, winner}`. Each match is
+`{revision, match}` with the unchanged acquired revision and `MATCH` or `UNKNOWN`.
+Presence is `OBSERVED` when an acquired candidate remains, otherwise
+`NOT_OBSERVED_IN_CAPTURED_EVIDENCE`. `winner` is always null: the selector cannot
+invent branch authority. Incompatible simultaneously matching associations remain
+separate and report conflict. The caller retains source data when matches are
+empty. Unknown validity must not remove an acquired candidate when
+`include_uncertain` is true, or synthesize a UTC bound.
+
+The selector first restricts knowledge to the published sequence and known time,
+then chooses revisions per assertion and branch, then evaluates all validity
+intervals as half open ranges. It does not mutate input, perform archive writes,
+or resolve provenance from fabricated references. Acquisition, schema/native read
+controls, preservation and public writer integration remain separate obligations.
+Initial TDD uses public association publication and real captured evidence to
+produce the input revisions. Its component receipts do not grant full acceptance.
+
+Selector input validation detail: the internal selection requires explicit
+non-null RFC3339 `known_at` and `valid_at`, safe nonnegative integer
+`published_seq`, and boolean `include_uncertain`, with no extra keys. Public
+callers resolve omitted times against their opened snapshot before calling this
+component; the selector must not infer a snapshot time from the input rows.
+Comparison preserves up to nine fractional digits and explicit numeric offsets,
+without rounding to milliseconds. Unsupported leap-second instants, unknown
+offset `-00:00`, invalid calendar dates and sub-nanosecond instants fail explicitly.
+Bounds with kind unknown retain uncertainty; open is allowed only as an end.
+Reversed or empty known intervals fail INVALID_TEMPORAL_RANGE. Malformed JSON
+revision values fail INVALID_REQUEST; malformed selection times fail INVALID_QUERY.
+Visible conflicting identities or branch/subject lineage fail INTEGRITY_FAILED.
+Repeated byte-equivalent revisions deduplicate; differing rows sharing an ID do
+not. Validation never modifies the acquired fields or returns synthesized rows.
+Work is bounded to100000 input revisions,8MiB canonical JSON and32 nesting levels;
+JSON traversal additionally caps1048576 values; excess is LIMIT_EXCEEDED. A conflict is reported for definite MATCH associations
+of the same subject with different non-null projects, or competing branches of
+one assertion. UNKNOWN candidates alone do not establish a definite conflict.
+
+## Provenance04 component materialization contract
+
+The internal `deriveProvenance(capture, selection)` export in
+`src/archive/provenance.js` materializes the existing04 provenance capability.
+It introduces no wire operation or later query/intent consumer. `capture` holds
+`records[]` with `{raw, evidence_ref, session_id, recorded_seq, recorded_at}` and
+`occurrences[]` returned by the public archive reader. Raw records must be decoded
+from captured evidence, not reconstructed from expected answers. Selection uses
+the same four fields as `selectTemporal`. The component preserves inputs and
+performs no filesystem writes, subprocesses or network/model calls.
+
+Return `{artifacts, validations, relations, decisions, git_objects}`. Every array
+entry has a nonempty `id` and nonempty `evidence_refs`, each exactly drawn from
+the selected captured records. Relations use the existing wire `Relation` shape
+with evidence exclusively in `temporal.provenance.evidence_refs`; their typed endpoints must resolve
+to returned entries or acquired occurrences/events. Do not infer closure from
+command equality, adjacency, shared cwd, branch labels or a changed HEAD.
+
+- Artifact entries contain `artifact_id`, `operation` from the existing artifact
+  operation vocabulary, `path`, `previous_path` nullable, `before_sha256` nullable,
+  `content_sha256` nullable, `predecessor_id` nullable, `producer_occurrence_id`
+  nullable, `patch_ref` nullable, `status=OBSERVED|UNKNOWN`, and
+  `disposition=RETAINED|DISCARD`. ADD/UPDATE/MOVE/DELETE describe four revisions;
+  MOVE preserves a predecessor link and both paths. Without a captured complete
+  preimage/postimage a patch alone cannot establish a full content digest.
+- Validation entries contain `target_revision` nullable, `target_sha256` nullable,
+  `criterion` nullable, `result=PASS|FAIL|UNKNOWN`, `occurrence_id`, and
+  `criterion_state=VERIFIED|UNRESOLVED`. Only an explicit target revision/content
+  binding plus a passing criterion can create VALIDATES and criterion support.
+  Failed attempts remain present after both unrelated success and verified repair.
+  `CONTRADICTS` records conflicting outcomes without asserting SUPERSEDES.
+- Decision entries contain `subject_id`, `valid_to` as `TemporalBound`,
+  `revocation_inferred` boolean, and `goal_closed` boolean. Execution duration
+  alone supplies neither a decision end nor revocation or goal closure.
+- Git entries contain `repository_id`, `object_format=sha1|sha256`, `oid`,
+  `object_type=blob|tree|commit|tag|unknown`, `parents[]`,
+  `epistemic=DIRECT_EVIDENCE|UNCERTAIN`. Native loose-object bytes or persisted
+  object output must be captured and verified against the format-specific object
+  digest and header before a COMMIT_PARENT edge is emitted. A branch report with
+  no object remains uncertain with empty parents; sha1 and sha256 namespaces stay
+  separate even for equivalent content. An unverified branch report has nullable
+  oid and object_type unknown. No historical Git command is executed.
+
+The test fixtures use captured native tool call/results (including apply_patch),
+explicit artifact/validation metadata in persisted tool output, human discard
+messages and native Git object bytes. Literal fixture metadata records assertions;
+the component must derive and check relationships instead of copying a fixture's
+expected result. Public graph.neighbors/path keep their existing typed schema,
+source-backed endpoints, bounded traversal and temporal scope. At04, stats temporal
+filters and occurrence TemporalRevision selection are tested on acquired histories;
+the later query/context consumers remain outside this implementation scope.
+Validation occurrence IDs bind to the exact captured call/result that contains
+the validation metadata, including its PASS/FAIL role. Artifact producers and
+evidence bind to the corresponding patch call/result, Git evidence to the exact
+format/repository/OID record, and a decision subject to its captured statement.
+Archive-wide evidence membership does not satisfy these semantic bindings.
+Every returned graph path uses returned nodes and actual correctly typed edges
+in the requested direction. A final event's IN_SESSION edge must point to the
+specific acquired child that owns that final record.
+The AFH-03-T11 fixture counts execution representations in the `command=npm test`
+group: its fifteen user mentions remain separate message occurrences. Global
+representation totals must not be confused with that execution-group denominator.
+
+Initial and complete TDD submissions must report each executed assertion/control
+and each unmet control explicitly. A missing component is NOT_IMPLEMENTED, not a
+behavioral RED or complete acceptance. Synthetic response calibration is separate
+from runtime execution. Atomic-pair tests must actually terminate the child inside
+the native SQLite association row loop as well as inspect publication boundaries.
+
+
+### Scope03 acceptance-only INSERT observation
+
+`ledger.association_pair` is an internal acceptance function observation, not a public wire operation. Its request/result bind exact SQL, bound published_seq, actually returned association rows, and the writer job/PID/worker hash paused inside the first INSERT. Windows local SHM bytes may be acquired by an identified readonly native mapping helper in private acceptance tooling. Exact helper/executable/arguments/root, explicit inventory phase/native-call/boundary/attestation IDs, before/after identity and complete byte counts, successful handle closure, and unchanged writer progress are mandatory. Ledger/WAL retain ordinary reads and all prior inventory exceptions and negative guards. No remote filesystem, general concurrent coherence or durability acceptance is implied. Missing evidence, helper failure, identity/size drift or writes reject; post-kill evidence never substitutes for DURING.
+
+The complete04 TDD obligations apply to every returned artifact collection, including artifacts accompanying validation and discard results. Producer identity, complete patch_ref, patch-call and terminal artifact-record evidence must bind to the same acquired artifact revision. A DISCARD additionally binds its acquired human message; DISCARDED edges use that exact typed origin and artifact endpoint. VALIDATES edges bind the PASS validation and repaired artifact revision/bytes with their establishing evidence. SPAWNED and IN_SESSION edges carry the complete acquired evidence establishing each concrete typed relation. The graph child records the actual validated outcome; the parent verifies that same request/response/outcome and worker identity before persisting it. Graph observations are consumed with requireOutcome, separately from the historical03 reader corpus.
+
+
+### AFH-03-T11 scoped stats integration
+
+AFH-03-T11 scoped runtime integration: stats uses the opened publication and known_at to select persisted occurrence revisions, canonical identity bindings and representation classes at the same knowledge cut. It reuses temporal.select for validity; from/to is a half-open validity-overlap window, optionally intersected with valid_at. Unknown validity is included only with include_uncertain and disclosed in receipt warnings and unknown counts. mentions counts distinct message occurrences (all message roles), never text tokens, execution records or repeated representations. Scope session IDs intersect temporally selected explicit project associations; no unrecorded membership is inferred. group_id, project/day grouping, latency and effects retain honest NOT_IMPLEMENTED until their owning integration. SQL aggregation retains group-local representation totals. No writer migration or timestamp inference from message text is introduced.
+
+
+### Graph04 scoped native traversal
+
+AFH04 graph.neighbors runtime integration: persist IN_SESSION for canonical event records and SPAWNED for explicitly acquired native parent/child identities in existing relation_version; deduplicate full establishing RAW references per typed relation, never substitute session metadata for a spawn record. Occurrence source derivation accepts an explicit graph version. New occurrence publications declare ledger_changes.occurrence_graph_version=1; absent means historical03 relation derivation and any other value fails closed. Deep verification/recovery reproduce the declared recipe, while upgrade appends graph facts at the new commit without rewriting old manifests, identities or occurrence counts. Graph reads real versioned relations/events/sessions under one publication/known_at cut and shared temporal selection before bounded traversal. Session node provenance comes from the selected acquired session manifest and its metadata record. Missing endpoints are not invented. BFS follows requested direction/types/hops, visits each node once, returns connected paths and typed endpoints; reaching max_nodes is conservatively truncated without a completeness claim. graph.path remains NOT_IMPLEMENTED in this component until separately integrated with its native read control. No public schema fields or global dependency are added.
+
+Graph.neighbors on a pre-extension knowledge/publication cut returns NOT_IMPLEMENTED with PRE_GRAPH_EXTENSION; a later graph upgrade never changes that old availability. Once version1 is published, later occurrence publications cannot downgrade the graph recipe.
+
+
+### Provenance04 bounded derivation
+
+Provenance04 runtime uses the existing pure capture/selection boundary: caller authenticates RAW bytes before supplying decoded records; the component validates bounded plain JSON and exact acquired-reference/occurrence/session/native-call bindings, not an invented serialization hash of decoded JSON. Maximum100000 records/occurrences and8MiB canonical capture, depth32. Selected records and occurrences obey publication/known_at and temporal uncertainty. Descriptive apply_patch/unified-diff headers must match the artifact operation/path; complete captured postimages are hashed, partial patches never invent full bytes. Predecessors require the same artifact and independently comparable source lineage/order or explicit binding. Passing criterion verification requires exact target revision and content hash matching a captured artifact; unresolved conflicting reported outcomes of the same explicit criterion retain CONTRADICTS without supersession. Human DISCARD retains the prior bytes and binds its recorded event. Git native header/type/length/format-specific hash and parsed parents are checked before typed same-repository/same-format COMMIT_PARENT. Missing-object reports remain uncertain. No filesystem, subprocess, network/model calls or scenario/fixture lookup inside deriveProvenance.
+
+A captured headerless hunk fragment with no complete postimage remains an UNKNOWN artifact assertion bound to its real call/result; it cannot prove operation/path execution or invent content bytes. Complete headers that contradict reported operation/path reject. Producer identity must match its occurrence temporal subject and session, failed producers cannot verify an artifact, and duplicate/conflicting captured-reference identities reject before derivation.

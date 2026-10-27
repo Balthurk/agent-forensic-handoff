@@ -553,3 +553,6 @@ test('PRODUCT01-P2-01 authorized junction preserves native child discovery and i
     assert.equal(report.stability.stable, true);
   }
 });
+
+import {registerTemporal04Integration} from './afh-04.test.mjs';
+registerTemporal04Integration(['AFH-01-T10','AFH-01-T11','AFH-01-T12','AFH-01-T14']);

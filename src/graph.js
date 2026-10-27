@@ -6,6 +6,25 @@ import { sha256, stableStringify } from "./util.js";
 const HARD_MAX_HOPS = DEFAULTS.maxGraphHops;
 const HARD_MAX_NODES = 5_000;
 
+// Archive-v4 traversal consumes caller-acquired, temporally selected native rows.
+// It neither opens another snapshot nor rewrites typed relation direction.
+export function traverseArchiveGraph(nodes,edges,{node_id,direction='both',types=[],hops=2,max_nodes=5000}) {
+  const byId=new Map(nodes.map(node=>[node.id,node])),allowed=new Set(types);
+  if(!byId.has(node_id))throw Object.assign(new Error('Graph root is not visible in the selected scope/time'),{code:'EVIDENCE_UNAVAILABLE'});
+  const ordered=edges.filter(edge=>(!allowed.size||allowed.has(edge.type))&&byId.has(edge.from_id)&&byId.has(edge.to_id)).sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0);
+  const adjacency=new Map();
+  const add=(from,to,edge)=>{if(!adjacency.has(from))adjacency.set(from,[]);adjacency.get(from).push({to,edge});};
+  for(const edge of ordered){if(direction==='out'||direction==='both')add(edge.from_id,edge.to_id,edge);if(direction==='in'||direction==='both')add(edge.to_id,edge.from_id,edge);}
+  const paths=new Map([[node_id,[node_id]]]),selected=new Map(),queue=[node_id];let index=0,truncated=max_nodes===1;
+  while(index<queue.length){const current=queue[index++],route=paths.get(current);if(route.length-1>=hops)continue;
+    for(const {to,edge}of adjacency.get(current)??[]){
+      if(!paths.has(to)){if(paths.size>=max_nodes){truncated=true;continue;}paths.set(to,[...route,to]);queue.push(to);if(paths.size===max_nodes)truncated=true;}
+      selected.set(edge.id,edge);
+    }
+  }
+  return {nodes:[...paths.keys()].sort().map(id=>byId.get(id)),edges:[...selected.values()].sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0),paths:[...paths.values()],visited:paths.size,truncated};
+}
+
 export function graphNeighbors(caseDir, nodeId, options = {}) {
   const direction = String(options.direction || "both").toLowerCase();
   if (!["in", "out", "both"].includes(direction)) throw new Error("direction must be in, out, or both");

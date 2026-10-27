@@ -1,0 +1,804 @@
+{
+  "schema_version": 1,
+  "policy_id": "afh-identity03",
+  "policy_version": "afh-identity03-v1",
+  "serialization": "afh-cjson-v1",
+  "decision_id": "AFH-M03-IDENTITY-ALIGNMENT-01",
+  "recipes": {
+    "native_event": {
+      "prefix": "evt4-",
+      "fields": [
+        "session_id",
+        "identity_epoch",
+        "event_kind",
+        "native_item_or_call_id",
+        "logical_role"
+      ]
+    },
+    "occurrence": {
+      "prefix": "occ4-",
+      "fields": [
+        "session_id",
+        "identity_epoch",
+        "execution_or_message_id"
+      ]
+    },
+    "representation": {
+      "prefix": "rep4-",
+      "fields": [
+        "source_revision_id",
+        "record_ordinal",
+        "json_pointer",
+        "event_subindex"
+      ]
+    },
+    "fallback_event": {
+      "prefix": "evt4-",
+      "fields": [
+        "source_lineage_id",
+        "verified_prefix_epoch",
+        "record_ordinal",
+        "json_pointer",
+        "event_subindex",
+        "logical_role"
+      ]
+    },
+    "qualified_epoch": {
+      "prefix": "epoch:",
+      "fields": [
+        "policy_version",
+        "session_id",
+        "turn_id",
+        "qualified_start_locator"
+      ]
+    },
+    "acquired_anchor02": {
+      "prefix": "evt4-",
+      "fields": [
+        "source_lineage_id",
+        "record_identity_epoch",
+        "record_ordinal",
+        "json_pointer",
+        "event_subindex",
+        "event_kind"
+      ]
+    },
+    "session": {
+      "prefix": "ses4-",
+      "fields": [
+        "harness",
+        "origin_domain_id",
+        "native_id"
+      ]
+    }
+  },
+  "profiles": [
+    {
+      "id": "codex-synthetic-spec-v1",
+      "harness": "codex",
+      "producer_version": "synthetic-spec-v1",
+      "evidence_scope": "SYNTHETIC_FIXTURE_ONLY",
+      "guarantee_ref": "specification/fixtures/critical-contracts.json#/cases/AFH-03-T02",
+      "message_id_uniqueness": "session",
+      "execution_id_uniqueness": "none",
+      "default_epoch": "qualified_start"
+    },
+    {
+      "id": "unknown-version-conservative",
+      "harness": "*",
+      "producer_version": "*",
+      "evidence_scope": "NO_NATIVE_UNIQUENESS_ASSERTED",
+      "guarantee_ref": null,
+      "message_id_uniqueness": "none",
+      "execution_id_uniqueness": "none",
+      "default_epoch": "qualified_start"
+    }
+  ],
+  "roles": [
+    {
+      "kinds": [
+        "message.user"
+      ],
+      "role": [
+        "message",
+        "user"
+      ],
+      "namespace": [
+        "message",
+        "user",
+        "item"
+      ],
+      "producers": [
+        "response_item.message",
+        "item_completed.UserMessage"
+      ]
+    },
+    {
+      "kinds": [
+        "message.agent"
+      ],
+      "role": [
+        "message",
+        "assistant"
+      ],
+      "namespace": [
+        "message",
+        "assistant",
+        "item"
+      ],
+      "producers": [
+        "response_item.message",
+        "item_completed.AgentMessage"
+      ]
+    },
+    {
+      "kinds": [
+        "message.instruction"
+      ],
+      "role": [
+        "message",
+        "instruction"
+      ],
+      "namespace": [
+        "message",
+        "instruction",
+        "item"
+      ],
+      "producers": [
+        "response_item.message"
+      ]
+    },
+    {
+      "kinds": [
+        "tool.requested",
+        "mcp.requested"
+      ],
+      "role": [
+        "request"
+      ],
+      "namespace": [
+        "execution",
+        "call"
+      ],
+      "producers": [
+        "response_item.function_call",
+        "response_item.custom_tool_call"
+      ]
+    },
+    {
+      "kinds": [
+        "tool.completed",
+        "mcp.completed"
+      ],
+      "role": [
+        "terminal"
+      ],
+      "namespace": [
+        "execution",
+        "call"
+      ],
+      "producers": [
+        "response_item.function_call_output",
+        "response_item.custom_tool_call_output"
+      ]
+    },
+    {
+      "kinds": [
+        "tool.observed"
+      ],
+      "role": [
+        "observed_terminal"
+      ],
+      "namespace": [
+        "execution",
+        "item"
+      ],
+      "producers": [
+        "item_completed.CommandExecution",
+        "item_completed.McpToolCall"
+      ]
+    },
+    {
+      "kinds": [
+        "tool.fragment"
+      ],
+      "role": [
+        "fragment",
+        "$stream",
+        "$fragment_key"
+      ],
+      "namespace": [
+        "execution",
+        "call"
+      ],
+      "producers": [
+        "versioned_explicit_fragment_decoder"
+      ]
+    }
+  ],
+  "decoder": {
+    "id": "acquired02-raw-locator",
+    "version": "1",
+    "require_recomputed_anchor": true,
+    "filtered_subindex_forbidden": true,
+    "unresolved": "EVIDENCE_UNAVAILABLE",
+    "producers": [
+      {
+        "producer": "response_item.function_call",
+        "pointer": "/payload",
+        "subindex": 0,
+        "kind": "tool.requested"
+      },
+      {
+        "producer": "response_item.function_call_output",
+        "pointer": "/payload/output",
+        "subindex": 0,
+        "kind": "tool.completed"
+      },
+      {
+        "producer": "response_item.message",
+        "pointer": "/payload/content",
+        "subindex": 0,
+        "kind": "message.user"
+      },
+      {
+        "producer": "item_completed.UserMessage",
+        "pointer": "/payload/item/content",
+        "subindex": 0,
+        "kind": "message.user"
+      },
+      {
+        "producer": "item_completed.CommandExecution",
+        "pointer": "/payload/item",
+        "subindex": 0,
+        "kind": "tool.observed"
+      }
+    ]
+  },
+  "resolution": {
+    "namespaces": [
+      "CANONICAL_EVENT",
+      "ACQUIRED_ANCHOR"
+    ],
+    "at_cut": true,
+    "distinct_target_conflict": "AMBIGUOUS_IDENTITY",
+    "absent": "EVIDENCE_UNAVAILABLE",
+    "priority_forbidden": true,
+    "reader_migration_forbidden": true,
+    "provisional_confirmation": "EXPLICIT_NEW_COMMIT_REPLACEMENT_WITH_EQUIVALENCE_PROOF",
+    "replacement_invalid": "INTEGRITY_FAILED",
+    "replacement_requires": "VISIBLE_EARLIER_SAME_ALIAS_WITH_RESOLVABLE_EQUIVALENCE_EVIDENCE",
+    "cycle": "INTEGRITY_FAILED",
+    "future_rows": "IGNORED_BEFORE_VALIDATION"
+  },
+  "representation_measures": {
+    "rows": "ALL_VISIBLE_REVISION_PLACEMENTS",
+    "technical": "VERIFIED_PREFIX_LOCATOR_EQUIVALENCE_CLASSES",
+    "stats_representations": "technical",
+    "denominator": "technical",
+    "s1_s2_s3": {
+      "occurrences": [
+        1,
+        1,
+        2
+      ],
+      "technical": [
+        2,
+        3,
+        5
+      ],
+      "rows": [
+        2,
+        5,
+        10
+      ]
+    }
+  },
+  "vectors": [
+    {
+      "id": "unicode-event",
+      "recipe": "native_event",
+      "inputs": [
+        "ses4-1bd0fe0523403d4bb79cbfd2773055b8def57b7f2dfd6109f7814c320ec7cbaa",
+        "epoch:2259ea2edd49147c0cd7bd749e79c1e9e1e853a714b1f3f36133221ea36d6dad",
+        "tool.requested",
+        "llamada/雪\"\\\n",
+        "[\"request\"]"
+      ],
+      "canonical_utf8": "[\"ses4-1bd0fe0523403d4bb79cbfd2773055b8def57b7f2dfd6109f7814c320ec7cbaa\",\"epoch:2259ea2edd49147c0cd7bd749e79c1e9e1e853a714b1f3f36133221ea36d6dad\",\"tool.requested\",\"llamada/雪\\\"\\\\\\n\",\"[\\\"request\\\"]\"]",
+      "expected": "evt4-7e634a4f8107867b7745dcf2a7851c91b1bf89a9bd18a756b72779f3ebffc35e"
+    },
+    {
+      "id": "unicode-occurrence",
+      "recipe": "occurrence",
+      "inputs": [
+        "ses4-1bd0fe0523403d4bb79cbfd2773055b8def57b7f2dfd6109f7814c320ec7cbaa",
+        "epoch:2259ea2edd49147c0cd7bd749e79c1e9e1e853a714b1f3f36133221ea36d6dad",
+        "[\"execution\",\"call\",\"llamada/雪\\\"\\\\\\n\"]"
+      ],
+      "canonical_utf8": "[\"ses4-1bd0fe0523403d4bb79cbfd2773055b8def57b7f2dfd6109f7814c320ec7cbaa\",\"epoch:2259ea2edd49147c0cd7bd749e79c1e9e1e853a714b1f3f36133221ea36d6dad\",\"[\\\"execution\\\",\\\"call\\\",\\\"llamada/雪\\\\\\\"\\\\\\\\\\\\n\\\"]\"]",
+      "expected": "occ4-6e2ca8351bdf9e27b53de6c5bdfa940833987bb2b8368f8b80cd72f82017d736"
+    },
+    {
+      "id": "escaped-representation",
+      "recipe": "representation",
+      "inputs": [
+        "src4-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        2,
+        "/a~1b/~0雪",
+        0
+      ],
+      "canonical_utf8": "[\"src4-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",2,\"/a~1b/~0雪\",0]",
+      "expected": "rep4-d69c86f8ff9a45566d5d7b03976bdc96226dcd84f8a69558643435fea1380295"
+    },
+    {
+      "id": "fallback-no-native",
+      "recipe": "fallback_event",
+      "inputs": [
+        "10000000-0000-4000-8000-000000000001",
+        "capture-prefix-α",
+        2,
+        "/payload",
+        0,
+        "[\"message\",\"user\"]"
+      ],
+      "canonical_utf8": "[\"10000000-0000-4000-8000-000000000001\",\"capture-prefix-α\",2,\"/payload\",0,\"[\\\"message\\\",\\\"user\\\"]\"]",
+      "expected": "evt4-27f296521300cda6df5cf6d5c68bee9fcfda3b179d891152f1a67b77eba86c22"
+    },
+    {
+      "id": "qualified-start",
+      "recipe": "qualified_epoch",
+      "inputs": [
+        "afh-identity03-v1",
+        "ses4-1bd0fe0523403d4bb79cbfd2773055b8def57b7f2dfd6109f7814c320ec7cbaa",
+        "turno/α",
+        [
+          "10000000-0000-4000-8000-000000000001",
+          "capture-prefix-α",
+          2,
+          "/payload",
+          0
+        ]
+      ],
+      "canonical_utf8": "[\"afh-identity03-v1\",\"ses4-1bd0fe0523403d4bb79cbfd2773055b8def57b7f2dfd6109f7814c320ec7cbaa\",\"turno/α\",[\"10000000-0000-4000-8000-000000000001\",\"capture-prefix-α\",2,\"/payload\",0]]",
+      "expected": "epoch:2259ea2edd49147c0cd7bd749e79c1e9e1e853a714b1f3f36133221ea36d6dad"
+    },
+    {
+      "id": "acquired-anchor02",
+      "recipe": "acquired_anchor02",
+      "inputs": [
+        "10000000-0000-4000-8000-000000000001",
+        "capture-prefix-α",
+        2,
+        "/payload",
+        0,
+        "tool.requested"
+      ],
+      "canonical_utf8": "[\"10000000-0000-4000-8000-000000000001\",\"capture-prefix-α\",2,\"/payload\",0,\"tool.requested\"]",
+      "expected": "evt4-0f289cb77e344353fc4828cc5508227965d79f37960f98501a8ff66c43a9b8c8"
+    },
+    {
+      "id": "native-session",
+      "recipe": "session",
+      "inputs": [
+        "codex",
+        "00000000-0000-4000-8000-000000000404",
+        "sesión/雪"
+      ],
+      "canonical_utf8": "[\"codex\",\"00000000-0000-4000-8000-000000000404\",\"sesión/雪\"]",
+      "expected": "ses4-1bd0fe0523403d4bb79cbfd2773055b8def57b7f2dfd6109f7814c320ec7cbaa"
+    }
+  ],
+  "cases": [
+    {
+      "id": "I03-ENCODINGS",
+      "scenario_id": "AFH-03-T02",
+      "kind": "native_link",
+      "steps": [
+        "response_item.message(id=x)",
+        "item_completed.UserMessage(id=x)"
+      ],
+      "expected": {
+        "events": 1,
+        "occurrences": 1,
+        "technical_representations": 2,
+        "revision_rows": 2
+      }
+    },
+    {
+      "id": "I03-SAME-TEXT",
+      "scenario_id": "AFH-03-T03",
+      "kind": "distinct_native_ids",
+      "steps": [
+        "message(x,same text)",
+        "message(y,same text)"
+      ],
+      "expected": {
+        "occurrences": 2
+      }
+    },
+    {
+      "id": "I03-COLLISION-origin_domain",
+      "scenario_id": "AFH-03-T04",
+      "kind": "namespace_collision",
+      "steps": [
+        "origin_domain differs; native ID=x on both"
+      ],
+      "expected": {
+        "occurrences": 2,
+        "cross_links": 0
+      }
+    },
+    {
+      "id": "I03-COLLISION-harness",
+      "scenario_id": "AFH-03-T04",
+      "kind": "namespace_collision",
+      "steps": [
+        "harness differs; native ID=x on both"
+      ],
+      "expected": {
+        "occurrences": 2,
+        "cross_links": 0
+      }
+    },
+    {
+      "id": "I03-COLLISION-session",
+      "scenario_id": "AFH-03-T04",
+      "kind": "namespace_collision",
+      "steps": [
+        "session differs; native ID=x on both"
+      ],
+      "expected": {
+        "occurrences": 2,
+        "cross_links": 0
+      }
+    },
+    {
+      "id": "I03-COLLISION-turn",
+      "scenario_id": "AFH-03-T04",
+      "kind": "namespace_collision",
+      "steps": [
+        "turn differs; native ID=x on both"
+      ],
+      "expected": {
+        "occurrences": 2,
+        "cross_links": 0
+      }
+    },
+    {
+      "id": "I03-COLLISION-message_vs_call",
+      "scenario_id": "AFH-03-T04",
+      "kind": "namespace_collision",
+      "steps": [
+        "message_vs_call differs; native ID=x on both"
+      ],
+      "expected": {
+        "occurrences": 2,
+        "cross_links": 0
+      }
+    },
+    {
+      "id": "I03-REUSE",
+      "scenario_id": "AFH-03-T05",
+      "kind": "reuse",
+      "steps": [
+        "request(x)",
+        "terminal(x)",
+        "request(x)",
+        "terminal(x)"
+      ],
+      "expected": {
+        "occurrences": 2,
+        "epochs": 2
+      }
+    },
+    {
+      "id": "I03-AMBIGUOUS-STARTS",
+      "scenario_id": "AFH-03-T06",
+      "kind": "ambiguous_starts",
+      "steps": [
+        "request(x)",
+        "request(x)",
+        "terminal(x)"
+      ],
+      "expected": {
+        "occurrences": 3,
+        "cross_links": 0,
+        "reason": "AMBIGUOUS_CORRELATION"
+      }
+    },
+    {
+      "id": "I03-FRAGMENTS",
+      "scenario_id": "AFH-03-T12",
+      "kind": "fragments",
+      "steps": [
+        "request(x)",
+        "stdout fragment f1",
+        "stdout fragment f2",
+        "repeat f1",
+        "terminal(x)"
+      ],
+      "expected": {
+        "occurrences": 1,
+        "distinct_fragments": 2
+      }
+    },
+    {
+      "id": "I03-FALLBACK-APPEND",
+      "scenario_id": "AFH-03-T15",
+      "kind": "fallback_append",
+      "steps": [
+        "message without ID",
+        "append unrelated message"
+      ],
+      "expected": {
+        "first_event_stable": true
+      }
+    },
+    {
+      "id": "I03-FALLBACK-DIVERGENCE",
+      "scenario_id": "AFH-03-T15",
+      "kind": "fallback_divergence",
+      "steps": [
+        "capture a,b without IDs",
+        "diverge suffix b->c"
+      ],
+      "expected": {
+        "prefix_stable": true,
+        "suffix_distinct": true
+      }
+    },
+    {
+      "id": "I03-UNPROVEN-COPY",
+      "scenario_id": "AFH-03-T02",
+      "kind": "unproven_copy",
+      "steps": [
+        "same bytes two independent lineages without native guarantee"
+      ],
+      "expected": {
+        "occurrences": 2
+      }
+    },
+    {
+      "id": "I03-S1S2S3",
+      "scenario_id": "AFH-03-T01",
+      "kind": "recapture",
+      "steps": [
+        "request+terminal",
+        "append repeat terminal",
+        "append request+terminal",
+        "NO_CHANGE replay"
+      ],
+      "expected": {
+        "occurrences": [
+          1,
+          1,
+          2
+        ],
+        "technical_representations": [
+          2,
+          3,
+          5
+        ],
+        "revision_rows": [
+          2,
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "I03-ABSENT",
+      "scenario_id": "AFH-02-T04",
+      "kind": "absent_alias",
+      "steps": [
+        "query alias before its commit"
+      ],
+      "expected": {
+        "error": "EVIDENCE_UNAVAILABLE"
+      }
+    },
+    {
+      "id": "I03-AMBIGUOUS",
+      "scenario_id": "AFH-03-T06",
+      "kind": "ambiguous_alias",
+      "steps": [
+        "two visible distinct targets for same anchor"
+      ],
+      "expected": {
+        "error": "AMBIGUOUS_IDENTITY"
+      }
+    },
+    {
+      "id": "I03-NAMESPACE-CONFLICT",
+      "scenario_id": "AFH-03-T06",
+      "kind": "namespace_conflict",
+      "steps": [
+        "canonical namespace target A and acquired alias target B for same evt4"
+      ],
+      "expected": {
+        "error": "AMBIGUOUS_IDENTITY"
+      }
+    },
+    {
+      "id": "I03-NAMESPACE-SAME",
+      "scenario_id": "AFH-03-T06",
+      "kind": "namespace_same",
+      "steps": [
+        "canonical and acquired candidates point to same Event"
+      ],
+      "expected": {
+        "distinct_targets": 1
+      }
+    },
+    {
+      "id": "I03-HISTORICAL-ALIAS",
+      "scenario_id": "AFH-02-T04",
+      "kind": "historical_alias",
+      "steps": [
+        "C1 alias->A",
+        "C2 explicit replacement alias->B",
+        "read C1 and C2"
+      ],
+      "expected": {
+        "old_target_preserved": true,
+        "new_target_visible": true
+      }
+    },
+    {
+      "id": "I03-PROVISIONAL",
+      "scenario_id": "AFH-03-T15",
+      "kind": "provisional_native",
+      "steps": [
+        "capture provisional session",
+        "explicit native confirmation with same proved lineage/act",
+        "read both cuts"
+      ],
+      "expected": {
+        "current_occurrences": 1,
+        "old_id_preserved": true
+      }
+    },
+    {
+      "id": "I03-LEGACY",
+      "scenario_id": "AFH-02-T07",
+      "kind": "legacy_chain",
+      "steps": [
+        "import legacy case",
+        "legacy key -> anchor -> canonical",
+        "reopen original"
+      ],
+      "expected": {
+        "original_bytes_unchanged": true,
+        "grade_unchanged": true,
+        "old_cut_not_upgraded": true
+      }
+    },
+    {
+      "id": "I03-INTEGRITY-binding-missing",
+      "scenario_id": "AFH-03-T13",
+      "kind": "exact_closure",
+      "steps": [
+        "missing binding row"
+      ],
+      "expected": {
+        "error": "INTEGRITY_FAILED",
+        "reader_repair": false
+      }
+    },
+    {
+      "id": "I03-INTEGRITY-representation-missing",
+      "scenario_id": "AFH-03-T13",
+      "kind": "exact_closure",
+      "steps": [
+        "missing representation row"
+      ],
+      "expected": {
+        "error": "INTEGRITY_FAILED",
+        "reader_repair": false
+      }
+    },
+    {
+      "id": "I03-INTEGRITY-binding-extra",
+      "scenario_id": "AFH-03-T13",
+      "kind": "exact_closure",
+      "steps": [
+        "extra binding row"
+      ],
+      "expected": {
+        "error": "INTEGRITY_FAILED",
+        "reader_repair": false
+      }
+    },
+    {
+      "id": "I03-INTEGRITY-representation-extra",
+      "scenario_id": "AFH-03-T13",
+      "kind": "exact_closure",
+      "steps": [
+        "extra representation row"
+      ],
+      "expected": {
+        "error": "INTEGRITY_FAILED",
+        "reader_repair": false
+      }
+    },
+    {
+      "id": "I03-INTEGRITY-binding-altered",
+      "scenario_id": "AFH-03-T13",
+      "kind": "exact_closure",
+      "steps": [
+        "altered binding row"
+      ],
+      "expected": {
+        "error": "INTEGRITY_FAILED",
+        "reader_repair": false
+      }
+    },
+    {
+      "id": "I03-INTEGRITY-representation-altered",
+      "scenario_id": "AFH-03-T13",
+      "kind": "exact_closure",
+      "steps": [
+        "altered representation row"
+      ],
+      "expected": {
+        "error": "INTEGRITY_FAILED",
+        "reader_repair": false
+      }
+    },
+    {
+      "id": "I03-RECOVERY",
+      "scenario_id": "AFH-03-T15",
+      "kind": "atomic_recovery",
+      "steps": [
+        "kill before SQL commit",
+        "kill after SQL commit before publish",
+        "recover with complete commitment",
+        "recover with mapping removed"
+      ],
+      "expected": {
+        "partial_visible": false,
+        "missing_mapping_rejected": true
+      }
+    },
+    {
+      "id": "I03-LOCATORS",
+      "scenario_id": "AFH-03-T12",
+      "kind": "locator_decoder",
+      "steps": [
+        "nested/escaped pointer",
+        "producer subindex before filtering",
+        "recalculate historical acquired anchor"
+      ],
+      "expected": {
+        "exact_raw_node": true,
+        "missing_or_ambiguous_unresolvable": true
+      }
+    },
+    {
+      "id": "I03-READER-INDEX",
+      "scenario_id": "AFH-02-T04",
+      "kind": "indexed_resolution",
+      "steps": [
+        "pin snapshot",
+        "resolve canonical/anchor from SQL index",
+        "observe SQL and raw accesses"
+      ],
+      "expected": {
+        "bronze_full_scan": false,
+        "reader_mutations": 0
+      }
+    }
+  ],
+  "lookup_budget": {
+    "scope": "EVENT_SHOW_IDENTITY_RESOLUTION_BRONZE_IO",
+    "source_counts": [
+      1,
+      8
+    ],
+    "unrelated_bronze_reads": 0,
+    "raw_byte_multiplier": 4,
+    "sql": "NATIVE_EXECUTED_IDENTITY_BINDING",
+    "performance_claim": "NO_GENERAL_SQL_COMPLEXITY_OR_LATENCY_CLAIM"
+  }
+}

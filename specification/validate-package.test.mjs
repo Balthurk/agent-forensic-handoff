@@ -8,6 +8,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { ROOT, canonical, digest, pointer, validateRegistry, validateWire, relationalWireChecks, validateNormativeExamples, generatedFiles, packageSnapshot, evaluateGate, acceptancePlan, acceptanceEvidenceProblems, controlPlan } from './validate-package.mjs';
 import { runtimeSnapshot, snapshotStability, exactTimestamp, temporalRange, temporalChecks, validateEvidencePair, validateUnresolvedAssignment, assertNativeIdentityObservation, assertHumanDecisionCandidates, inspectHumanDecisionCandidates } from './contract-checks.mjs';
 import { auditSession, verifyCaseIntegrity } from '../src/index.js';
+import {validateIdentity03} from './validate-package.mjs';
+import Ajv2020 from '../tools/specification/node_modules/ajv/dist/2020.js';
 
 const registry=JSON.parse(fs.readFileSync(path.join(ROOT,'specification/contracts.json')));
 const fixtures=JSON.parse(fs.readFileSync(path.join(ROOT,'specification/fixtures/critical-contracts.json')));
@@ -16,6 +18,42 @@ const clone=()=>structuredClone(registry);
 const bound=(value,precision='ns')=>({kind:'known',value,precision,timezone:'UTC'});
 const open={kind:'open',value:null,precision:'ns',timezone:null};
 const unknown={kind:'unknown',value:null,precision:'order_only',timezone:null};
+const identity03Policy=JSON.parse(fs.readFileSync(path.join(ROOT,'specification/fixtures/identity03-contract.json')));
+test('IDENTITY03 normative policy vectors and existing scenario assignments validate',()=>{
+  const result=validateIdentity03(identity03Policy,{registry});assert.equal(result.passed,true,result.errors.join('\n'));assert.equal(result.vectors,7);assert.equal(result.cases,30);
+});
+for(const [name,mutate]of [
+  ['canonical identity recipe',p=>p.recipes.occurrence.fields=['acquired_id']],
+  ['representation recipe',p=>p.recipes.representation.fields[0]='source_lineage_id'],
+  ['canonical bytes',p=>p.vectors[0].canonical_utf8+=' '],
+  ['independent digest',p=>p.vectors[0].expected='evt4-'+'0'.repeat(64)],
+  ['missing vector',p=>p.vectors=p.vectors.filter(v=>v.recipe!=='representation')],
+  ['unknown native guarantee',p=>p.profiles[1].execution_id_uniqueness='session'],
+  ['unbacked profile',p=>p.profiles[0].guarantee_ref=null],
+  ['request role',p=>p.roles.find(r=>r.kinds.includes('tool.requested')).role=['terminal']],
+  ['namespace collision',p=>p.roles.find(r=>r.kinds.includes('message.user')).namespace=['execution','call']],
+  ['fragment key removed',p=>p.roles.find(r=>r.kinds.includes('tool.fragment')).role=['fragment']],
+  ['decoder bypass',p=>p.decoder.require_recomputed_anchor=false],
+  ['alias priority',p=>p.resolution.priority_forbidden=false],
+  ['reader migration',p=>p.resolution.reader_migration_forbidden=false],
+  ['unproved replacement',p=>p.resolution.replacement_requires='NONEMPTY_STRING'],
+  ['cycle accepted',p=>p.resolution.cycle='IGNORE'],
+  ['unrelated Bronze read allowed',p=>p.lookup_budget.unrelated_bronze_reads=1],
+  ['unmeasured lookup allowance',p=>p.lookup_budget.raw_byte_multiplier=1000000],
+  ['conflated row counts',p=>p.representation_measures.s1_s2_s3.technical=[2,5,10]],
+  ['missing provisional behavior',p=>p.cases=p.cases.filter(c=>c.kind!=='provisional_native')],
+  ['invented scenario',p=>p.cases[0].scenario_id='AFH-03-T99'],
+  ['recapture oracle changed',p=>p.cases.find(c=>c.kind==='recapture').expected.technical_representations[2]=10]
+])test('IDENTITY03 rejects '+name,()=>{const p=structuredClone(identity03Policy);mutate(p);assert.notEqual(canonical(p),canonical(identity03Policy));assert.equal(validateIdentity03(p,{registry}).passed,false);});
+test('IDENTITY03 internal binding requires exact typed provenance without wire fields',()=>{
+  const schema=JSON.parse(fs.readFileSync(path.join(ROOT,'specification/identity03-contract.schema.json'))),ajv=new Ajv2020({strict:true,allErrors:true});ajv.addSchema(schema);const validate=ajv.compile({$ref:schema.$id+'#/$defs/IdentityBinding'});
+  const binding={id:'bind4-'+'a'.repeat(64),namespace:'ACQUIRED_ANCHOR',acquired_alias:'evt4-'+'b'.repeat(64),canonical_target:'evt4-'+'c'.repeat(64),locator:{source_revision_id:'src4-'+'d'.repeat(64),source_lineage_id:'lineage',record_identity_epoch:'prefix',record_ordinal:2,json_pointer:'/payload/output',event_subindex:0,record_sha256:'e'.repeat(64)},representation_id:'rep4-'+'f'.repeat(64),acquisition_json_pointer:'/payload/output',rule_id:'afh-identity03',rule_version:'afh-identity03-v1',decoder_id:'acquired02-raw-locator',decoder_version:'1',commit_seq:2,supersedes_binding_id:null,equivalence_proof_refs:[]};assert.equal(validate(binding),true,JSON.stringify(validate.errors));
+  for(const mutate of [b=>delete b.locator.json_pointer,b=>b.locator.event_subindex=-1,b=>b.commit_seq=0,b=>b.namespace='legacy_alias',b=>b.canonical_target=b.representation_id,b=>b.rule_version='latest',b=>b.locator.json_pointer='/bad~2pointer',b=>b.case_hash='invented']){const b=structuredClone(binding);mutate(b);assert.equal(validate(b),false,JSON.stringify(b));}
+  const replacement={...binding,supersedes_binding_id:'bind4-'+'9'.repeat(64),equivalence_proof_refs:['afh://evidence/sha256/'+'8'.repeat(64)+'/record/1#bytes=0:1']};assert.equal(validate(replacement),true,JSON.stringify(validate.errors));
+  const qualified={...replacement,equivalence_proof_refs:[replacement.equivalence_proof_refs[0].replace('#','?source=src4-'+'7'.repeat(64)+'#')]};assert.equal(validate(qualified),true,JSON.stringify(validate.errors));
+  for(const ref of [qualified.equivalence_proof_refs[0].replace('src4-','bad-'),qualified.equivalence_proof_refs[0].replace('#','&extra=1#'),qualified.equivalence_proof_refs[0].replace('/record/1','/record/0')])assert.equal(validate({...qualified,equivalence_proof_refs:[ref]}),false,ref);
+  for(const mutate of [b=>b.equivalence_proof_refs=[],b=>b.equivalence_proof_refs=['native-confirmation:raw'],b=>b.equivalence_proof_refs.push(b.equivalence_proof_refs[0]),b=>b.supersedes_binding_id='anything']){const b=structuredClone(replacement);mutate(b);assert.equal(validate(b),false,JSON.stringify(b));}
+});
 const known=(offset='Z')=>bound('2026-01-01T00:00:00.000000001'+offset);
 
 const incomingHarnessPermissions = [
