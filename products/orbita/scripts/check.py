@@ -16,16 +16,20 @@ if args.list:
  print(json.dumps({k:[p.relative_to(root).as_posix() for p in v] for k,v in groups.items()},indent=2))
  raise SystemExit(0)
 assert args.lab,'Pass --lab with a new directory outside the source checkout'
+assert sys.version_info >= (3,12),'PYTHON_3_12_OR_NEWER_REQUIRED'
 lab=args.lab.resolve()
 assert not lab.is_relative_to(root) and not lab.exists(),'LOG_DIRECTORY_MUST_BE_NEW_AND_EXTERNAL'
 for key in ('AFH_VOLUME_PG_TEST_CONFIG','AFH_SEMANTIC_PG_TEST_CONFIG','AFH_G1_JANUS_TEST_CONFIG'):
  assert os.environ.get(key) and Path(os.environ[key]).is_file(),'MISSING_TEST_CONFIG:'+key
+fixture=Path(os.environ.get('AFH_P1_REAL_FIXTURE',''))
+assert os.environ.get('AFH_P1_REAL_FIXTURE') and fixture.is_dir(),'MISSING_PRIVATE_P1_FIXTURE'
 manifest=json.loads((root/'SOURCE-MANIFEST.json').read_text(encoding='utf8'))
 sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
 before={row['path']:sha(root/row['path']) for row in manifest['files']}
 assert all(before[row['path']]==row['publishedCandidateSha256'] for row in manifest['files']),'SOURCE_MANIFEST_MISMATCH'
 lab.mkdir(parents=True)
 env={**os.environ,'PYTHONUTF8':'1','PYTHONDONTWRITEBYTECODE':'1'}
+env.setdefault('AFH_PYTHON',sys.executable)
 env.setdefault('AFH_VOLUME_PYTHON',sys.executable)
 for key in list(env):
  if key in ('AFH_COSMOS_DATA','AFH_G1_JANUS_CONFIG','AFH_SEMANTIC_PG_CONFIG','AFH_MANAGED','NODE_OPTIONS','ORBITA_ACCESS_DIAGNOSTIC') or (key.startswith('AFH_') and 'CRASH' in key):env.pop(key,None)

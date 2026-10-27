@@ -1,3 +1,4 @@
+import {pythonExecutable} from '../agent-forensic-handoff/src/python-runtime.js';
 import fs from 'node:fs';import path from 'node:path';import {spawn} from 'node:child_process';import {createHash,randomUUID} from 'node:crypto';import {fileURLToPath} from 'node:url';
 import {DATA,library,loadCase} from './corpus.mjs';
 import {classifyOccurrences} from '../agent-forensic-handoff/src/representation-equivalence.js';
@@ -43,7 +44,7 @@ export async function verifiedSources(ids,{signal}={}){
 function bridge(request,{signal}={}){
  signal?.throwIfAborted();
  return new Promise((resolve,reject)=>{
-  const python=hasSemanticStorage(DATA)?process.env.AFH_SEMANTIC_PYTHON||process.env.AFH_VOLUME_PYTHON||process.env.AFH_PYTHON||'python':process.env.AFH_PYTHON||'python';
+  const python=pythonExecutable(hasSemanticStorage(DATA)?['AFH_SEMANTIC_PYTHON','AFH_VOLUME_PYTHON']:[]);
   const remoteGraph=['graph_publish','graph_query','graph_original'].includes(request.op)&&request.backend==='janusgraph';
   const child=spawn(python,['-I','-B',BRIDGE],{windowsHide:true,stdio:['pipe','pipe','pipe'],cwd:ROOT,env:{...process.env,AFH_G1_PROGRESS:remoteGraph?'1':'0'}});
   const out=new Utf8Stream(32000000),err=new Utf8Stream(1000000);let settled=false;

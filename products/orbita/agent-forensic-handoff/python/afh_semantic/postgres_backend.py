@@ -6,6 +6,7 @@ Original evidence, approval and support validators are still owned by N04/F22.
 """
 import hashlib, json, os, re, sqlite3, uuid
 from pathlib import Path
+from .path_safety import plain_path,PathSafetyError
 
 FOLDERS = ('', 'collectives', 'decisions', 'supports', 'identities', 'retrospectives', 'intelligence', 'causal', 'learning')
 MARKER = 'postgres-storage.json'
@@ -18,12 +19,9 @@ def digest(value): return hashlib.sha256(canonical(value).encode()).hexdigest()
 def normalized(path): return str(Path(path).resolve()).casefold()
 
 def plain(path):
-    path = Path(path).absolute()
-    for item in (path, *path.parents):
-        if item.exists():
-            require(not item.is_symlink() and not item.is_junction(), 'LINK_PATH')
-    if path.is_file(): require(path.stat().st_nlink == 1, 'HARDLINK')
-    return path.resolve()
+    try:return plain_path(path).resolve()
+    except PathSafetyError as error:raise ValueError('SEMANTIC_PG_'+str(error)) from error
+
 
 def atomic_json(path, value):
     path = Path(path); temp = path.with_name(path.name + '.' + uuid.uuid4().hex + '.tmp')

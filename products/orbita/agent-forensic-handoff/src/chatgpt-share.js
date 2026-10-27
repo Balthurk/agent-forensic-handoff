@@ -143,7 +143,7 @@ export async function importChatGPTShare(identifier,options={}) {
     const acquisition=path.join(result.caseDir,'acquisition');fs.mkdirSync(acquisition);
     fs.writeFileSync(path.join(acquisition,'chatgpt-share.html'),fetched.bytes);
     fs.writeFileSync(path.join(acquisition,'capture.json'),JSON.stringify(capture,null,2)+'\n');
-    fs.writeFileSync(path.join(result.caseDir,'shared-transcript.md'),`# ${parsed.conversation.title||'ChatGPT shared conversation'}\n\nSource: ${url}\n\n${limitations.map(x=>'- '+x).join('\n')}\n\n`+parsed.nodes.filter(n=>n.message).map(n=>`## ${n.message.author.role} Ãƒâ€šÃ‚Â· ${n.message.id}\n\n${sharedContentText(n.message.content)}\n`).join('\n'));
+    fs.writeFileSync(path.join(result.caseDir,'shared-transcript.md'),`# ${parsed.conversation.title||'ChatGPT shared conversation'}\n\nSource: ${url}\n\n${limitations.map(x=>'- '+x).join('\n')}\n\n`+parsed.nodes.filter(n=>n.message).map(n=>`## ${n.message.author.role} · ${n.message.id}\n\n${sharedContentText(n.message.content)}\n`).join('\n'));
     const {writeIdentity}=await import('./identity-evidence.js');await writeIdentity(result.caseDir);
     const {verifyCaseIntegrity}=await import('./integrity.js');
     const verification=await verifyCaseIntegrity(result.caseDir);

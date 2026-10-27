@@ -1,10 +1,11 @@
+import {pythonExecutable} from '../agent-forensic-handoff/src/python-runtime.js';
 import fs from 'node:fs';import path from 'node:path';import {spawn} from 'node:child_process';import {fileURLToPath} from 'node:url';
 import {Utf8Stream} from './utf8-stream.mjs';import {terminateOwned} from './owned-process.mjs';
 const CLI=fileURLToPath(new URL('../agent-forensic-handoff/python/semantic-storage-cli.py',import.meta.url));
 export const hasSemanticStorage=root=>fs.existsSync(path.join(root,'semantic','postgres-storage.json'));
 function worker(root,op){
  return new Promise((resolve,reject)=>{
-  const child=spawn(process.env.AFH_SEMANTIC_PYTHON||process.env.AFH_VOLUME_PYTHON||'python',['-I','-B',CLI],{windowsHide:true,stdio:['pipe','pipe','pipe']});
+  const child=spawn(pythonExecutable(['AFH_SEMANTIC_PYTHON','AFH_VOLUME_PYTHON']),['-I','-B',CLI],{windowsHide:true,stdio:['pipe','pipe','pipe']});
   const out=new Utf8Stream(1000000),err=new Utf8Stream(100000);let ready=false,settled=false,offset=0,response=null;
   const closed=new Promise(done=>child.once('close',code=>done(code)));
   const fail=e=>{if(settled)return;settled=true;clearTimeout(timer);terminateOwned(child);reject(e);};

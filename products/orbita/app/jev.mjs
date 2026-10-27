@@ -1,3 +1,4 @@
+import {pythonExecutable} from '../agent-forensic-handoff/src/python-runtime.js';
 // F27 native transport. Advisory classification and independent, persistent spend cap.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -98,7 +99,7 @@ export function interpretJev(question,options,raw){
  return {classification:{resolution,selections,pending:resolution==='resolved'?'':pending[resolution]},signals:{resolution:signal,memberships,thresholds:THRESHOLDS,meaning:'uncalibrated_provider_estimates_not_truth'},recommendedNext:resolution==='insufficient_context'?'clarify_question':resolution==='resolved'?'review_proposal':'explicit_luna_or_manual_review'};
 }
 async function worker(body,{credentialReference,signal,timeout}){
- await cancellationPoint(signal);return new Promise((resolve,reject)=>{let done=false,out=Buffer.alloc(0);const child=spawn('python',['-X','utf8','-B',fileURLToPath(new URL('./jev-http.py',import.meta.url))],{windowsHide:true,stdio:['pipe','pipe','pipe']});
+ await cancellationPoint(signal);return new Promise((resolve,reject)=>{let done=false,out=Buffer.alloc(0);const child=spawn(pythonExecutable(['AFH_JEV_PYTHON']),['-X','utf8','-B',fileURLToPath(new URL('./jev-http.py',import.meta.url))],{windowsHide:true,stdio:['pipe','pipe','pipe']});
  const clean=()=>signal?.removeEventListener('abort',cancel);const fail=()=>{if(done)return;done=true;clean();terminateOwned(child);reject(new Error('JEV_TRANSPORT_UNCERTAIN'));};const cancel=()=>{if(done)return;done=true;clean();terminateOwned(child);reject(signal.reason??new Error('JEV_TRANSPORT_UNCERTAIN'));};signal?.addEventListener('abort',cancel,{once:true});
  child.stdout.on('data',b=>{if(out.length+b.length>500000)return fail();out=Buffer.concat([out,b]);});child.stderr.on('data',()=>{});child.stdin.on('error',fail);child.on('error',fail);
  child.on('close',code=>{if(done)return;done=true;clean();try{require(code===0,'JEV_TRANSPORT_UNCERTAIN');const r=JSON.parse(out.toString('utf8'));if(r.ok!==true)throw new Error(nominal(new Error(r.code)));resolve(r.value);}catch(e){reject(new Error(nominal(e)));}});

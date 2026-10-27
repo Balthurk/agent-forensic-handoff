@@ -27,6 +27,7 @@ evidence/
 !benchmarks/fixtures/**/*.jsonl
 
 # Orbita code snapshot: data, runtime and secrets remain local.
+.venv-orbita/
 products/orbita/**/data/
 products/orbita/**/.venv/
 products/orbita/**/__pycache__/

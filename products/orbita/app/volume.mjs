@@ -1,3 +1,4 @@
+import {pythonExecutable} from '../agent-forensic-handoff/src/python-runtime.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -26,7 +27,7 @@ export function volumeCatalog(){
 }
 export async function volumeWorker(input,{signal}={}){
  demand(!signal?.aborted,'CANCELLED');
- const child=spawn(process.env.AFH_VOLUME_PYTHON||'python',['-X','utf8','-B',fileURLToPath(new URL('./volume_store.py',import.meta.url))],{env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'},windowsHide:true,stdio:['pipe','pipe','pipe']});
+ const child=spawn(pythonExecutable(['AFH_VOLUME_PYTHON']),['-X','utf8','-B',fileURLToPath(new URL('./volume_store.py',import.meta.url))],{env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'},windowsHide:true,stdio:['pipe','pipe','pipe']});
  const output=new Utf8Stream(12*1024**2);let failure=null;
  const stop=()=>{failure??=new Error('VOLUME_CANCELLED');terminateOwned(child);};signal?.addEventListener('abort',stop,{once:true});
  const timer=setTimeout(()=>{failure??=new Error('VOLUME_WORKER_TIMEOUT');terminateOwned(child);},180000);timer.unref();

@@ -1,6 +1,6 @@
-import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import path from 'node:path';
-const root=fs.mkdtempSync(path.join(process.env.AFH_TEST_ROOT||'C:/T','afh-app-tests-'));process.env.AFH_COSMOS_DATA=root;
-const original=new URL('./data/cases/diagnostico',import.meta.url);
+import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import path from 'node:path';import os from 'node:os';
+const root=fs.mkdtempSync(path.join(process.env.AFH_TEST_ROOT||os.tmpdir(),'afh-app-tests-'));process.env.AFH_COSMOS_DATA=root;
+const original=process.env.AFH_P1_REAL_FIXTURE?path.resolve(process.env.AFH_P1_REAL_FIXTURE):new URL('./data/cases/diagnostico',import.meta.url);
 fs.cpSync(original,path.join(root,'cases','real'),{recursive:true,filter:s=>!s.includes('projections')});
 fs.writeFileSync(path.join(root,'library.json'),JSON.stringify([{id:'real',title:'Frozen shared conversation',path:path.join(root,'cases','real')}]));
 const memory=await import('./memory.mjs'),corpus=await import('./corpus.mjs');

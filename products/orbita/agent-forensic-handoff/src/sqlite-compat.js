@@ -1,3 +1,4 @@
+import {pythonExecutable} from './python-runtime.js';
 import { Worker, MessageChannel, receiveMessageOnPort } from "node:worker_threads";
 
 let NativeDatabaseSync = null;
@@ -252,9 +253,9 @@ function invalidate(session) {
 function ensureSession() {
   if (currentSession && !currentSession.failed) return currentSession;
   requestTimeout();
-  const python = process.env.AFH_SQLITE_PYTHON ?? (process.platform === "win32" ? "python" : "python3");
+  const python = process.env.AFH_SQLITE_PYTHON === "" ? "" : pythonExecutable(["AFH_SQLITE_PYTHON"]);
   if (!python.trim()) throw sqliteError("SQLITE_BACKEND_CONFIGURATION", "AFH_SQLITE_PYTHON must name an executable");
-  const session = { failed: false, worker: new Worker(WORKER_CODE, { eval: true, workerData: { pyScript: PY_SCRIPT, python } }) };
+  const session = { failed: false, worker: new Worker(WORKER_CODE, { eval: true, /* This owned source uses require, even for an ESM -e caller. Preserve other flags/preloads. */ execArgv: [...process.execArgv.filter((arg,i,args) => arg !== '--input-type' && !arg.startsWith('--input-type=') && args[i-1] !== '--input-type'), '--input-type=commonjs'], workerData: { pyScript: PY_SCRIPT, python } }) };
   session.worker.on("error", () => invalidate(session));
   session.worker.on("exit", () => invalidate(session));
   session.worker.unref();

@@ -4,6 +4,9 @@ are accepted by the HTTP-facing contract. Every returned record is verified
 against its original again by volume.mjs.
 """
 import base64,contextlib,hashlib,hmac,json,os,pathlib,secrets,sqlite3,sys,uuid
+# Shared application-owned import root, also when launched outside this directory.
+sys.path.insert(0,str(pathlib.Path(__file__).resolve().parent.parent/'agent-forensic-handoff'/'python'))
+from afh_semantic.path_safety import plain_path,PathSafetyError
 
 class VolumeError(Exception):pass
 def demand(ok,code):
@@ -16,11 +19,9 @@ def filehash(p):
   while b:=f.read(1024*1024):h.update(b)
  return h.hexdigest()
 def plain(p):
- p=pathlib.Path(p).absolute()
- for q in [p,*p.parents]:
-  if q.exists():demand(not q.is_symlink() and not q.is_junction(),'LINK_PATH')
- if p.is_file():demand(p.stat().st_nlink==1,'HARDLINK')
- return p
+ try:return plain_path(p)
+ except PathSafetyError as error:raise VolumeError('VOLUME_'+str(error)) from error
+
 def crash(point):
  if os.environ.get('AFH_VOLUME_CRASH_AT')==point:os._exit(86)
 
