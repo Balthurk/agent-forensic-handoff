@@ -22,9 +22,18 @@ const args = process.argv.slice(2);
 if (args.length === 1 && args[0] === '--list') {
   console.log(JSON.stringify(tests.map(filename => path.relative(root, filename).split(path.sep).join('/')), null, 2));
 } else {
-  if (args.length) throw new Error('Usage: node scripts/run-check.mjs [--list]');
+  let env = { ...process.env };
+  if (args.length === 2 && args[0] === '--prepared') {
+    const preparation = JSON.parse(fs.readFileSync(path.resolve(args[1]), 'utf8'));
+    if (preparation.status !== 'PREREQUISITES_PREPARED_NOT_ACCEPTANCE') throw new Error('INVALID_PREPARATION');
+    env = { ...env, ...preparation.environment };
+  } else if (args.length) throw new Error('Usage: node scripts/run-check.mjs [--list | --prepared /external/lab/PREPARATION.json]');
+  const required = ['AFH_ACCEPTANCE_RUN', 'AFH_READER_CLOSURE_BUILDER', 'AFH_LEGACY_FIXTURES',
+    'AFH_PRE03_PRODUCER_IDENTITY', 'AFH_PREGRAPH04_PRODUCER', 'AFH_SHM_HELPER_MANIFEST', 'AFH_SHM_HELPER_MANIFEST_SHA256'];
+  const missing = required.filter(key => !env[key]);
+  if (missing.length) throw new Error('ACCEPTANCE_PREREQUISITES_REQUIRED: ' + missing.join(', ') + '. See scripts/acceptance-support/README.md');
   const result = spawnSync(process.execPath, ['--test', ...tests], {
-    cwd: root, stdio: 'inherit', windowsHide: true,
+    cwd: root, env, stdio: 'inherit', windowsHide: true,
   });
   if (result.error) throw result.error;
   process.exitCode = result.status ?? 1;

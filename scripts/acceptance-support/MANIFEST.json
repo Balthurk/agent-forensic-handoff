@@ -1,0 +1,1129 @@
+{
+  "schemaVersion": 1,
+  "role": "PINNED_SYNTHETIC_ACCEPTANCE_PREREQUISITES_NOT_PRODUCT_ACCEPTANCE",
+  "objectsFrom": [
+    "76d6a8574b9aba78e53616020851892712241d27",
+    "e0676a12c080ca2832b7271aaaa521cbadf02906",
+    "f4887f3c13221b13acaf19396aec47dbc013c13b"
+  ],
+  "producers": {
+    "pre03": {
+      "runtimeSha256": "ad4ec2bd1280cc5f6b1b32bcc0600016dd41abf1d33be5071f0a318c068fa8db",
+      "files": [
+        {
+          "file": "bin/afh.js",
+          "bytes": 281,
+          "sha256": "9431967d5054aed2f148295f50316d52b2272de99cd829c38f931cd0dfbff921",
+          "gitBlob": "e08d4883be1a97faa12d09a81d759e446c5092fd",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "bin/afh.js"
+          }
+        },
+        {
+          "file": "package-lock.json",
+          "bytes": 40214,
+          "sha256": "16b6950b479c173fb7930595f746d8a656b89857f1b565c966707cc00a90f9d6",
+          "gitBlob": "f05a5e388686a8483684c1f5e90c66b7115ba6f9",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "package-lock.json"
+          }
+        },
+        {
+          "file": "package.json",
+          "bytes": 1715,
+          "sha256": "a6ec2c23307507fb67caa898b956ea8ac1777809443c1ba00eaab465f2490420",
+          "gitBlob": "23d71be08372375243e8c12df8fc473d413a60fe",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "e0676a12c080ca2832b7271aaaa521cbadf02906",
+            "path": "package.json"
+          }
+        },
+        {
+          "file": "schemas/archive-v4.schema.json",
+          "bytes": 193534,
+          "sha256": "f7b5f6a81928766237383fcace21b586e7f54b5c39cbc209dffac3a6b1392c72",
+          "gitBlob": "cd40d2fbdb1e93c18487767ce993903c4939eeb5",
+          "method": "exact",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "schemas/archive-v4.schema.json"
+          }
+        },
+        {
+          "file": "schemas/event.schema.json",
+          "bytes": 1925,
+          "sha256": "62cd4fe66fcc8f8af6f775287239ec73ef31729d6974a1b8a06bd2457d0e4e65",
+          "gitBlob": "aa0db7c2e533b093cf6f5aeffe4f60124750231c",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "products/orbita/agent-forensic-handoff/schemas/event.schema.json"
+          }
+        },
+        {
+          "file": "src/adapters.js",
+          "bytes": 35148,
+          "sha256": "c045c3b33df966c0f87e83a7707082d7a15df4f8edb4167eceda21e1fdab2297",
+          "gitBlob": "30fa5aa484916711da8524ce98a38e2cecd9278d",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "e0676a12c080ca2832b7271aaaa521cbadf02906",
+            "path": "src/adapters.js"
+          }
+        },
+        {
+          "file": "src/archive/acquisition.js",
+          "bytes": 13264,
+          "sha256": "e1837dcf67a641a04cfc324a644d40a6dfafee01e3f852207b0bcf667faa9935",
+          "gitBlob": "90cba5aac4698e04123f043e4afdb039011918c0",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/acquisition.js"
+          }
+        },
+        {
+          "file": "src/archive/associations.js",
+          "bytes": 5599,
+          "sha256": "6f2f4240e1d3318e4aae5222603c6825333578064bf1d0549906cbd065bf552c",
+          "gitBlob": "15b59169464ec0fb00f9dde3c063ef3bb19e4b41",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/associations.js"
+          }
+        },
+        {
+          "file": "src/archive/children.js",
+          "bytes": 2181,
+          "sha256": "a2dbe3b047cc23008ccae75b91730ec8a18edd1b3c05751e19d79658d8eaa23e",
+          "gitBlob": "930fd991502854b8af3c868c452789a8e2e1c447",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/children.js"
+          }
+        },
+        {
+          "file": "src/archive/engine.js",
+          "bytes": 23319,
+          "sha256": "a16079309a32cb69cb8e9275016498c4ccea75a9d23d5d86b44e91201fdfc167",
+          "gitBlob": "5eb574cbc257af6896f20caa27c9f95595930107",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "e0676a12c080ca2832b7271aaaa521cbadf02906",
+            "path": "src/archive/engine.js"
+          }
+        },
+        {
+          "file": "src/archive/generate-wire-validator.mjs",
+          "bytes": 3727,
+          "sha256": "cafb87028744b793e293e9e49345b130c547ebe1f72ba044b6fe8d75c0309fe1",
+          "gitBlob": "8ca78aed6d76ab178d60f4e3df9e746af03fd94a",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/generate-wire-validator.mjs"
+          }
+        },
+        {
+          "file": "src/archive/identity.js",
+          "bytes": 3231,
+          "sha256": "ca12f57eb70e500fbd66f9e02f3c288a9e9abdcec78960718ccdc79e2faefa02",
+          "gitBlob": "ae7349f150405f1f726a096d1aaef3fe8b9b0599",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/identity.js"
+          }
+        },
+        {
+          "file": "src/archive/legacy.js",
+          "bytes": 7702,
+          "sha256": "560ce663103a45106eb3e33703d680c119dff97993804426a3a3e8dd1a3ccc57",
+          "gitBlob": "158b9e07deb7c62dd21c506965d4c8ee1831c459",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/legacy.js"
+          }
+        },
+        {
+          "file": "src/archive/protocol.js",
+          "bytes": 4621,
+          "sha256": "020637bb80afcf44d28828a9b1c8a4260f72658ec4984a5ce87ea884aa98ae66",
+          "gitBlob": "ff63eb4270bd353503fb466c13986fcc210dea26",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/protocol.js"
+          }
+        },
+        {
+          "file": "src/archive/read-evidence.js",
+          "bytes": 6968,
+          "sha256": "f7cfeb78de59a411001ef88c818723cb9d76e94116981dce9b609ab0b9649e40",
+          "gitBlob": "6404b454cf4f360eb2cf8eda81e73ade310fc71c",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/read-evidence.js"
+          }
+        },
+        {
+          "file": "src/archive/reader-observation.js",
+          "bytes": 13302,
+          "sha256": "41abecafb49b4e73ac4366f317d096f798185a04f9a0b937f46de5e65d36f011",
+          "gitBlob": "5744372843e0b14c384bab4f13eca134282b2171",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "e0676a12c080ca2832b7271aaaa521cbadf02906",
+            "path": "src/archive/reader-observation.js"
+          }
+        },
+        {
+          "file": "src/archive/schema-runtime/LICENSE-ajv-formats.txt",
+          "bytes": 1095,
+          "sha256": "e482ee9e5303f4d0a721f882a991a7950f069de2a58d70acb804b98a06552363",
+          "gitBlob": "a3f8ba0278836d0d02b845aec548a21db114e984",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/schema-runtime/LICENSE-ajv-formats.txt"
+          }
+        },
+        {
+          "file": "src/archive/schema-runtime/LICENSE-ajv.txt",
+          "bytes": 1110,
+          "sha256": "43351781aaeb201c829d45e47749ac2fc8b630ad803a04735dbbbbddd8918734",
+          "gitBlob": "397909a84d1c908ce7db3a60bb4f4dafaf4f9e53",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/schema-runtime/LICENSE-ajv.txt"
+          }
+        },
+        {
+          "file": "src/archive/schema-runtime/LICENSE-fast-deep-equal.txt",
+          "bytes": 1095,
+          "sha256": "ccf1c42999b2e59ce8514e79b2ab59f07e9d7f485d90c88628b7259d0e6e6c46",
+          "gitBlob": "7f1543566f6abbbf75914db32651cf89919cabed",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/schema-runtime/LICENSE-fast-deep-equal.txt"
+          }
+        },
+        {
+          "file": "src/archive/schema-runtime/equal.cjs",
+          "bytes": 208,
+          "sha256": "f1c69e7897a459bd7ee0b294e351012bae3d8a20115c54295569bc5dc71c4697",
+          "gitBlob": "427d7f649841907de000266b236bb31748dc8fe5",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/schema-runtime/equal.cjs"
+          }
+        },
+        {
+          "file": "src/archive/schema-runtime/fast-deep-equal.cjs",
+          "bytes": 1223,
+          "sha256": "93a0d441329c2e2fb1a4ebe97529abba2e8211b3ec7aa49716f0e34fb2655699",
+          "gitBlob": "30dd1ba78cb4989e67a32295b3ca1fd9baaa6c96",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/schema-runtime/fast-deep-equal.cjs"
+          }
+        },
+        {
+          "file": "src/archive/schema-runtime/formats.cjs",
+          "bytes": 12435,
+          "sha256": "089824fdf1142ac629a82c414df1b2b5893364de8a35005c9e3bd710f949c2c0",
+          "gitBlob": "c69ead0be18557e5483f6a449464288085ef6602",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/schema-runtime/formats.cjs"
+          }
+        },
+        {
+          "file": "src/archive/schema-runtime/ucs2length.cjs",
+          "bytes": 724,
+          "sha256": "bd74cea84836c23e395ed5915ac3a0ee5461569ed862c22f27c3e4a3f97ab370",
+          "gitBlob": "07e846c1be98da887bfe3601f67b54907580c47b",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/schema-runtime/ucs2length.cjs"
+          }
+        },
+        {
+          "file": "src/archive/storage.js",
+          "bytes": 12281,
+          "sha256": "85c5c73b574f8e25b40fd74a0ca42b25e61823843616417dfe2d00113da0d081",
+          "gitBlob": "cf94bb7e417fa1799e920e67aef7c843f31b5ed3",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "e0676a12c080ca2832b7271aaaa521cbadf02906",
+            "path": "src/archive/storage.js"
+          }
+        },
+        {
+          "file": "src/archive/verify.js",
+          "bytes": 7747,
+          "sha256": "be24a1f155859c13212706064b1516adeb120db14909c7b521908711a1113a74",
+          "gitBlob": "b71f09f7f2b883e24c56944aeca5e097f66daec2",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "e0676a12c080ca2832b7271aaaa521cbadf02906",
+            "path": "src/archive/verify.js"
+          }
+        },
+        {
+          "file": "src/archive/wire-build.json",
+          "bytes": 3938,
+          "sha256": "d816f6f41ed3ab7d1e7df7e778ea0eeac25c6dae6fc993e991961c5ba77dc512",
+          "gitBlob": "e5945e739aceabb5cf02f5b01069b5cad3689733",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/wire-build.json"
+          }
+        },
+        {
+          "file": "src/archive/wire-validation.cjs",
+          "bytes": 1919574,
+          "sha256": "f4019c3419ff1f394eb0b59e6d69310ad6eff6eabec367a544c38104f3f7977d",
+          "gitBlob": "0b11719278cb719abad396a87c2a6f91b72af8a4",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/wire-validation.cjs"
+          }
+        },
+        {
+          "file": "src/audit.js",
+          "bytes": 23988,
+          "sha256": "6b5d013cf30a258da3f415d31b4b65a909959b4d05c231109c25b1ac5ee03c31",
+          "gitBlob": "296f8015a7d7e0691e3db95af137e58a548c7c0f",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "e0676a12c080ca2832b7271aaaa521cbadf02906",
+            "path": "src/audit.js"
+          }
+        },
+        {
+          "file": "src/benchmark.js",
+          "bytes": 12049,
+          "sha256": "3d0b158f13303b92653ccb4e5de6cc4feab1178778ef9c65bc3299b08649b783",
+          "gitBlob": "9adac6c0e027b7452574746f4738f43a35ab5a13",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "products/orbita/agent-forensic-handoff/src/benchmark.js"
+          }
+        },
+        {
+          "file": "src/cli.js",
+          "bytes": 15824,
+          "sha256": "2e22e7cd384f81087590822112fc68c2def057036adbee41825e445540caa173",
+          "gitBlob": "79660180d857ba222f4321e06dd7e7af18c5fcf6",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/cli.js"
+          }
+        },
+        {
+          "file": "src/constants.js",
+          "bytes": 2100,
+          "sha256": "4511bd2b163a4bf8d265e85a92db9ba271b0eeae7631dee9aa3b7ca46e0baf76",
+          "gitBlob": "7e5dc9074357de92d3b88435e6166a69098010f3",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "products/orbita/agent-forensic-handoff/src/constants.js"
+          }
+        },
+        {
+          "file": "src/database.js",
+          "bytes": 15525,
+          "sha256": "2109d61d48eb613d53ff4a531fa27012281644df7ac7ef5c2baf7baa6dab8ee2",
+          "gitBlob": "3a490299a70fa802cde7bab84d69c3ed7b514448",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/database.js"
+          }
+        },
+        {
+          "file": "src/discovery.js",
+          "bytes": 15446,
+          "sha256": "4b3819fa3dceb0ff03825ef24ac351b4f18c4af43b76340776bb7dd559fa008f",
+          "gitBlob": "79e1a3090453fd8c016b42cbdea458cb285f75ea",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/discovery.js"
+          }
+        },
+        {
+          "file": "src/doctor.js",
+          "bytes": 2273,
+          "sha256": "a5fe7fca87b2af7fd0654b4d0732cc1bf8946e6bb8535a86fee53fcec507cfac",
+          "gitBlob": "2853d5b39d954ec71e4cb3d5a4af5f19be80fb44",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/doctor.js"
+          }
+        },
+        {
+          "file": "src/evidence.js",
+          "bytes": 6300,
+          "sha256": "808e78738323b2906d51430a3dd5fd376741a803f5ab3a46090409c7e7589803",
+          "gitBlob": "f96ca25d65e9ee29da8451ebe637ab48735d8140",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/evidence.js"
+          }
+        },
+        {
+          "file": "src/graph.js",
+          "bytes": 10143,
+          "sha256": "0d201278af61c45fd23c8836ca9736176fb55188f3606a39e5292bfcd388f6f9",
+          "gitBlob": "2056ca75d76ff4e22da694a1272c1321be7ee016",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "e0676a12c080ca2832b7271aaaa521cbadf02906",
+            "path": "src/graph.js"
+          }
+        },
+        {
+          "file": "src/index.js",
+          "bytes": 942,
+          "sha256": "060969fbb79f5a79bd02e3c2f22b89ffd95d4ca83bf28e4c4d1d5347b6883527",
+          "gitBlob": "2817fa652085298a1e342254861a97102da1ac28",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/index.js"
+          }
+        },
+        {
+          "file": "src/install.js",
+          "bytes": 3707,
+          "sha256": "d08951dbcca048ada5416d9bb6e6e7cb39dc7842fb9a26ce57ad2268eb69d0f4",
+          "gitBlob": "fbdf996d80eb9ef14c899b144c15f733065634af",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "products/orbita/agent-forensic-handoff/src/install.js"
+          }
+        },
+        {
+          "file": "src/integrity.js",
+          "bytes": 12959,
+          "sha256": "fbb2d9349ffb38ba5a9aaa6de98dcb155d1cf103d8ccea5beed0af53baa985af",
+          "gitBlob": "45b5b2b2724081488fc221eaf08d071004a416f6",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/integrity.js"
+          }
+        },
+        {
+          "file": "src/reducers.js",
+          "bytes": 19162,
+          "sha256": "468b51d617f2094cc978f11f470b9881a1e8be104d1fa7b277627d11e50615e2",
+          "gitBlob": "8e00bc73c9a3eacd08234eb2f1e24b691d66ca6b",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "e0676a12c080ca2832b7271aaaa521cbadf02906",
+            "path": "src/reducers.js"
+          }
+        },
+        {
+          "file": "src/render.js",
+          "bytes": 23748,
+          "sha256": "8ef7be80f37721a30581a1aac05a1e33f937698333819057c446d932ba4ff9e0",
+          "gitBlob": "05ffbfd600a851dbf494add95ca572f31363797f",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/render.js"
+          }
+        },
+        {
+          "file": "src/retrieval-benchmark.js",
+          "bytes": 9941,
+          "sha256": "cdc0bc363f9e05c76d9d18f8862673fac1713a1bd91811b2171cc6f054887af0",
+          "gitBlob": "6e0cf726ab83e07065a75ea44b7a60bd9e7db1a2",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "products/orbita/agent-forensic-handoff/src/retrieval-benchmark.js"
+          }
+        },
+        {
+          "file": "src/retrieval.js",
+          "bytes": 14872,
+          "sha256": "a9ffbffd39a86332164b28e6f701439b6f3bcf5b96076da44fb6b98c42bae308",
+          "gitBlob": "f2240beae09115511e7f74ca6b3d38ff68912dd2",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/retrieval.js"
+          }
+        },
+        {
+          "file": "src/schema.sql",
+          "bytes": 9074,
+          "sha256": "b67b82939f95fe8a06317d66b2a8b248162ad94ede0b25a903a1ae4b99646d17",
+          "gitBlob": "29e7042aa537eeaedd2f14bd23cb0f778674dcb9",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/schema.sql"
+          }
+        },
+        {
+          "file": "src/semantic-model.js",
+          "bytes": 9182,
+          "sha256": "ef5b80f2964195ffbcfdfb2252be577793f73ddebba2190a4ab8b826bd015f75",
+          "gitBlob": "59d9f22cc1e32d706069ca892356783288ea0604",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/semantic-model.js"
+          }
+        },
+        {
+          "file": "src/semantic.js",
+          "bytes": 32229,
+          "sha256": "d433bd22a353421b4dd481780177a750a2eb3acf5a55e688d0a3963aef9d1954",
+          "gitBlob": "ee5736bd59fc136c79f6ba8837d59777b63e74e3",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/semantic.js"
+          }
+        },
+        {
+          "file": "src/util.js",
+          "bytes": 8806,
+          "sha256": "9f6df356d1ab3c2b2519355c9efa780cb87be41c8909fa0df406b354dbd5ff37",
+          "gitBlob": "76a4dda436beabe928d9836ccc0d10947284ff49",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "products/orbita/agent-forensic-handoff/src/util.js"
+          }
+        },
+        {
+          "file": "src/verify.js",
+          "bytes": 6645,
+          "sha256": "caaa5efe69837f5c043fbecddf391c38597f4a53fd35d36fe2432de9243a1cd6",
+          "gitBlob": "b8fca5b63a7af635f8bcdd24515d8f7ed30efd41",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "products/orbita/agent-forensic-handoff/src/verify.js"
+          }
+        }
+      ]
+    },
+    "pregraph04": {
+      "runtimeSha256": "7c7542d7d64ddaf5d19d9b0bcbdb0f702ef307b5ed3c6af43074dfac9968cbfa",
+      "files": [
+        {
+          "file": "bin/afh.js",
+          "bytes": 281,
+          "sha256": "9431967d5054aed2f148295f50316d52b2272de99cd829c38f931cd0dfbff921",
+          "gitBlob": "e08d4883be1a97faa12d09a81d759e446c5092fd",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "bin/afh.js"
+          }
+        },
+        {
+          "file": "package-lock.json",
+          "bytes": 40214,
+          "sha256": "16b6950b479c173fb7930595f746d8a656b89857f1b565c966707cc00a90f9d6",
+          "gitBlob": "f05a5e388686a8483684c1f5e90c66b7115ba6f9",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "package-lock.json"
+          }
+        },
+        {
+          "file": "package.json",
+          "bytes": 1715,
+          "sha256": "a6ec2c23307507fb67caa898b956ea8ac1777809443c1ba00eaab465f2490420",
+          "gitBlob": "23d71be08372375243e8c12df8fc473d413a60fe",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "e0676a12c080ca2832b7271aaaa521cbadf02906",
+            "path": "package.json"
+          }
+        },
+        {
+          "file": "schemas/archive-v4.schema.json",
+          "bytes": 193534,
+          "sha256": "f7b5f6a81928766237383fcace21b586e7f54b5c39cbc209dffac3a6b1392c72",
+          "gitBlob": "cd40d2fbdb1e93c18487767ce993903c4939eeb5",
+          "method": "exact",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "schemas/archive-v4.schema.json"
+          }
+        },
+        {
+          "file": "schemas/event.schema.json",
+          "bytes": 1925,
+          "sha256": "62cd4fe66fcc8f8af6f775287239ec73ef31729d6974a1b8a06bd2457d0e4e65",
+          "gitBlob": "aa0db7c2e533b093cf6f5aeffe4f60124750231c",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "products/orbita/agent-forensic-handoff/schemas/event.schema.json"
+          }
+        },
+        {
+          "file": "src/adapters.js",
+          "bytes": 38475,
+          "sha256": "9ca8d9e15cea6ce95ac146f355c92e8603cea5f7ee6295cafa35b74ec5a9d91e",
+          "gitBlob": "36f378f8eb3615a0c071d47f38c074de4870042d",
+          "method": "exact",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/adapters.js"
+          }
+        },
+        {
+          "file": "src/archive/acquisition.js",
+          "bytes": 13178,
+          "sha256": "2e85ccc69395cc1a11a363df9c134e99490cabbc1ff60ee14d832188dd106d8d",
+          "gitBlob": "90cba5aac4698e04123f043e4afdb039011918c0",
+          "method": "exact",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/acquisition.js"
+          }
+        },
+        {
+          "file": "src/archive/associations.js",
+          "bytes": 5564,
+          "sha256": "3861d910e05b6fda4c895eb18e2a871aa76b4f734b082be44fd654e2bc919dd1",
+          "gitBlob": "15b59169464ec0fb00f9dde3c063ef3bb19e4b41",
+          "method": "exact",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/associations.js"
+          }
+        },
+        {
+          "file": "src/archive/children.js",
+          "bytes": 2157,
+          "sha256": "ad9470e2f5b9463d7509d1d2ede38e24697bf6fb26eac461cb261d0e840cb8d9",
+          "gitBlob": "930fd991502854b8af3c868c452789a8e2e1c447",
+          "method": "exact",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/children.js"
+          }
+        },
+        {
+          "file": "src/archive/engine.js",
+          "bytes": 27720,
+          "sha256": "bfe97b41cea4c40c3a1a7c6f5d1b97845d5d07b2dbdffe7eff9150cfbfe8febc",
+          "gitBlob": "650ca831e9911a33cc5f04de7f225a3a878abd11",
+          "method": "exact",
+          "source": {
+            "commit": "f4887f3c13221b13acaf19396aec47dbc013c13b",
+            "path": "src/archive/engine.js"
+          }
+        },
+        {
+          "file": "src/archive/generate-wire-validator.mjs",
+          "bytes": 3691,
+          "sha256": "c9e4cf83374bfc42fef9895d22092a2e36e03580d31a1f8259d6e72678130eaf",
+          "gitBlob": "8ca78aed6d76ab178d60f4e3df9e746af03fd94a",
+          "method": "exact",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/generate-wire-validator.mjs"
+          }
+        },
+        {
+          "file": "src/archive/identity.js",
+          "bytes": 3166,
+          "sha256": "665767b2d79482457a5b16f4362eb87a6c993aae160c98d50c48692f570692f0",
+          "gitBlob": "ae7349f150405f1f726a096d1aaef3fe8b9b0599",
+          "method": "exact",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/identity.js"
+          }
+        },
+        {
+          "file": "src/archive/ledger.js",
+          "bytes": 24434,
+          "sha256": "ba5d41b053eaefdc8b6836b085372991875f329123f208d607d15d4e1dba753a",
+          "archivedSource": "historical/pregraph04/src/archive/ledger.js.source"
+        },
+        {
+          "file": "src/archive/legacy.js",
+          "bytes": 7653,
+          "sha256": "d35e9e0e9c09ad593554c108c2d4302c5157846b01e444eebf030687f44f3c15",
+          "gitBlob": "158b9e07deb7c62dd21c506965d4c8ee1831c459",
+          "method": "exact",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/legacy.js"
+          }
+        },
+        {
+          "file": "src/archive/occurrences.js",
+          "bytes": 16274,
+          "sha256": "66d23a2fc9788a3f29cb5757323356f86290570b9048a12bcc88c29fb4c16d54",
+          "gitBlob": "62a787d83bf98edb4cb2d143f14b0a4c27cb085a",
+          "method": "exact",
+          "source": {
+            "commit": "f4887f3c13221b13acaf19396aec47dbc013c13b",
+            "path": "src/archive/occurrences.js"
+          }
+        },
+        {
+          "file": "src/archive/protocol.js",
+          "bytes": 4578,
+          "sha256": "e8e4d3a5ee3d73cf6506839ace1112790a81eced268b89d84e236f1b6f90a5ab",
+          "gitBlob": "ff63eb4270bd353503fb466c13986fcc210dea26",
+          "method": "exact",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/protocol.js"
+          }
+        },
+        {
+          "file": "src/archive/read-evidence.js",
+          "bytes": 6914,
+          "sha256": "f0a02361652f13eb88f10cda11f5e6aa8f43abd66cbf5113db737bffcbaaa208",
+          "gitBlob": "6404b454cf4f360eb2cf8eda81e73ade310fc71c",
+          "method": "exact",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/read-evidence.js"
+          }
+        },
+        {
+          "file": "src/archive/reader-observation.js",
+          "bytes": 24565,
+          "sha256": "7392016fdb6da7bfcc04483bff6f5b49ec0db8f09b5f0957ea767603285bd0df",
+          "gitBlob": "bebf22ea090a79d75d9ab7176d3599cfec3af905",
+          "method": "exact",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/reader-observation.js"
+          }
+        },
+        {
+          "file": "src/archive/schema-runtime/LICENSE-ajv-formats.txt",
+          "bytes": 1074,
+          "sha256": "9df3bb69929a3b650ed73b3bfa1756725aaff0ac296461605753547004eafeaf",
+          "gitBlob": "a3f8ba0278836d0d02b845aec548a21db114e984",
+          "method": "exact",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/schema-runtime/LICENSE-ajv-formats.txt"
+          }
+        },
+        {
+          "file": "src/archive/schema-runtime/LICENSE-ajv.txt",
+          "bytes": 1089,
+          "sha256": "9b6a90e9be78799534e4030d71b6817271fb99aa10e261f9f9f6dec1cff4177a",
+          "gitBlob": "397909a84d1c908ce7db3a60bb4f4dafaf4f9e53",
+          "method": "exact",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/schema-runtime/LICENSE-ajv.txt"
+          }
+        },
+        {
+          "file": "src/archive/schema-runtime/LICENSE-fast-deep-equal.txt",
+          "bytes": 1074,
+          "sha256": "7bf9b2de73a6b356761c948d0e9eeb4be6c1270bd04c79cd489c1e400ffdfc1a",
+          "gitBlob": "7f1543566f6abbbf75914db32651cf89919cabed",
+          "method": "exact",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/schema-runtime/LICENSE-fast-deep-equal.txt"
+          }
+        },
+        {
+          "file": "src/archive/schema-runtime/equal.cjs",
+          "bytes": 202,
+          "sha256": "2ee4fa7a4ceac100da49219d4ca34303dd5bfbdd5d9302a8b14cb19a1dd90a45",
+          "gitBlob": "427d7f649841907de000266b236bb31748dc8fe5",
+          "method": "exact",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/schema-runtime/equal.cjs"
+          }
+        },
+        {
+          "file": "src/archive/schema-runtime/fast-deep-equal.cjs",
+          "bytes": 1177,
+          "sha256": "eb469e206280321a3878f2335ec98aa2104a155079d8ed83a23029098dccd215",
+          "gitBlob": "30dd1ba78cb4989e67a32295b3ca1fd9baaa6c96",
+          "method": "exact",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/schema-runtime/fast-deep-equal.cjs"
+          }
+        },
+        {
+          "file": "src/archive/schema-runtime/formats.cjs",
+          "bytes": 12228,
+          "sha256": "0b9727de56ab266e6eb088c884bad75952cf91358ee1e381543df861af8f7f40",
+          "gitBlob": "c69ead0be18557e5483f6a449464288085ef6602",
+          "method": "exact",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/schema-runtime/formats.cjs"
+          }
+        },
+        {
+          "file": "src/archive/schema-runtime/ucs2length.cjs",
+          "bytes": 702,
+          "sha256": "9e2547ae6aca78812836313e4fec2c0315943c24be4b686d98d521ce21ec23ca",
+          "gitBlob": "07e846c1be98da887bfe3601f67b54907580c47b",
+          "method": "exact",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/schema-runtime/ucs2length.cjs"
+          }
+        },
+        {
+          "file": "src/archive/storage.js",
+          "bytes": 13885,
+          "sha256": "73ab4bcb46ba08975d4890975ea59449355da000c5cbb40bec00d31443ba82da",
+          "gitBlob": "7c7b6724e657e363ee2a86a878a948fc8fe119bc",
+          "method": "exact",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/storage.js"
+          }
+        },
+        {
+          "file": "src/archive/temporal.js",
+          "bytes": 12293,
+          "sha256": "cc7a1b9ad2333d8db4181bfa8a401ce5b512d390cf9d450e78522cfb77802074",
+          "gitBlob": "28c7438e40cbbe72d0a803c191074404635a44ad",
+          "method": "exact",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/temporal.js"
+          }
+        },
+        {
+          "file": "src/archive/verify.js",
+          "bytes": 9925,
+          "sha256": "0d159c46a062f315eeb53c3d58b60f0463f68efa03b35ac5b03e71ad97f6c0cf",
+          "gitBlob": "dfceef5abe134e500bade7cfde1f940295dfcc94",
+          "method": "exact",
+          "source": {
+            "commit": "f4887f3c13221b13acaf19396aec47dbc013c13b",
+            "path": "src/archive/verify.js"
+          }
+        },
+        {
+          "file": "src/archive/wire-build.json",
+          "bytes": 3750,
+          "sha256": "c76496db7e9547650053d1e9f4c865b1b851eb44964cac3c8810690e7426ac6b",
+          "gitBlob": "e5945e739aceabb5cf02f5b01069b5cad3689733",
+          "method": "exact",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/wire-build.json"
+          }
+        },
+        {
+          "file": "src/archive/wire-validation.cjs",
+          "bytes": 1858564,
+          "sha256": "04a86a2cd7037fdeae154bf8a266657136f9a6d72cbea51db549b4da69b039b5",
+          "gitBlob": "0b11719278cb719abad396a87c2a6f91b72af8a4",
+          "method": "exact",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/archive/wire-validation.cjs"
+          }
+        },
+        {
+          "file": "src/audit.js",
+          "bytes": 24423,
+          "sha256": "caaa4dd7e1154cb5822b0184d159bf61e0196f5d0c79b09c3f90a7678baa5004",
+          "gitBlob": "7f92629046058893994458b3dc685da0212a2e0c",
+          "method": "exact",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/audit.js"
+          }
+        },
+        {
+          "file": "src/benchmark.js",
+          "bytes": 12049,
+          "sha256": "3d0b158f13303b92653ccb4e5de6cc4feab1178778ef9c65bc3299b08649b783",
+          "gitBlob": "9adac6c0e027b7452574746f4738f43a35ab5a13",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "products/orbita/agent-forensic-handoff/src/benchmark.js"
+          }
+        },
+        {
+          "file": "src/cli.js",
+          "bytes": 15824,
+          "sha256": "2e22e7cd384f81087590822112fc68c2def057036adbee41825e445540caa173",
+          "gitBlob": "79660180d857ba222f4321e06dd7e7af18c5fcf6",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/cli.js"
+          }
+        },
+        {
+          "file": "src/constants.js",
+          "bytes": 2100,
+          "sha256": "4511bd2b163a4bf8d265e85a92db9ba271b0eeae7631dee9aa3b7ca46e0baf76",
+          "gitBlob": "7e5dc9074357de92d3b88435e6166a69098010f3",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "products/orbita/agent-forensic-handoff/src/constants.js"
+          }
+        },
+        {
+          "file": "src/database.js",
+          "bytes": 15525,
+          "sha256": "2109d61d48eb613d53ff4a531fa27012281644df7ac7ef5c2baf7baa6dab8ee2",
+          "gitBlob": "3a490299a70fa802cde7bab84d69c3ed7b514448",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/database.js"
+          }
+        },
+        {
+          "file": "src/discovery.js",
+          "bytes": 15418,
+          "sha256": "f750787ee15825235fb8f8409751b2158d2701a68cb9267029df391609926d41",
+          "archivedSource": "historical/pregraph04/src/discovery.js.source"
+        },
+        {
+          "file": "src/doctor.js",
+          "bytes": 2273,
+          "sha256": "a5fe7fca87b2af7fd0654b4d0732cc1bf8946e6bb8535a86fee53fcec507cfac",
+          "gitBlob": "2853d5b39d954ec71e4cb3d5a4af5f19be80fb44",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/doctor.js"
+          }
+        },
+        {
+          "file": "src/evidence.js",
+          "bytes": 6300,
+          "sha256": "808e78738323b2906d51430a3dd5fd376741a803f5ab3a46090409c7e7589803",
+          "gitBlob": "f96ca25d65e9ee29da8451ebe637ab48735d8140",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/evidence.js"
+          }
+        },
+        {
+          "file": "src/graph.js",
+          "bytes": 10143,
+          "sha256": "0d201278af61c45fd23c8836ca9736176fb55188f3606a39e5292bfcd388f6f9",
+          "gitBlob": "2056ca75d76ff4e22da694a1272c1321be7ee016",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "e0676a12c080ca2832b7271aaaa521cbadf02906",
+            "path": "src/graph.js"
+          }
+        },
+        {
+          "file": "src/index.js",
+          "bytes": 940,
+          "sha256": "80852491b611f9785ab6d187f37e25a5926a6ad6d8cbee5a904c89b714ae3867",
+          "archivedSource": "historical/pregraph04/src/index.js.source"
+        },
+        {
+          "file": "src/install.js",
+          "bytes": 3707,
+          "sha256": "d08951dbcca048ada5416d9bb6e6e7cb39dc7842fb9a26ce57ad2268eb69d0f4",
+          "gitBlob": "fbdf996d80eb9ef14c899b144c15f733065634af",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "products/orbita/agent-forensic-handoff/src/install.js"
+          }
+        },
+        {
+          "file": "src/integrity.js",
+          "bytes": 12959,
+          "sha256": "fbb2d9349ffb38ba5a9aaa6de98dcb155d1cf103d8ccea5beed0af53baa985af",
+          "gitBlob": "45b5b2b2724081488fc221eaf08d071004a416f6",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/integrity.js"
+          }
+        },
+        {
+          "file": "src/reducers.js",
+          "bytes": 18599,
+          "sha256": "6f1e0c3f564e71da161ea98e5e8fa74095a0a8a319443b08fbc7953edbcf0337",
+          "gitBlob": "d9f8e5f3b2bc0433b76313e1bfba0a1609da42bd",
+          "method": "exact",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/reducers.js"
+          }
+        },
+        {
+          "file": "src/render.js",
+          "bytes": 23748,
+          "sha256": "8ef7be80f37721a30581a1aac05a1e33f937698333819057c446d932ba4ff9e0",
+          "gitBlob": "05ffbfd600a851dbf494add95ca572f31363797f",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/render.js"
+          }
+        },
+        {
+          "file": "src/retrieval-benchmark.js",
+          "bytes": 9941,
+          "sha256": "cdc0bc363f9e05c76d9d18f8862673fac1713a1bd91811b2171cc6f054887af0",
+          "gitBlob": "6e0cf726ab83e07065a75ea44b7a60bd9e7db1a2",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "products/orbita/agent-forensic-handoff/src/retrieval-benchmark.js"
+          }
+        },
+        {
+          "file": "src/retrieval.js",
+          "bytes": 14872,
+          "sha256": "a9ffbffd39a86332164b28e6f701439b6f3bcf5b96076da44fb6b98c42bae308",
+          "gitBlob": "f2240beae09115511e7f74ca6b3d38ff68912dd2",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/retrieval.js"
+          }
+        },
+        {
+          "file": "src/schema.sql",
+          "bytes": 9074,
+          "sha256": "b67b82939f95fe8a06317d66b2a8b248162ad94ede0b25a903a1ae4b99646d17",
+          "gitBlob": "29e7042aa537eeaedd2f14bd23cb0f778674dcb9",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/schema.sql"
+          }
+        },
+        {
+          "file": "src/semantic-model.js",
+          "bytes": 9182,
+          "sha256": "ef5b80f2964195ffbcfdfb2252be577793f73ddebba2190a4ab8b826bd015f75",
+          "gitBlob": "59d9f22cc1e32d706069ca892356783288ea0604",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/semantic-model.js"
+          }
+        },
+        {
+          "file": "src/semantic.js",
+          "bytes": 32229,
+          "sha256": "d433bd22a353421b4dd481780177a750a2eb3acf5a55e688d0a3963aef9d1954",
+          "gitBlob": "ee5736bd59fc136c79f6ba8837d59777b63e74e3",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "src/semantic.js"
+          }
+        },
+        {
+          "file": "src/util.js",
+          "bytes": 8806,
+          "sha256": "9f6df356d1ab3c2b2519355c9efa780cb87be41c8909fa0df406b354dbd5ff37",
+          "gitBlob": "76a4dda436beabe928d9836ccc0d10947284ff49",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "products/orbita/agent-forensic-handoff/src/util.js"
+          }
+        },
+        {
+          "file": "src/verify.js",
+          "bytes": 6645,
+          "sha256": "caaa5efe69837f5c043fbecddf391c38597f4a53fd35d36fe2432de9243a1cd6",
+          "gitBlob": "b8fca5b63a7af635f8bcdd24515d8f7ed30efd41",
+          "method": "lf_to_crlf",
+          "source": {
+            "commit": "76d6a8574b9aba78e53616020851892712241d27",
+            "path": "products/orbita/agent-forensic-handoff/src/verify.js"
+          }
+        }
+      ]
+    }
+  },
+  "legacyVersions": [
+    {
+      "version": "0.1.0",
+      "schema": 1,
+      "commit": "ba2ae318d1fa1cb1264134827ca756aba58e6a79"
+    },
+    {
+      "version": "0.2.0",
+      "schema": 2,
+      "commit": "7f66e72effc8bd698e915db9b1f870dccffd5db6"
+    },
+    {
+      "version": "0.3.0",
+      "schema": 3,
+      "commit": "d0e444e65ccddf2ed42a5221dccd4d94c1b622c9"
+    }
+  ],
+  "shmHelper": {
+    "file": "mapped-shm-readonly.py",
+    "sha256": "22a9d789e282bc6fb327925d607f4dcedf27b4f76089d177c59a6e9ad640c660",
+    "transformation": "none; exact read-only native helper"
+  },
+  "readerConsumer": {
+    "file": "../reader-corpus-consumer.mjs",
+    "sourceSha256": "fc89b4d45450ceb506c045aef17b672ec8d6b45b9934bb186b067d311e7226d3",
+    "sha256": "40eaf2ac200566180d2e3978d3136487d5d36d0b1f75f08c2e66652166f4c84c",
+    "transformation": "import path only; all rejection and observation logic unchanged"
+  },
+  "legacyBuilder": {
+    "file": "../build-legacy-fixtures.mjs",
+    "sourceSha256": "c863b54f65faad85eba0cb445a4261a75b4efa82d9f3b7916848c605ee563192",
+    "sha256": "8b613371208f98897463d8ef3ba5706614a6c1413b8fe80d2c527e809d200149",
+    "transformation": "explicit new output and verified materialized package roots; synthetic inputs, native audit and all assertions preserved"
+  }
+}

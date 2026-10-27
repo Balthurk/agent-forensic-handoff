@@ -14,3 +14,8 @@
 
 # Preserve archived historical source bytes, including line endings.
 /archives/afh-candidate-variants-20261027/** -text
+
+# Acceptance support includes exact historical bytes; never normalize them.
+/scripts/acceptance-support/** -text
+/scripts/reader-corpus-consumer.mjs -text
+/scripts/build-legacy-fixtures.mjs -text

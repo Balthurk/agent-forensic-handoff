@@ -199,8 +199,16 @@ No retrospective system can recover hidden chain-of-thought, unpersisted streami
 
 ## Development
 
+The complete root suite includes acceptance tests with pinned historical engines
+and a Windows native SHM observer. Install the specification dependencies, prepare
+a new external lab, and pass its receipt to the runner. See
+[acceptance prerequisites](scripts/acceptance-support/README.md) for exact runtime
+requirements, historical object retrieval and the unchanged test scope.
+
 ```bash
-npm test
+npm ci --prefix tools/specification
+python scripts/prepare-acceptance.py --lab C:/T/my-new-afh-acceptance-lab
+npm test -- --prepared C:/T/my-new-afh-acceptance-lab/PREPARATION.json
 npm run validate:skill
 npm run benchmark
 npm run benchmark:retrieval -- --out /private/benchmark/path

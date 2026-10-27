@@ -20,7 +20,7 @@ Dos pruebas incluyen la misma URL sintética de UUID repetitivo y otra usa un to
 
 ## Pruebas desde una copia limpia
 
-En la raíz, `npm test` ejecuta las pruebas de la skill, incluidas las de aceptación y especificación. Sus dependencias se instalan con `npm ci` y `npm ci --prefix tools/specification`.
+En la raíz, `npm test` ejecuta las pruebas de la skill, incluidas las de aceptación y especificación. Sus dependencias se instalan con `npm ci` y `npm ci --prefix tools/specification`. La batería completa requiere preparar sus auxiliares y productores históricos en un laboratorio nuevo mediante `python scripts/prepare-acceptance.py --lab RUTA_ABSOLUTA_NUEVA`; después se ejecuta `npm test -- --prepared RUTA_ABSOLUTA_NUEVA/PREPARATION.json`. Las instrucciones y los hashes están en `scripts/acceptance-support/README.md` y su manifest. Esta preparación no declara pruebas superadas y no utiliza corpus real.
 
 Para Órbita, instalar sus dependencias con `npm ci --prefix products/orbita/agent-forensic-handoff`. Crear un entorno local mediante `python -m venv .venv-orbita`, instalar requirements-tested.txt con su intérprete y usarlo como AFH_PYTHON. `.venv-orbita/` queda excluido de Git. `python products/orbita/scripts/check.py --list` enumera las tres suites sin ejecutarlas. El comando completo, con ese mismo intérprete, es `python products/orbita/scripts/check.py --lab RUTA_NUEVA_FUERA_DEL_CHECKOUT`.
 
