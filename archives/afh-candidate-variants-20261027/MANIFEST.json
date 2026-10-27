@@ -1,0 +1,148 @@
+{
+  "schema": "afh.archived-source-variants.v1",
+  "at": "2026-10-27T14:35:36.728742+00:00",
+  "purpose": "Preserve 12 unique historical source variants without copying five obsolete working trees. No variant is adopted into product or claimed as a release.",
+  "files": [
+    {
+      "path": "objects/29aadea036452bc96e8aa37c5912938dd19e9151d1678328b21847c25ffd26f5.source",
+      "sha256": "29aadea036452bc96e8aa37c5912938dd19e9151d1678328b21847c25ffd26f5",
+      "bytes": 8572,
+      "originalPath": "src/archive-cli.js",
+      "candidateDirectories": [
+        "u1-candidate-20260923",
+        "u1-candidate-20260923-r2",
+        "u1-candidate-20260923-r3",
+        "u2-candidate-20260924",
+        "u2-candidate-20260924-r2"
+      ],
+      "status": "historical_unintegrated_source"
+    },
+    {
+      "path": "objects/2368bc0a5028d5f2d115e19c30cb717b2df8cc564e09f9c8aecb4f502116c86a.source",
+      "sha256": "2368bc0a5028d5f2d115e19c30cb717b2df8cc564e09f9c8aecb4f502116c86a",
+      "bytes": 17231,
+      "originalPath": "src/cli.js",
+      "candidateDirectories": [
+        "u1-candidate-20260923",
+        "u1-candidate-20260923-r2",
+        "u1-candidate-20260923-r3"
+      ],
+      "status": "historical_unintegrated_source"
+    },
+    {
+      "path": "objects/5805215a2c753113c34621c53f9ac588311c0bb69b6a3de38bf41fa55514e682.source",
+      "sha256": "5805215a2c753113c34621c53f9ac588311c0bb69b6a3de38bf41fa55514e682",
+      "bytes": 8031,
+      "originalPath": "skills/agent-forensic-handoff/SKILL.md",
+      "candidateDirectories": [
+        "u1-candidate-20260923",
+        "u1-candidate-20260923-r2",
+        "u1-candidate-20260923-r3"
+      ],
+      "status": "historical_unintegrated_source"
+    },
+    {
+      "path": "objects/51239b72a6715d7eeab1e455ba385b24096283b2c00201eaa5fd0359a173a16f.source",
+      "sha256": "51239b72a6715d7eeab1e455ba385b24096283b2c00201eaa5fd0359a173a16f",
+      "bytes": 16939,
+      "originalPath": "src/archive/occurrences.js",
+      "candidateDirectories": [
+        "u1-candidate-20260923"
+      ],
+      "status": "historical_unintegrated_source"
+    },
+    {
+      "path": "objects/c6417143466243c67a007ed5dcbea7ae9f36f3a2c832be74293c4981a937d9df.source",
+      "sha256": "c6417143466243c67a007ed5dcbea7ae9f36f3a2c832be74293c4981a937d9df",
+      "bytes": 7199,
+      "originalPath": "src/archive/read-evidence.js",
+      "candidateDirectories": [
+        "u1-candidate-20260923",
+        "u1-candidate-20260923-r2",
+        "u1-candidate-20260923-r3",
+        "u2-candidate-20260924",
+        "u2-candidate-20260924-r2"
+      ],
+      "status": "historical_unintegrated_source"
+    },
+    {
+      "path": "objects/26bb62c48a6c3ca5de970f02e6a11a43a648004a473880bcea0907f7bde2d450.source",
+      "sha256": "26bb62c48a6c3ca5de970f02e6a11a43a648004a473880bcea0907f7bde2d450",
+      "bytes": 17081,
+      "originalPath": "src/archive/occurrences.js",
+      "candidateDirectories": [
+        "u1-candidate-20260923-r2"
+      ],
+      "status": "historical_unintegrated_source"
+    },
+    {
+      "path": "objects/673ee23b1759c1e027716998b10d48fb454df8fd521985d2f06f6a309773f981.source",
+      "sha256": "673ee23b1759c1e027716998b10d48fb454df8fd521985d2f06f6a309773f981",
+      "bytes": 17545,
+      "originalPath": "src/archive/occurrences.js",
+      "candidateDirectories": [
+        "u1-candidate-20260923-r3",
+        "u2-candidate-20260924",
+        "u2-candidate-20260924-r2"
+      ],
+      "status": "historical_unintegrated_source"
+    },
+    {
+      "path": "objects/ef72ccfa889f87e0b1b9a967afb85f3655c54856b1dff3a687ddb42d05048bd8.source",
+      "sha256": "ef72ccfa889f87e0b1b9a967afb85f3655c54856b1dff3a687ddb42d05048bd8",
+      "bytes": 15371,
+      "originalPath": "README.md",
+      "candidateDirectories": [
+        "u2-candidate-20260924",
+        "u2-candidate-20260924-r2"
+      ],
+      "status": "historical_unintegrated_source"
+    },
+    {
+      "path": "objects/fc7915145d286460393f59be2e5cc027a007ae5d6a643af02e4e311452b529d1.source",
+      "sha256": "fc7915145d286460393f59be2e5cc027a007ae5d6a643af02e4e311452b529d1",
+      "bytes": 19040,
+      "originalPath": "src/cli.js",
+      "candidateDirectories": [
+        "u2-candidate-20260924",
+        "u2-candidate-20260924-r2"
+      ],
+      "status": "historical_unintegrated_source"
+    },
+    {
+      "path": "objects/6a04b2ed733fe418bd20eed032b6d59d2f598a1e939ffb9754897c8e47fc6c50.source",
+      "sha256": "6a04b2ed733fe418bd20eed032b6d59d2f598a1e939ffb9754897c8e47fc6c50",
+      "bytes": 16829,
+      "originalPath": "src/temporal.js",
+      "candidateDirectories": [
+        "u2-candidate-20260924"
+      ],
+      "status": "historical_unintegrated_source"
+    },
+    {
+      "path": "objects/7ac036f62f08f49e1b9733fd7875205f8d3a79ccb7232dbd2c796c7d3f675520.source",
+      "sha256": "7ac036f62f08f49e1b9733fd7875205f8d3a79ccb7232dbd2c796c7d3f675520",
+      "bytes": 10764,
+      "originalPath": "skills/agent-forensic-handoff/SKILL.md",
+      "candidateDirectories": [
+        "u2-candidate-20260924",
+        "u2-candidate-20260924-r2"
+      ],
+      "status": "historical_unintegrated_source"
+    },
+    {
+      "path": "objects/4a97017c9396151693f78b693dda007d384a948d693dfdb5425a3fad1ec3de5f.source",
+      "sha256": "4a97017c9396151693f78b693dda007d384a948d693dfdb5425a3fad1ec3de5f",
+      "bytes": 17798,
+      "originalPath": "src/temporal.js",
+      "candidateDirectories": [
+        "u2-candidate-20260924-r2"
+      ],
+      "status": "historical_unintegrated_source"
+    }
+  ],
+  "bytes": 172400,
+  "originalsChanged": false,
+  "cleanupExecuted": false,
+  "scope": "Only the unique variants identified by comparison. This manifest does not by itself reconstruct every old candidate or authorize its deletion."
+}

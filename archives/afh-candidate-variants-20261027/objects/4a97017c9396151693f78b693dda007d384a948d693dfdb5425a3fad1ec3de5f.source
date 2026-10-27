@@ -1,0 +1,146 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { createHash } from 'node:crypto';
+import { localRoot, inside, openSnapshot, sourceManifest } from './archive/storage.js';
+import { recordBytes } from './archive/read-evidence.js';
+import { verifyPublishedArchive } from './archive/verify.js';
+import { atomicWrite, stableStringify } from './util.js';
+
+const hash=value=>createHash('sha256').update(value).digest('hex');
+const zero='0'.repeat(64);
+const iso=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/;
+function fail(code,message){return Object.assign(new Error(message),{code});}
+function instant(value,label,{nullable=false}={}){
+  if(value===null&&nullable)return null;
+  if(typeof value!=='string'||!iso.test(value)||!Number.isFinite(Date.parse(value)))throw fail('INVALID_TIME',`${label} must be an RFC3339 instant with timezone`);
+  const local=value.slice(0,19),[date,time]=local.split('T'),[year,month,day]=date.split('-').map(Number),[hour,minute,second]=time.split(':').map(Number);
+  const check=new Date(Date.UTC(year,month-1,day,hour,minute,second));
+  if(check.getUTCFullYear()!==year||check.getUTCMonth()+1!==month||check.getUTCDate()!==day||check.getUTCHours()!==hour||check.getUTCMinutes()!==minute||check.getUTCSeconds()!==second)throw fail('INVALID_TIME',`${label} has an invalid calendar instant`);
+  return new Date(value).toISOString();
+}
+function paths(archive){const root=localRoot(path.resolve(archive));return {root,dir:inside(root,'temporal'),file:inside(root,'temporal','ledger.jsonl'),lock:inside(root,'temporal','writer.lock')};}
+function archive(archivePath){const {root}=paths(archivePath),snapshot=openSnapshot(root);verifyPublishedArchive(root,snapshot,{deep:false});return {root,snapshot};}
+function ledger(root){const file=inside(root,'temporal','ledger.jsonl');if(!fs.existsSync(file)){if(fs.existsSync(inside(root,'temporal','head.json')))throw fail('INTEGRITY_FAILED','Temporal ledger is missing but its head remains');return [];}
+ const bytes=fs.readFileSync(file);if(bytes.length&&!bytes.toString('utf8').endsWith('\n'))throw fail('INTEGRITY_FAILED','Temporal ledger has an incomplete final entry');
+ const lines=bytes.toString('utf8').split('\n').filter(Boolean),rows=[];let prior=zero,lastSeq=0,lastTime=null;
+ for(const line of lines){let entry;try{entry=JSON.parse(line);}catch{throw fail('INTEGRITY_FAILED','Temporal ledger JSON is malformed');}
+  const expected=hash(stableStringify({previous_hash:entry.previous_hash,payload:entry.payload}));
+  if(entry.previous_hash!==prior||entry.entry_hash!==expected)throw fail('INTEGRITY_FAILED','Temporal ledger hash chain differs');
+  const row=entry.payload;if(!Number.isSafeInteger(row.recorded_seq)||row.recorded_seq<=lastSeq||typeof row.recorded_at!=='string'||lastTime&&row.recorded_at<lastTime)throw fail('INTEGRITY_FAILED','Temporal ledger clock or sequence regressed');
+  rows.push(row);prior=entry.entry_hash;lastSeq=row.recorded_seq;lastTime=row.recorded_at;
+ }
+ const headFile=inside(root,'temporal','head.json');let head;try{head=JSON.parse(fs.readFileSync(headFile,'utf8'));}catch{throw fail('INTEGRITY_FAILED','Temporal ledger head is unavailable or malformed');}
+ if(head.schema_version!==1||head.archive_id!==openSnapshot(root).archive_id||head.row_count!==rows.length||head.recorded_seq!==rows.at(-1)?.recorded_seq||head.entry_hash!==prior)throw fail('INTEGRITY_FAILED','Temporal ledger head differs from append-only entries');
+ return rows;
+}
+function sourceRecord(root,ref){
+ if(!ref||typeof ref!=='object'||typeof ref.archive_revision_id!=='string'||typeof ref.source_revision_id!=='string'||typeof ref.uri!=='string'||typeof ref.record_sha256!=='string')throw fail('INVALID_SOURCE_REF','Source reference must bind archive revision, source revision, URI and record digest');
+ const snapshot=openSnapshot(root,ref.archive_revision_id);verifyPublishedArchive(root,snapshot,{deep:false});
+ if(!snapshot.source_manifest_ids.includes(ref.source_revision_id))throw fail('EVIDENCE_UNAVAILABLE','Source revision is not present in its pinned archive revision');
+ const source=sourceManifest(root,ref.source_revision_id),matches=source.records.filter(r=>r.evidence_ref.uri===ref.uri&&r.sha256===ref.record_sha256);
+ if(matches.length!==1)throw fail('EVIDENCE_UNAVAILABLE','Source record identity is absent or ambiguous');
+ const record=matches[0];for(const key of ['source_revision_id','record_ordinal','byte_offset','byte_length','record_sha256','uri'])if(ref[key]!==record.evidence_ref[key])throw fail('INVALID_SOURCE_REF',`Source reference ${key} differs from immutable manifest`);
+ const {bytes}=recordBytes(root,source,record,0,Number(record.byte_length));
+ if(hash(bytes)!==ref.record_sha256)throw fail('INTEGRITY_FAILED','Source bytes differ from record digest');
+ let parsed=null;try{parsed=JSON.parse(bytes.toString('utf8'));}catch{}
+ return {snapshot,record,bytes,parsed};
+}
+function normalizeClaim(root,current,input,options){
+ if(!input||typeof input!=='object'||Array.isArray(input))throw fail('INVALID_REQUEST','Revision must be an object');
+ for(const key of ['recorded_at','recorded_seq','clock_mode','authority','provenance','proposal_state','archive_id'])if(Object.hasOwn(input,key))throw fail('INVALID_REQUEST',`${key} is assigned by AFH and cannot be supplied`);
+ const fields=['revision_id','assertion_id','branch_id','subject','predicate','scope'];for(const f of fields)if(typeof input[f]!=='string'||!input[f].trim())throw fail('INVALID_REQUEST',`${f} is required`);
+ if(!Object.hasOwn(input,'value')||!Array.isArray(input.source_refs)||!input.source_refs.length)throw fail('INVALID_REQUEST','value and nonempty source_refs are required');
+ const valid_from=instant(input.valid_from??null,'valid_from',{nullable:true}),valid_to=instant(input.valid_to??null,'valid_to',{nullable:true}),event_at=instant(input.event_at??null,'event_at',{nullable:true});
+ if(valid_from&&valid_to&&valid_from>=valid_to)throw fail('INVALID_INTERVAL','[valid_from,valid_to) requires a strict positive interval');
+ const clock_domain=input.clock_domain??'UTC';if(typeof clock_domain!=='string'||!clock_domain)throw fail('INVALID_TIME','clock_domain is required');
+ if(current.some(r=>r.revision_id===input.revision_id))throw fail('REVISION_CONFLICT','Revision ID already exists');
+ let relation=null;if(input.relation!=null){relation={type:input.relation.type,target_revision_id:input.relation.target_revision_id,reason:input.relation.reason};
+  if(!['SUPERSEDES','RETRACTS','CONTRADICTS'].includes(relation.type)||typeof relation.reason!=='string'||!relation.reason.trim())throw fail('INVALID_RELATION','Relation type and sourced reason are required');
+  const target=current.find(r=>r.revision_id===relation.target_revision_id);if(!target)throw fail('INVALID_RELATION','Relation target must be an earlier revision');
+  if(target.subject!==input.subject||target.predicate!==input.predicate||target.scope!==input.scope)throw fail('INVALID_RELATION','Relation target has a different subject, predicate or scope');
+  if(relation.type==='CONTRADICTS'&&stableStringify(target.value)===stableStringify(input.value))throw fail('INVALID_RELATION','Contradiction requires different values');
+  if(relation.type!=='CONTRADICTS'&&(target.assertion_id!==input.assertion_id||target.branch_id!==input.branch_id))throw fail('INVALID_RELATION','Correction must target the same assertion branch');
+  if(relation.type==='RETRACTS'&&input.value!==null)throw fail('INVALID_RELATION','Retraction value must be null');
+ }
+ const observations=input.source_refs.map(ref=>sourceRecord(root,ref));
+ const same=observations.filter(x=>x.parsed?.assertion_id===input.assertion_id&&x.parsed?.subject===input.subject&&x.parsed?.predicate===input.predicate&&x.parsed?.scope===input.scope&&stableStringify(x.parsed?.claim_value)===stableStringify(input.value));
+ const direct=observations.length===1&&same.length===1;
+ const provenance={grade:observations.length>1?'AMBIGUOUS':direct?'DIRECT_EVIDENCE':'SOURCE_LINKED',direct,source_count:observations.length};
+ const approvals=observations.filter(x=>x.parsed?.role==='user'&&x.parsed?.kind==='approval'&&x.parsed?.action==='approve'&&x.parsed?.assertion_id===input.assertion_id&&x.parsed?.subject===input.subject&&x.parsed?.predicate===input.predicate&&x.parsed?.scope===input.scope&&stableStringify(x.parsed?.claim_value)===stableStringify(input.value));
+ const authority={status:approvals.length?'SOURCE_ATTRIBUTED_HUMAN_APPROVAL':'UNRESOLVED',basis:approvals.map(x=>x.record.evidence_ref)};
+ const proposal_state=observations.some(x=>x.parsed?.kind==='proposal')&&!approvals.length?'PENDING':null;
+ if(relation&&relation.type!=='CONTRADICTS'){
+  const expectedKind=relation.type==='RETRACTS'?'retraction':'correction';
+  const act=observations.some(x=>x.parsed?.kind===expectedKind&&x.parsed?.role==='user'&&x.parsed?.assertion_id===input.assertion_id&&stableStringify(x.parsed?.claim_value)===stableStringify(input.value)&&typeof x.parsed?.content==='string'&&x.parsed.content.toLocaleLowerCase().includes(relation.reason.toLocaleLowerCase()));
+  if(!act)throw fail('INVALID_RELATION',`${relation.type} requires a matching sourced ${expectedKind} act and reason`);
+  relation.evidence_grade='SOURCE_LINKED_TARGET_CURATED';
+ }
+ const latest=current.at(-1),now=options.clock?options.clock():new Date();if(options.clock&&!options.synthetic)throw fail('INVALID_REQUEST','Injected clock is permitted only for explicitly synthetic tests');
+ if(!(now instanceof Date)||!Number.isFinite(now.valueOf()))throw fail('INVALID_TIME','Recorded clock is invalid');
+ const recorded_at=now.toISOString(),recorded_seq=options.sequence??(latest?.recorded_seq??0)+1;
+ if(options.sequence!=null&&!options.synthetic)throw fail('INVALID_REQUEST','Injected sequence is permitted only for explicitly synthetic tests');
+ if(!Number.isSafeInteger(recorded_seq)||recorded_seq<=0||latest&&recorded_seq<=latest.recorded_seq)throw fail('CLOCK_REGRESSION','Recorded sequence must advance');
+ if(latest&&recorded_at<latest.recorded_at)throw fail('CLOCK_REGRESSION','Recorded time must not move backward');
+ for(const x of observations)if(recorded_at<x.snapshot.recorded_at)throw fail('CLOCK_REGRESSION','Assertion cannot predate acquisition of its source archive revision');
+ return {archive_id:openSnapshot(root).archive_id,revision_id:input.revision_id,assertion_id:input.assertion_id,branch_id:input.branch_id,subject:input.subject,predicate:input.predicate,value:input.value,scope:input.scope,event_at,valid_from,valid_to,clock_domain,source_refs:input.source_refs,relation,provenance,authority,proposal_state,recorded_at,recorded_seq,clock_mode:options.synthetic?'SYNTHETIC_TEST':'WALL'};
+}
+export function appendTemporal(archivePath,input,options={}){const {root,dir,file,lock}=paths(archivePath);archive(root);fs.mkdirSync(dir,{recursive:true});let fd;
+ try{fd=fs.openSync(lock,'wx');}catch(error){if(error.code==='EEXIST')throw fail('BUSY','Temporal writer already owns this archive');throw error;}
+ try{const current=ledger(root),row=normalizeClaim(root,current,input,options),previous_hash=current.length?readLastHash(file,current.length-1):zero;
+  const entry={previous_hash,entry_hash:hash(stableStringify({previous_hash,payload:row})),payload:row};
+  const data=JSON.stringify(entry)+'\n',out=fs.openSync(file,'a');try{fs.writeSync(out,data);fs.fsyncSync(out);}finally{fs.closeSync(out);}
+  atomicWrite(inside(root,'temporal','head.json'),JSON.stringify({schema_version:1,archive_id:row.archive_id,row_count:current.length+1,recorded_seq:row.recorded_seq,entry_hash:entry.entry_hash})+'\n');
+  return row;
+ }finally{fs.closeSync(fd);fs.unlinkSync(lock);}
+}
+function readLastHash(file,index){const line=fs.readFileSync(file,'utf8').trimEnd().split('\n')[index];return JSON.parse(line).entry_hash;}
+function applicability(row,at){
+ if(at==null)return 'YES';
+ if(row.clock_domain!=='UTC')return 'UNKNOWN';
+ if(row.valid_from&&at<row.valid_from)return 'NO';
+ if(row.valid_to&&at>=row.valid_to)return 'NO';
+ if(!row.valid_from||!row.valid_to)return 'UNKNOWN';
+ return 'YES';
+}
+function verifyRows(root,rows){for(const row of rows){if(row.archive_id!==openSnapshot(root).archive_id)throw fail('INTEGRITY_FAILED','Temporal revision belongs to another archive');for(const ref of row.source_refs)sourceRecord(root,ref);}}
+export function queryTemporal(archivePath,params={}){
+ const {root}=archive(archivePath),all=ledger(root);
+ const known_at=params.known_at==null?null:instant(params.known_at,'known_at'),valid_at=params.valid_at==null?null:instant(params.valid_at,'valid_at');
+ const known_seq=params.known_seq==null?null:Number(params.known_seq);
+ if(known_seq!==null&&(!Number.isSafeInteger(known_seq)||known_seq<0))throw fail('INVALID_REQUEST','known_seq must be a nonnegative integer');
+ const visible=all.filter(row=>(known_seq===null||row.recorded_seq<=known_seq)&&(known_at===null||row.recorded_at<=known_at));
+  // The historical cut and query scope precede source inspection and conflict work.
+  const matches=row=>(params.assertion_id==null||row.assertion_id===params.assertion_id)&&(params.subject==null||row.subject===params.subject)&&(params.scope==null||row.scope===params.scope);
+  const search=params.search==null?null:String(params.search).toLocaleLowerCase();
+  const matchesSearch=row=>!search||[row.subject,row.predicate,typeof row.value==='string'?row.value:stableStringify(row.value)].join(' ').toLocaleLowerCase().includes(search);
+  const scoped=visible.filter(matches),status=new Map(scoped.map(row=>[row.revision_id,applicability(row,valid_at)]));
+  const corrections=scoped.filter(row=>status.get(row.revision_id)==='YES'&&['SUPERSEDES','RETRACTS'].includes(row.relation?.type));
+  // A nonmatching correction can suppress a matching older claim, so verify it first.
+  verifyRows(root,corrections);
+  const removed=new Set(),retractionRows=[];
+  for(const row of corrections){removed.add(row.relation.target_revision_id);if(row.relation.type==='RETRACTS')retractionRows.push(row);}
+  const candidates=scoped.filter(row=>!removed.has(row.revision_id)&&status.get(row.revision_id)!=='NO');
+  verifyRows(root,candidates);
+  const allActive=candidates.filter(row=>status.get(row.revision_id)==='YES'&&row.relation?.type!=='RETRACTS');
+  const uncertain=candidates.filter(row=>status.get(row.revision_id)==='UNKNOWN');
+  const selectedIds=new Set(allActive.filter(matchesSearch).map(row=>row.revision_id));
+  if(search){
+   const allGroups=new Map();
+   for(const row of allActive){const key=stableStringify([row.scope,row.subject,row.predicate]);const values=allGroups.get(key)??[];values.push(row);allGroups.set(key,values);}
+   for(const group of allGroups.values()){
+    const values=new Set(group.map(row=>stableStringify(row.value)));
+    const conflict=values.size>1||group.some(row=>row.relation?.type==='CONTRADICTS'&&group.some(other=>other.revision_id===row.relation.target_revision_id));
+    if(conflict&&group.some(matchesSearch))for(const row of group)selectedIds.add(row.revision_id);
+   }
+  }
+  const active=allActive.filter(row=>selectedIds.has(row.revision_id));
+  const uncertainResults=uncertain.filter(matchesSearch);
+  const retractions=retractionRows.filter(matchesSearch);
+ const groups=new Map();for(const row of active){const key=stableStringify([row.scope,row.subject,row.predicate]);const values=groups.get(key)??new Set();values.add(stableStringify(row.value));groups.set(key,values);}
+ const contradicted=[...groups.values()].some(values=>values.size>1)||active.some(row=>row.relation?.type==='CONTRADICTS'&&active.some(other=>other.revision_id===row.relation.target_revision_id));
+  const state=contradicted?'CONTRADICTED':active.length?'ASSERTED':retractions.length?'REVOKED':uncertainResults.length?'UNCERTAIN':'EMPTY';
+  return {query:{known_at:params.known_at??null,known_seq,valid_at:params.valid_at??null,assertion_id:params.assertion_id??null,subject:params.subject??null,scope:params.scope??null,search:params.search??null},state,active,uncertain:uncertainResults,retractions,candidates_count:active.length+uncertainResults.length,answer_claim_count:active.length,approval_count:active.filter(row=>row.authority.status==='SOURCE_ATTRIBUTED_HUMAN_APPROVAL').length};
+}
+export function historyTemporal(archivePath,{assertion_id,known_at,known_seq}={}){const {root}=archive(archivePath);if(typeof assertion_id!=='string'||!assertion_id)throw fail('INVALID_REQUEST','assertion_id is required');const cut=known_at==null?null:instant(known_at,'known_at');const seq=known_seq==null?null:Number(known_seq);if(seq!==null&&(!Number.isSafeInteger(seq)||seq<0))throw fail('INVALID_REQUEST','known_seq must be a nonnegative integer');const revisions=ledger(root).filter(row=>row.assertion_id===assertion_id&&(cut===null||row.recorded_at<=cut)&&(seq===null||row.recorded_seq<=seq));verifyRows(root,revisions);return {assertion_id,query:{known_at:known_at??null,known_seq:seq},revisions};}
+export function verifyTemporal(archivePath){const {root}=archive(archivePath),rows=ledger(root);verifyRows(root,rows);const head=inside(root,'temporal','head.json');return {passed:true,revision_count:rows.length,head_sha256:fs.existsSync(head)?hash(fs.readFileSync(head)):null};}
+export function temporalSources(archivePath,{revision_id}={}){const {root}=archive(archivePath),snapshot=openSnapshot(root,revision_id??null);verifyPublishedArchive(root,snapshot,{deep:false});const sources=snapshot.source_manifest_ids.map(id=>sourceManifest(root,id));const records=sources.flatMap(source=>source.records.map(record=>({archive_revision_id:snapshot.revision_id,...record.evidence_ref})));for(const ref of records)sourceRecord(root,ref);return {archive_id:snapshot.archive_id,archive_revision_id:snapshot.revision_id,records};}

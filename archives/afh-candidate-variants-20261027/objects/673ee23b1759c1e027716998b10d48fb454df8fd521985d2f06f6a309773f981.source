@@ -1,0 +1,165 @@
+import {canonical,digest,hash,failure} from './protocol.js';
+import {normalizeRecord} from '../adapters.js';
+import {recordBytes} from './read-evidence.js';
+
+const unknown=()=>({kind:'unknown',value:null,precision:'order_only',timezone:null});
+export const occurrenceTables=['event_version','occurrence_version','representation','relation_version','occurrence_payload','content_object','identity_binding'];
+const execution=kind=>kind.startsWith('tool.')||kind.startsWith('mcp.');
+export const emptyOccurrenceState=()=>Object.fromEntries(occurrenceTables.map(table=>[table,new Map()]));
+
+export function prepareOccurrenceDelta(facts,previous){
+  const volatile=new Set(['revision_id','revision_no','recorded_seq','recorded_at','supersedes_revision_id']);
+  const substantive=value=>value.temporal?{...value,temporal:Object.fromEntries(Object.entries(value.temporal).filter(([key])=>!volatile.has(key)))}:value;
+  return Object.fromEntries(occurrenceTables.map(table=>[table,facts[table].flatMap(row=>{
+    const prior=previous[table].get(row.id),value=row.data_json;
+    if(prior&&canonical(substantive(prior))===canonical(substantive(value)))return [];
+    if(!value.temporal)return [row];
+    const {revision_id,...payload}=value.temporal;
+    const temporal={...payload,revision_no:(prior?.temporal?.revision_no??0)+1,supersedes_revision_id:prior?.temporal?.revision_id??null};
+    return [{...row,data_json:{...value,temporal:{...temporal,revision_id:'fact4-'+digest({...temporal,fact_sha256:digest(substantive(value))})}}}];
+  })]));
+}
+
+function temporal(id,entries,seq,recordedAt){
+  const refs=[...new Map(entries.map(e=>[e.record.evidence_ref.uri,e.record.evidence_ref])).values()];
+  const value={assertion_id:id,subject_id:id,branch_id:'main',revision_no:seq,recorded_seq:seq,recorded_at:recordedAt,supersedes_revision_id:null,valid_from:unknown(),valid_to:unknown(),provenance:{evidence_refs:refs,epistemic:'DIRECT_EVIDENCE',rule_id:'NATIVE_OCCURRENCE_CORRELATION',rule_version:'1',source_independence_ids:[...new Set(entries.map(e=>e.source.source_lineage_id))],authority_origin:'HARNESS',transformation:'EXTRACTED'},scope:{project_id:null,session_ids:[...new Set(entries.map(e=>e.event.session_id))],group_id:null,association_mode:'observed'}};
+  return {...value,revision_id:'fact4-'+digest(value)};
+}
+
+function exactDuration(native){
+  const value=native.duration;
+  if(value&&Number.isSafeInteger(value.secs??0)&&Number.isSafeInteger(value.nanos??0)&&(value.secs??0)>=0&&(value.nanos??0)>=0&&(value.nanos??0)<1e9)return (BigInt(value.secs??0)*1000000000n+BigInt(value.nanos??0)).toString();
+  const ms=native.duration_ms??(typeof value==='number'?value:null);
+  return typeof ms==='number'&&ms>=0&&Number.isSafeInteger(ms*1e6)?String(ms*1e6):null;
+}
+
+function terminalState(event,native){
+  const status=String(native.terminal_status??event.status??'UNKNOWN').toUpperCase();
+  if(native.approval_denied||status==='APPROVAL_DENIED'||status==='BLOCKED')return {lifecycle:'BLOCKED',outcome:'UNKNOWN',reason:'APPROVAL_DENIED'};
+  if(native.cancelled||status==='CANCELLED'||status==='CANCELED')return {lifecycle:'CANCELLED',outcome:'UNKNOWN',reason:'CANCELLED'};
+  if(native.timed_out||status==='TIMEOUT'||status==='TIMED_OUT')return {lifecycle:'FAILED',outcome:'OBSERVED_FAIL',reason:'TIMEOUT'};
+  const code=native.exit_code??event.metadata?.exitCode;
+  if(Number.isInteger(code))return {lifecycle:code===0?'COMPLETED':'FAILED',outcome:code===0?'OBSERVED_PASS':'OBSERVED_FAIL',reason:null};
+  if(native.explicit_success===true)return {lifecycle:'COMPLETED',outcome:'OBSERVED_PASS',reason:null};
+  if(native.explicit_success===false||native.explicit_error)return {lifecycle:'FAILED',outcome:'OBSERVED_FAIL',reason:null};
+  return {lifecycle:['COMPLETED','FAILED','RUNNING','INCOMPLETE'].includes(status)?status:'UNKNOWN',outcome:'UNKNOWN',reason:null};
+}
+
+function parsedArguments(event){
+  if(!event.kind.endsWith('.requested'))return {raw:null,value:null};
+  const raw=typeof event.input==='string'?event.input:null;
+  try{return {raw,value:JSON.parse(raw)};}catch{return {raw,value:null};}
+}
+
+function mappedEvent(event){
+  if(!event.legacy_event)return event;
+  const old=event.legacy_event;let metadata={};
+  try{metadata=JSON.parse(old.metadata_json??'{}');}catch{}
+  const native=metadata.occurrence_v1??{},argumentsPart=native.parts?.find(part=>part.role==='arguments');
+  // Legacy previews are not complete input bytes. Only a preserved full payload
+  // can supply arguments; the original legacy report keeps its producer limits.
+  return {...event,actor:{id:old.actor_id},status:old.status,input:argumentsPart?.text??null,output:null,metadata:{...metadata,occurrence_v1:{...native,native_call_id:old.call_id??null,turn_id:old.turn_id??null,encoding:old.subtype??old.kind}}};
+}
+
+// Decode the preserved producer layout, and prove the historical anchor before
+// introducing a Silver identity. No acquisition manifest is rewritten.
+export function decodeOccurrenceSource(root,source){
+  const cache=new Map(),raws=new Map(),placements=[];
+  for(const record of source.records){
+    if(!record.events.some(e=>!e.kind.startsWith('forensic.')&&!e.kind.startsWith('session.')))continue;
+    let raw;try{raw=JSON.parse(recordBytes(root,source,record,0,Number(record.byte_length),cache).bytes);}catch(error){throw failure('INTEGRITY_FAILED','Identity locator RAW cannot be decoded');}raws.set(record.ordinal,raw);
+    const candidates=[];for(const [arrayIndex,item]of (Array.isArray(raw)?raw:[raw]).entries()){
+      if(!item||typeof item!=='object')continue;
+      for(const normalized of normalizeRecord(item,{harness:source.harness,nativeId:source.native_id??'provisional',sessionNativeId:source.native_id??'provisional',sourceId:source.source_lineage_id,stateMetadata:{}}))candidates.push({normalized,item,prefix:Array.isArray(raw)?'/'+arrayIndex:'',subindex:candidates.length});
+    }
+    for(const acquired of record.events){
+      if(acquired.kind.startsWith('forensic.')||acquired.kind.startsWith('session.'))continue;
+      const legacy=!!acquired.legacy_event;
+      const matching=candidates.filter(c=>{
+        if(c.normalized.kind!==acquired.kind)return false;
+        if(legacy)return c.subindex===acquired.legacy_event.subordinal;
+        return 'evt4-'+digest([source.source_lineage_id,record.identity_epoch,record.ordinal,c.normalized.pointer??'',c.subindex,acquired.kind])===acquired.id;
+      });
+      if(matching.length!==1)throw failure('EVIDENCE_UNAVAILABLE','Historical producer locator is absent or ambiguous');
+      const c=matching[0],historicalPointer=c.normalized.pointer??'',pointer=c.prefix+(source.harness==='generic'&&historicalPointer==='/'?'':historicalPointer);
+      let node=raw;for(const token of pointer.split('/').slice(1)){const key=token.replaceAll('~1','/').replaceAll('~0','~');if(node===null||typeof node!=='object'||!Object.hasOwn(node,key))throw failure('EVIDENCE_UNAVAILABLE','Historical locator does not resolve in RAW');node=node[key];}
+      if(legacy&&acquired.id!=='evt4-'+digest([source.legacy_case_hash,acquired.legacy_event_id]))throw failure('INTEGRITY_FAILED','Legacy anchor differs from the preserved case binding');
+      const locator={source_revision_id:source.source_revision_id,source_lineage_id:source.source_lineage_id,record_identity_epoch:record.identity_epoch,record_ordinal:record.ordinal,json_pointer:pointer,event_subindex:c.subindex,record_sha256:record.sha256};
+      const event=mappedEvent(acquired),p=c.item.payload??c.item,item=p.item??{},message=event.kind.startsWith('message.'),native=event.metadata?.occurrence_v1??{},nativeId=message?(p.id??item.id??event.native_id??null):(p.call_id??p.id??item.id??native.native_call_id??event.native_id??null);
+      const role=message?['message',event.kind==='message.user'?'user':event.kind==='message.agent'?'assistant':'instruction']:event.kind==='tool.fragment'?['fragment',p.stream??'stdout',p.fragment_id??canonical([source.source_lineage_id,record.identity_epoch,record.ordinal,pointer,c.subindex])]:[event.kind.endsWith('.requested')?'request':event.kind.endsWith('.observed')?'observed_terminal':'terminal'];
+      const qualified=[source.source_lineage_id,record.identity_epoch,record.ordinal,historicalPointer,c.subindex];
+      placements.push({source,record,event,item:c.item,prefix:c.prefix,locator,qualified,acquisition_json_pointer:historicalPointer,representation_id:'rep4-'+digest([source.source_revision_id,record.ordinal,pointer,c.subindex]),nativeId,turn:p.turn_id??c.item.turn_id??native.turn_id??null,role,namespace:message?['message',role[1],'item']:['execution',item.id?'item':'call'],legacy});
+    }
+  }
+  // Only this synthetic profile carries a session-wide message guarantee.
+  let profile=false;const first=source.records[0];if(source.harness==='codex'&&first){try{const raw=raws.get(first.ordinal)??JSON.parse(recordBytes(root,source,first,0,Number(first.byte_length),cache).bytes);profile=raw?.type==='session_meta'&&raw.payload?.cli_version==='synthetic-spec-v1';}catch{}}
+  return placements.map(e=>({...e,guaranteedMessage:profile&&e.event.kind.startsWith('message.')&&!!e.nativeId}));
+}
+
+export function prepareOccurrenceFacts(sources,seq,recordedAt,root,previous=emptyOccurrenceState()){
+  const facts=Object.fromEntries(occurrenceTables.map(table=>[table,[]])),contents=new Map(),entries=new Map(),placements=[];
+  for(const source of sources)for(const entry of decodeOccurrenceSource(root,source)){placements.push(entry);entries.set(entry.event.id,entry);}
+  const groups=[],byKey=new Map(),byAnchor=new Map(),events=new Map();
+  for(const entry of entries.values()){
+    const {event,nativeId,namespace,turn}=entry,isExecution=execution(event.kind),requested=event.kind.endsWith('.requested'),fragment=event.kind==='tool.fragment';
+    const key=canonical([event.session_id,namespace,nativeId,turn,entry.guaranteedMessage?null:entry.source.source_lineage_id]),candidates=nativeId?byKey.get(key)??[]:[];let group=null;
+    if(!isExecution&&entry.guaranteedMessage)group=candidates.length===1?candidates[0]:null;
+    else if(isExecution&&requested){
+      // An exact repeat of the same producer request is another representation
+      // even when the invocation has already completed. A divergent source
+      // epoch does not prove that an otherwise identical request is the same act.
+      const duplicates=candidates.filter(c=>c.request
+        &&c.request.source.source_lineage_id===entry.source.source_lineage_id
+        &&c.request.record.identity_epoch===entry.record.identity_epoch
+        &&entry.event.native_id!==null
+        &&c.request.event.native_id===entry.event.native_id
+        &&c.request.record.sha256===entry.record.sha256
+        &&c.request.event.kind===event.kind);
+      if(duplicates.length===1)group=duplicates[0];
+    }
+    else if(isExecution&&!requested){
+      // A source rewrite can leave a historical start in a prior revision while
+      // introducing a terminal with the same native call ID in a new epoch.
+      // Correlate only with starts represented in this immutable source revision.
+      // An append carries its exact prior start forward, so it remains eligible.
+      const present=candidates.filter(c=>c.entries.some(e=>e.source.source_revision_id===entry.source.source_revision_id));
+      const starts=present.filter(c=>c.request),open=starts.filter(c=>!c.terminal);
+      if(starts.length===1&&open.length===1)group=open[0];
+      else if(!open.length&&present.length===1)group=present[0];
+    }
+    if(!group){const epoch=entry.guaranteedMessage?'session':'epoch:'+digest(['afh-identity03-v1',event.session_id,turn,entry.qualified]),keyId=nativeId?canonical([...namespace,nativeId]):canonical([isExecution?'execution':'message','anchor',entry.qualified]);group={id:'occ4-'+digest([event.session_id,epoch,keyId]),epoch,nativeId,entries:[],request:null,terminal:null,ambiguous:isExecution&&!requested&&!fragment&&event.kind.endsWith('.completed')};groups.push(group);if(nativeId){candidates.push(group);byKey.set(key,candidates);}}
+    entry.canonicalId=nativeId?'evt4-'+digest([event.session_id,group.epoch,event.kind,nativeId,canonical(entry.role)]):'evt4-'+digest([...entry.qualified,canonical(entry.role)]);entry.group=group;group.entries.push(entry);byAnchor.set(event.id,entry);
+    if(requested&&!group.request)group.request=entry;else if(isExecution&&!requested&&!fragment)group.terminal=entry;
+  }
+  const add=(table,data)=>facts[table].push({id:data.id,commit_seq:seq,data_json:data});
+  for(const group of groups){
+    const first=group.entries[0],last=group.terminal??first,event=first.event,native=last.event.metadata?.occurrence_v1??{},args=parsedArguments(group.request?.event??event),isExecution=execution(event.kind),command=args.value?.cmd??args.value?.command??event.metadata?.command??null;
+    const state=group.terminal?terminalState(last.event,native):isExecution?{lifecycle:'INCOMPLETE',outcome:'UNKNOWN',reason:null}:{lifecycle:'COMPLETED',outcome:'UNKNOWN',reason:null};
+    const occurrence={id:group.id,session_id:event.session_id,kind:isExecution?'execution':event.kind,actor_id:event.actor?.id??null,identity_epoch:group.epoch,native_id:group.nativeId,...state,exit_code:Number.isInteger(native.exit_code??last.event.metadata?.exitCode)?native.exit_code??last.event.metadata.exitCode:null,command:typeof command==='string'?command:null,arguments_raw:args.raw,cwd:native.cwd||args.value?.workdir||args.value?.cwd||event.metadata?.cwd||null,started:unknown(),ended:unknown(),duration_ns:exactDuration(native),clock_domain:native.clock_domain??null,effects_status:'UNKNOWN',payloads:[],temporal:temporal(group.id,group.entries,seq,recordedAt)};
+    if(group.ambiguous)occurrence.reason='AMBIGUOUS_CORRELATION';
+    for(const entry of group.entries){
+      const acquired=entry.event,ref={...entry.record.evidence_ref,json_pointer:entry.locator.json_pointer},id=entry.canonicalId,prior=events.get(id),ownEntries=prior?[...prior.entries,entry]:[entry];
+      events.set(id,{entries:ownEntries,value:{id,session_id:occurrence.session_id,occurrence_id:group.id,kind:acquired.kind,actor_id:acquired.actor?.id??null,text:acquired.input||acquired.output||null,temporal:temporal(id,ownEntries,seq,recordedAt),evidence_refs:ownEntries.map(e=>({...e.record.evidence_ref,json_pointer:e.locator.json_pointer}))}});
+      for(const [index,part]of (acquired.metadata?.occurrence_v1?.parts??[]).entries()){
+        const bytes=Buffer.from(part.text),sha=hash(bytes),payload={role:part.role,evidence_refs:[{...ref,json_pointer:entry.prefix+part.json_pointer}],content_sha256:sha,bytes:bytes.length,availability:'AVAILABLE'};occurrence.payloads.push(payload);contents.set(sha,bytes);add('occurrence_payload',{id:'pay4-'+digest([group.id,acquired.id,index]),occurrence_id:group.id,event_id:id,...payload,...(part.extraction?{extraction:part.extraction}:{})});
+      }
+      if(group.request&&acquired.kind.endsWith('.completed')&&!group.ambiguous){const rid='rel4-'+digest([id,group.request.canonicalId,'RESULT_OF']);add('relation_version',{id:rid,from_id:id,to_id:group.request.canonicalId,from_type:'event',to_type:'event',type:'RESULT_OF',grade:'EXPLICIT',temporal:temporal(rid,[...group.entries.filter(e=>e.canonicalId===id),group.request],seq,recordedAt)});}
+    }
+    add('occurrence_version',occurrence);
+  }
+  for(const {value}of events.values())add('event_version',value);
+  const oldBindings=[...previous.identity_binding.values()];
+  for(const placement of placements){
+    const current=byAnchor.get(placement.event.id),group=current.group,ref={...placement.record.evidence_ref,json_pointer:placement.locator.json_pointer};
+    add('representation',{id:placement.representation_id,event_id:current.canonicalId,occurrence_id:group.id,encoding_kind:placement.event.metadata?.occurrence_v1?.encoding??placement.event.kind,raw_ref:ref});
+    const priorSame=oldBindings.filter(b=>b.acquired_alias===placement.event.id&&b.canonical_target===current.canonicalId&&b.representation_id===placement.representation_id);
+    if(priorSame.length){for(const b of priorSame)add('identity_binding',b);continue;}
+    const superseded=new Set(oldBindings.map(b=>b.supersedes_binding_id).filter(Boolean)),retarget=oldBindings.filter(b=>b.acquired_alias===placement.event.id&&b.canonical_target!==current.canonicalId&&!superseded.has(b.id));
+    for(const prior of retarget.length?retarget:[null]){
+      const value={namespace:'ACQUIRED_ANCHOR',acquired_alias:placement.event.id,canonical_target:current.canonicalId,locator:placement.locator,representation_id:placement.representation_id,acquisition_json_pointer:placement.acquisition_json_pointer,rule_id:'afh-identity03',rule_version:'afh-identity03-v1',decoder_id:placement.legacy?'legacy-preserved-locator':'acquired02-raw-locator',decoder_version:'1',commit_seq:seq,supersedes_binding_id:prior?.id??null,equivalence_proof_refs:prior?[current.record.evidence_ref.uri]:[]};add('identity_binding',{id:'bind4-'+digest(value),...value});
+    }
+  }
+  for(const [sha,bytes]of contents)add('content_object',{id:sha,object:{sha256:sha,length:bytes.length,stored_sha256:sha,stored_length:bytes.length,compression:'none'}});
+  for(const table of occurrenceTables){const unique=new Map();for(const row of facts[table]){const prior=unique.get(row.id);if(prior&&canonical(prior)!==canonical(row))throw failure('INTEGRITY_FAILED','Conflicting Silver rows share an identity in '+table);unique.set(row.id,row);}facts[table]=[...unique.values()];}
+  return {facts,contents};
+}

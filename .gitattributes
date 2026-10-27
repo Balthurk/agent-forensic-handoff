@@ -11,3 +11,6 @@
 
 # Preserve the reviewed product snapshot byte-for-byte.
 /products/orbita/** -text
+
+# Preserve archived historical source bytes, including line endings.
+/archives/afh-candidate-variants-20261027/** -text
