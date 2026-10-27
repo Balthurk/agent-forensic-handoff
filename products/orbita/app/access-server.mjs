@@ -4,8 +4,9 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
 import {AccessStore,demand,hash,ACCESS_VERSION} from './access-store.mjs';
-import {requestRole} from './access-policy.mjs';
+import {requestRole,assertManagedRequest,managedCapabilities} from './access-policy.mjs';
 import {Workers} from './access-workers.mjs';
+import {responseLease} from './worker-activity.mjs';
 import {Lifecycle} from './access-lifecycle.mjs';
 import {plainPath} from './store-access.mjs';
 
@@ -20,14 +21,15 @@ export function createAccessServer({root,port=4492,clock}={}){
  const lock=plainPath(path.join(store.root,'service.lock')),lockId=randomUUID();
  if(fs.existsSync(lock)){const old=JSON.parse(fs.readFileSync(lock,'utf8'));demand(Number.isInteger(old.pid)&&!alive(old.pid),'ACCESS_SERVICE_ALREADY_RUNNING',409);fs.unlinkSync(lock);}
  fs.writeFileSync(lock,JSON.stringify({pid:process.pid,id:lockId}),{flag:'wx',mode:0o600});
- let actualPort=port,closed=false,loginWindow={at:0,count:0};const origins=()=>['http://127.0.0.1:'+actualPort,'http://localhost:'+actualPort];
+ let actualPort=port,closed=false,closing=null,storeClosed=false,loginWindow={at:0,count:0};const origins=()=>['http://127.0.0.1:'+actualPort,'http://localhost:'+actualPort];
  const cookieName=()=> 'orbita_access_'+actualPort;
  function secret(req){const auth=req.headers.authorization;const cookies=String(req.headers.cookie||'').split(';').map(x=>x.trim()).filter(x=>x.startsWith(cookieName()+'='));demand(cookies.length<=1&&!(auth&&cookies.length),'ACCESS_CREDENTIAL_AMBIGUOUS',401);if(auth){demand(/^Bearer [A-Za-z0-9_-]{43}$/.test(auth),'ACCESS_SESSION_REQUIRED',401);return auth.slice(7);}return cookies[0]?.slice(cookieName().length+1);}
  function mutation(req,session){
   demand(req.headers['content-type']?.split(';')[0]==='application/json','ACCESS_JSON_REQUIRED',415);
   if(!req.headers.authorization){demand(origins().includes(req.headers.origin),'ACCESS_ORIGIN_REQUIRED',403);demand(req.headers['x-orbita-csrf']===session.csrf,'ACCESS_CSRF_REQUIRED',403);}
  }
- const server=http.createServer(async(req,res)=>{try{
+ const server=http.createServer(async(req,res)=>{let finishRequest=()=>{};try{
+  demand(!closed&&!closing,'ACCESS_SERVICE_STOPPING',503);
   demand(origins().map(x=>new URL(x).host).includes(req.headers.host),'ACCESS_HOST',403);
   demand(!req.headers.origin||origins().includes(req.headers.origin),'ACCESS_ORIGIN',403);
   demand(!req.headers['sec-fetch-site']||['same-origin','none'].includes(req.headers['sec-fetch-site']),'ACCESS_FETCH_SITE',403);
@@ -43,7 +45,12 @@ export function createAccessServer({root,port=4492,clock}={}){
   }
   const credential=secret(req);let session;
   try{session=store.session(credential);}catch(e){if(p==='/'&&req.method==='GET'){res.writeHead(302,{...security,location:'/access'});return res.end();}throw e;}
-  if(p==='/access/api/session'&&req.method==='GET')return json(res,200,{version:ACCESS_VERSION,user:{id:session.user,name:session.name,admin:session.admin},csrf:session.csrf,selected:session.workspace,spaces:store.list(session.user).filter(w=>session.kind!=='agent'||w.id===session.workspace),inference:'disabled_in_managed_mode',boundary:'local_application_not_windows_administrator'});
+  if(p==='/access/api/session'&&req.method==='GET'){
+   const spaces=store.list(session.user).filter(w=>session.kind!=='agent'||w.id===session.workspace),selected=spaces.find(w=>w.id===session.workspace&&w.available);
+   const access=selected?store.authorize(credential,selected.id,'reader'):null;
+   const capabilities={...managedCapabilities(access?.role),binding:access?{workspace:selected.id,workspaceRevision:access.workspace.revision,membershipRevision:access.membershipRevision,role:access.role}:null};
+   return json(res,200,{version:ACCESS_VERSION,user:{id:session.user,name:session.name,admin:session.admin},csrf:session.csrf,selected:session.workspace,spaces,capabilities,inference:'disabled_in_managed_mode',boundary:'local_application_not_windows_administrator'});
+  }
   if(p.startsWith('/access/api/')){
    if(req.method==='GET'&&p==='/access/api/members'){store.authorize(credential,u.searchParams.get('id'),'owner',{maintenance:true});return json(res,200,store.members(session.user,u.searchParams.get('id')));}
    if(req.method==='GET'&&p==='/access/api/backups'){store.authorize(credential,u.searchParams.get('id'),'owner',{maintenance:true});return json(res,200,lifecycle.archives(session.user,u.searchParams.get('id')));}
@@ -80,14 +87,15 @@ export function createAccessServer({root,port=4492,clock}={}){
   if(p.startsWith('/api/')&&session.kind==='browser')demand(req.headers['x-orbita-workspace']===id,'ACCESS_TAB_WORKSPACE_CHANGED',409);
   if(req.method==='GET'&&!p.startsWith('/api/')){
    store.authorize(credential,id,'reader');
-   if(p==='/'){let html=fs.readFileSync(path.join(ROOT,'web','index.html'),'utf8');html=html.replace(/<script type="module" src="[^"]+"><\/script>/g,'').replace('</body>','<script type="module" src="/managed-app.mjs"></script></body>');res.writeHead(200,{...security,'content-type':'text/html; charset=utf-8'});return res.end(html);}
+   if(p==='/'){let html=fs.readFileSync(path.join(ROOT,'web','index.html'),'utf8');html=html.replace('<html ','<html data-access-mode="managed" ').replace(/<script type="module" src="[^"]+"><\/script>/g,'').replace('</body>','<script type="module" src="/managed-app.mjs"></script></body>');res.writeHead(200,{...security,'content-type':'text/html; charset=utf-8'});return res.end(html);}
    const file=p==='/app.js'?'web.js':p.slice(1);demand(/^[a-z0-9-]+\.(?:js|mjs|css)$/.test(file)&&fs.existsSync(path.join(ROOT,'web',file)),'ACCESS_NOT_FOUND',404);res.writeHead(200,{...security,'content-type':file.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8'});return res.end(fs.readFileSync(path.join(ROOT,'web',file)));
   }
+  // Protect the whole upload and response, including waits before get().
+  store.authorize(credential,id,'reader');finishRequest=responseLease(res,workers.hold(id));
   let b={};if(req.method!=='GET'){mutation(req,session);b=await body(req);}
   const role=requestRole(req.method,p,b),access=store.authorize(credential,id,role);
   // Managed accounts do not silently inherit the host's Codex/Jev credentials.
-  demand(p!=='/api/ask'&&!['/api/semantic/extract','/api/semantic/review','/api/corpus-plan','/api/generations/replay'].includes(p),'ACCESS_MANAGED_INFERENCE_NOT_CONNECTED',403);
-  if(p==='/api/routing')demand(!b.policy||b.policy==='local','ACCESS_MANAGED_INFERENCE_NOT_CONNECTED',403);
+  assertManagedRequest(p,b);
   const worker=await workers.get(id);store.fence(credential,access,role);
   const controller=new AbortController(),cancel=()=>{if(!res.writableEnded)controller.abort();};req.once('aborted',cancel);res.once('close',cancel);
   const timer=setTimeout(()=>controller.abort(),180000);timer.unref();
@@ -99,9 +107,13 @@ export function createAccessServer({root,port=4492,clock}={}){
    for(const h of ['content-disposition','x-content-sha256'])if(upstream.headers.has(h))headers[h]=upstream.headers.get(h);
    res.writeHead(upstream.status,headers);res.end(bytes);
   }finally{clearTimeout(timer);req.removeListener('aborted',cancel);res.removeListener('close',cancel);}
- }catch(e){if(!res.destroyed&&!res.writableEnded)json(res,e.status||503,{error:e.message?.startsWith('ACCESS_')?e.message:'ACCESS_OPERATION_INCOMPLETE'});}});
+ }catch(e){if(!res.destroyed&&!res.writableEnded)json(res,e.status||503,{error:e.message?.startsWith('ACCESS_')?e.message:'ACCESS_OPERATION_INCOMPLETE'});}finally{finishRequest();}});
  server.on('listening',()=>actualPort=server.address().port);server.requestTimeout=190000;server.headersTimeout=15000;
- async function close(){if(closed)return;closed=true;await workers.close();await new Promise(resolve=>server.close(resolve));store.close();if(fs.existsSync(lock)&&JSON.parse(fs.readFileSync(lock,'utf8')).id===lockId)fs.unlinkSync(lock);}
+ function close(){
+  if(closed)return Promise.resolve();if(closing)return closing;
+  const task=(async()=>{await workers.close();await new Promise(resolve=>server.close(resolve));if(!storeClosed){store.close();storeClosed=true;}if(fs.existsSync(lock)&&JSON.parse(fs.readFileSync(lock,'utf8')).id===lockId)fs.unlinkSync(lock);closed=true;})();
+  closing=task;void task.catch(()=>{if(closing===task)closing=null;});return task;
+ }
  return {server,store,workers,lifecycle,close};
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){

@@ -3,9 +3,9 @@ const panel=document.createElement('details');panel.className='retrieval-setting
 panel.innerHTML=`<summary>Casos de decisión · opciones, motivos y resultados</summary>
 <p>Compara alternativas con sus fuentes y conserva cada revisión. Una elección registrada es una declaración local; no ejecuta acciones. Las evaluaciones y los resultados siguen siendo declaraciones atribuibles.</p>
 <label>Filtrar expedientes<input id="decisionQuestion" placeholder="Objetivo, alternativa o resultado"></label>
-<div class="p1-actions"><button id="decisionSearch">Ver expedientes</button><button id="decisionNew">Nuevo expediente</button></div>
+<div class="p1-actions"><button id="decisionSearch">Ver expedientes</button><button id="decisionNew" data-access-action="POST /api/decisions#frame">Nuevo expediente</button></div>
 <p id="decisionStatus" role="status"></p><div id="decisionResults"></div>
-<details id="decisionEditor"><summary>Encuadre del expediente</summary><form id="decisionForm">
+<details id="decisionEditor" data-access-action="POST /api/decisions#frame"><summary>Encuadre del expediente</summary><form id="decisionForm">
 <label>Identificador estable<input id="decisionId" required pattern="[A-Za-z0-9][A-Za-z0-9._:-]{0,127}"></label>
 <label>Título<input id="decisionTitle" required maxlength="500"></label><label>Autor del encuadre<input id="decisionActor" required value="editor local"></label>
 <div id="decisionObjective"></div><h3>Restricciones obligatorias</h3><div id="decisionConstraints"></div><button type="button" id="decisionAddConstraint">Añadir restricción</button>
@@ -15,7 +15,7 @@ panel.innerHTML=`<summary>Casos de decisión · opciones, motivos y resultados</
 <h3>Información pendiente</h3><div id="decisionGaps"></div><button type="button" id="decisionAddGap">Añadir laguna</button>
 <div id="decisionExpected"></div><div id="decisionReview"></div><label>Motivo de este encuadre o revisión<textarea id="decisionReason" required maxlength="2000"></textarea></label>
 <button id="decisionSave" type="submit">Guardar encuadre</button></form></details>
-<details id="decisionActionEditor"><summary>Registrar una declaración o resultado</summary><p id="decisionActionBase"></p><form id="decisionActionForm">
+<details id="decisionActionEditor" data-access-action="POST /api/decisions#act"><summary>Registrar una declaración o resultado</summary><p id="decisionActionBase"></p><form id="decisionActionForm">
 <label>Acción<select id="decisionAction"><option value="choose">Registrar elección</option><option value="defer">Aplazar</option><option value="reject">Rechazar</option><option value="reopen">Reabrir</option><option value="result">Registrar resultado observado</option></select></label>
 <label>Operador que declara<input id="decisionOperator" required value="operador local"></label><label id="decisionChoiceLabel">Alternativa<select id="decisionChoice"></select></label>
 <div id="decisionDeclaration"></div><div id="decisionObserved"></div><button id="decisionActSave" type="submit">Registrar declaración</button></form></details>
@@ -120,8 +120,8 @@ function render(row,parent,actions=true){const d=row.record.payload.decision_cas
  element('p','Supuestos: '+(c.assumptions.map(x=>x.text).join(' · ')||'Ninguno registrado'),card);element('p','Pendiente: '+(c.information_gaps.map(x=>x.text).join(' · ')||'Sin lagunas registradas; no acredita completitud'),card);element('p','Revisar cuando: '+c.review_condition.text,card);
  const quotes=element('details',undefined,card);element('summary','Fuentes y citas de esta versión',quotes);for(const [field,ws] of Object.entries(d.bindings)){element('strong',field,quotes);for(const w of ws)element('blockquote',w.quote+' — '+w.sourceRole+' · '+w.sourceConversationId,quotes);}
  if(actions){const bar=element('div',undefined,card);bar.className='p1-actions';button(bar,'Historial',async()=>{const history=await api('history',{id:row.reference.caseId});const section=element('details',undefined,card);section.open=true;element('summary',history.length+' versiones verificadas',section);for(const old of history)render(old,section,false);});
-  if(['pending_choice','deferred','rejected'].includes(d.status))button(bar,'Revisar encuadre',async()=>edit(await api('get',{id:row.reference.caseId})));
-  button(bar,'Registrar declaración o resultado',()=>openAction(row,d.status==='chosen'?'result':d.status==='result_recorded'?'reopen':'choose'));
+  if(['pending_choice','deferred','rejected'].includes(d.status))button(bar,'Revisar encuadre',async()=>edit(await api('get',{id:row.reference.caseId}))).dataset.accessAction='POST /api/decisions#frame';
+  button(bar,'Registrar declaración o resultado',()=>openAction(row,d.status==='chosen'?'result':d.status==='result_recorded'?'reopen':'choose')).dataset.accessAction='POST /api/decisions#act';
  }
 }
 $('decisionSearch').onclick=()=>busy($('decisionSearch'),async()=>{const p=await api('list',{question:$('decisionQuestion').value});renderResults(p.items);status.textContent=`${p.items.length} expedientes · ${p.outsideSelection} fuera de selección · ${p.omittedByBudget+p.omittedByLimit} omitidos por límites. ${p.errors.length?'Consulta incompleta: '+p.errors.map(e=>e.error).join('; '):'Fuentes verificadas; evaluaciones declaradas.'}`;});

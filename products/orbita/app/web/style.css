@@ -24,3 +24,7 @@
 
 /* Large catalogues are navigation metadata, never integrity evidence. */
 .source-filter{width:100%;min-width:0;margin:0 0 9px;padding:10px;border:1px solid #51416d;border-radius:9px;background:#141626;color:var(--text);font-size:11px}.source-catalogue-hint{font-size:10px;line-height:1.6;color:var(--muted);margin:0 0 12px}.source-filter[hidden],.source-catalogue-hint[hidden]{display:none}
+
+/* Managed permission gates survive modules resetting their busy/disabled state. */
+html[data-access-mode="managed"]:not([data-access-ready]) [data-access-action],
+[data-access-denied="true"] { display: none !important; }

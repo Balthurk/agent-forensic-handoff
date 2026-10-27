@@ -1,6 +1,11 @@
 import {session} from './access-session.mjs';
+import {installManagedPermissions} from './managed-permissions.mjs';
+installManagedPermissions(session);
 const {ready}=await import('/app.js');await ready;
-await Promise.all(['/learning-web.mjs','/decisions-web.mjs','/documents-web.mjs','/collectives-web.mjs','/supports-web.mjs','/identities-web.mjs','/volume-web.mjs'].map(x=>import(x)));
+document.querySelector('#auth').textContent='Espacio autenticado';
+document.querySelector('.model-wrap').dataset.accessAction='POST /api/ask';
+document.querySelector('#routingConnection').dataset.accessAction='POST /api/ask';
+await Promise.all(['/learning-web.mjs','/decisions-web.mjs','/documents-web.mjs','/collectives-web.mjs','/supports-web.mjs','/identities-web.mjs','/volume-web.mjs','/retrospectives-web.mjs','/decision-intelligence-web.mjs','/causal-web.mjs','/graph-publication-web.mjs'].map(x=>import(x)));
 const w=session.spaces.find(w=>w.id===session.selected),crumb=document.querySelector('.breadcrumb');if(crumb)crumb.textContent=(w?.name||'Espacio')+' / '+session.user.name;
 const note=document.querySelector('.composer-note');note.textContent='Espacio autenticado · usa «Ver contexto sin LLM». La inferencia externa requiere una conexión propia.';
 const preview=()=>document.querySelector('#previewButton').click(),question=document.querySelector('#question'),send=document.querySelector('#send');send.setAttribute('aria-label','Recuperar contexto');send.title='Recuperar contexto verificado';

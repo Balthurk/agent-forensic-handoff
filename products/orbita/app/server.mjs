@@ -1,4 +1,5 @@
 import {bootstrapLibrary} from './library-catalogue.mjs';
+import {WorkerActivity} from './worker-activity.mjs';
 import {graphOperation} from './graph-publication.mjs';
 import {causalOperation} from './causal.mjs';
 import {intelligenceOperation} from './decision-intelligence.mjs';
@@ -28,6 +29,12 @@ import {supportOperation,supportSources} from './justifications.mjs';
 import {createBackup,restoreBackup,restoreState,activateRestore,disjoint} from './recovery.mjs';
 import {reevaluationOperation,resumeAutomaticReevaluations,pauseAutomaticReevaluations} from './reevaluation.mjs';
 const ROOT=path.dirname(fileURLToPath(import.meta.url)),jobs=new Map();let PORT=Number(process.env.AFH_COSMOS_PORT||4322),active=0,importing=false,semanticBusy=false,recoveryBusy=false,inFlight=0;
+const activity=new WorkerActivity();
+if(process.env.AFH_MANAGED==='1')process.on('message',m=>{
+ if(!/^[a-f0-9-]{36}$/.test(m?.nonce||''))return;
+ if(m.type==='orbita-quiesce')process.send?.({type:'orbita-quiesced',nonce:m.nonce,idle:activity.quiesce(m.nonce)});
+ if(m.type==='orbita-resume')process.send?.({type:'orbita-resumed',nonce:m.nonce,resumed:activity.resume(m.nonce)});
+});
 const json=(res,status,value)=>{res.writeHead(status,{'content-type':'application/json; charset=utf-8','cache-control':'no-store'});res.end(JSON.stringify(value));};
 async function read(req){let n=0,chunks=[];for await(const d of req){n+=d.length;if(n>64*1024*1024)throw new Error('El archivo supera 64 MB');chunks.push(d);}return JSON.parse(Buffer.concat(chunks).toString()||'{}');}
 const planSchema={type:'object',additionalProperties:false,required:['terms'],properties:{terms:{type:'array',items:{type:'string'}}}};
@@ -55,7 +62,7 @@ export async function answerQuestion({question,conversationIds,model='gpt-6.1-so
  await cancellationPoint(signal);budget.check();if(persist){fs.mkdirSync(path.join(DATA,'answers'),{recursive:true});fs.writeFileSync(path.join(DATA,'answers',receipt.id+'.json'),JSON.stringify(receipt,null,2));}return receipt;
  }finally{budget.close();}
 }
-const server=http.createServer(async(req,res)=>{inFlight++;const caller=new AbortController();const cancelCaller=()=>{if(!res.writableEnded)caller.abort(new Error('CALLER_DISCONNECTED'));};req.on('aborted',cancelCaller);res.on('close',cancelCaller);res.on('finish',()=>req.removeListener('aborted',cancelCaller));try{
+const server=http.createServer(async(req,res)=>{const finishRequest=activity.request(res);if(!finishRequest)return json(res,503,{error:'ACCESS_WORKER_QUIESCED'});inFlight++;const caller=new AbortController();const cancelCaller=()=>{if(!res.writableEnded)caller.abort(new Error('CALLER_DISCONNECTED'));};req.on('aborted',cancelCaller);res.on('close',cancelCaller);res.on('finish',()=>req.removeListener('aborted',cancelCaller));try{
  if(process.env.AFH_PRIVATE_TOKEN&&req.headers['x-orbita-worker']!==process.env.AFH_PRIVATE_TOKEN)return json(res,401,{error:'ACCESS_WORKER_AUTH_REQUIRED'});
  const host=req.headers.host;if(![`127.0.0.1:${PORT}`,`localhost:${PORT}`].includes(host)){json(res,403,{error:'Host no permitido'});return;}
  if(req.headers.origin&&!['http://127.0.0.1:'+PORT,'http://localhost:'+PORT].includes(req.headers.origin)){json(res,403,{error:'Origen no permitido'});return;}
@@ -68,17 +75,17 @@ const server=http.createServer(async(req,res)=>{inFlight++;const caller=new Abor
   const b=await read(req);if(!['backup','restore'].includes(b.op))throw new Error('RECOVERY_UNKNOWN_OPERATION');if(b.op==='restore')disjoint(DATA,b.destination);
   if(recoveryBusy||inFlight!==1||[...jobs.values()].some(j=>j.status==='running'))return json(res,409,{error:'RECOVERY_STORE_BUSY: espera a que terminen las operaciones'});
   pauseAutomaticReevaluations(true);recoveryBusy=true;
-  const id=randomUUID(),job={id,status:'running',phase:'Verificando memoria completa'};jobs.set(id,job);json(res,202,{id});
-  const action=b.op==='backup'?createBackup({source:DATA,archive:b.archive,password:b.password,ownSession:true}):restoreBackup({archive:b.archive,destination:b.destination,password:b.password});
-  action.then(result=>Object.assign(job,{status:'complete',result})).catch(e=>Object.assign(job,{status:'error',error:e.message})).finally(()=>{recoveryBusy=false;pauseAutomaticReevaluations(false);});return;
+  const id=randomUUID(),job={id,status:'running',phase:'Verificando memoria completa'};jobs.set(id,job);
+  activity.background(()=>{const action=b.op==='backup'?createBackup({source:DATA,archive:b.archive,password:b.password,ownSession:true}):restoreBackup({archive:b.archive,destination:b.destination,password:b.password});
+   return action.then(result=>Object.assign(job,{status:'complete',result})).catch(e=>Object.assign(job,{status:'error',error:e.message})).finally(()=>{recoveryBusy=false;pauseAutomaticReevaluations(false);});});json(res,202,{id});return;
  }
 
  if(req.method==='POST'&&u.pathname==='/api/reevaluation'){
   const {op,...input}=await read(req);
   if(!['run','drain'].includes(op))return json(res,200,await reevaluationOperation(op,input,{signal:caller.signal}));
   if(semanticBusy)return json(res,429,{error:'Hay una operación semántica en curso'});
-  const id=randomUUID(),job={id,status:'running',phase:'Revisando nueva evidencia',controller:new AbortController()};jobs.set(id,job);semanticBusy=true;json(res,202,{id});
-  reevaluationOperation(op,input,{signal:job.controller.signal}).then(result=>Object.assign(job,{status:'complete',result})).catch(e=>Object.assign(job,{status:job.controller.signal.aborted?'cancelled':'error',error:e.message})).finally(()=>semanticBusy=false);return;
+  const id=randomUUID(),job={id,status:'running',phase:'Revisando nueva evidencia',controller:new AbortController()};jobs.set(id,job);semanticBusy=true;
+  activity.background(()=>reevaluationOperation(op,input,{signal:job.controller.signal}).then(result=>Object.assign(job,{status:'complete',result})).catch(e=>Object.assign(job,{status:job.controller.signal.aborted?'cancelled':'error',error:e.message})).finally(()=>semanticBusy=false));json(res,202,{id});return;
  }
  if(req.method==='GET'&&u.pathname==='/api/federation/catalog')return json(res,200,storeCatalog(u.searchParams.get('id'),u.searchParams.get('scope')));
  if(req.method==='GET'&&u.pathname==='/api/federation/stores')return json(res,200,listStores());
@@ -90,7 +97,7 @@ const server=http.createServer(async(req,res)=>{inFlight++;const caller=new Abor
  if(req.method==='GET'&&u.pathname==='/api/documents'){reconcileDocuments();return json(res,200,documentStatus());}
  if(req.method==='POST'&&u.pathname==='/api/documents'){const result=await importDocument(await read(req));return json(res,200,{result,library:await getLibrary()});}
  if(req.method==='GET'&&u.pathname==='/api/corpus-plan')return json(res,200,u.searchParams.has('id')?corpusPlanStatus(u.searchParams.get('id'),{cursor:u.searchParams.get('cursor')}):listCorpusPlans());
- if(req.method==='POST'&&u.pathname==='/api/corpus-plan'){const b=await read(req);if(!['plan','run'].includes(b.op))throw new Error('CORPUS_PLAN_OPERATION');if(semanticBusy)return json(res,429,{error:'Hay una operación semántica en curso'});const id=randomUUID(),job={id,status:'running',phase:b.op==='plan'?'Fijando el corte y sus pendientes':'Procesando lote de memoria',controller:new AbortController()};jobs.set(id,job);semanticBusy=true;json(res,202,{id});const action=b.op==='plan'?createCorpusPlan({...b,signal:job.controller.signal}):runCorpusPlan({...b,signal:job.controller.signal});action.then(result=>Object.assign(job,{status:'complete',result})).catch(e=>Object.assign(job,{status:job.controller.signal.aborted?'cancelled':'error',error:e.message})).finally(()=>semanticBusy=false);return;}
+ if(req.method==='POST'&&u.pathname==='/api/corpus-plan'){const b=await read(req);if(!['plan','run'].includes(b.op))throw new Error('CORPUS_PLAN_OPERATION');if(semanticBusy)return json(res,429,{error:'Hay una operación semántica en curso'});const id=randomUUID(),job={id,status:'running',phase:b.op==='plan'?'Fijando el corte y sus pendientes':'Procesando lote de memoria',controller:new AbortController()};jobs.set(id,job);semanticBusy=true;activity.background(()=>{const action=b.op==='plan'?createCorpusPlan({...b,signal:job.controller.signal}):runCorpusPlan({...b,signal:job.controller.signal});return action.then(result=>Object.assign(job,{status:'complete',result})).catch(e=>Object.assign(job,{status:job.controller.signal.aborted?'cancelled':'error',error:e.message})).finally(()=>semanticBusy=false);});json(res,202,{id});return;}
  if(req.method==='GET'&&u.pathname==='/api/pipeline')return json(res,200,pipelineStatus());
  if(req.method==='POST'&&u.pathname==='/api/pipeline')return json(res,200,await runPipeline({...await read(req),signal:caller.signal}));
  if(req.method==='POST'&&u.pathname==='/api/turns')return json(res,200,await saveTurn(await read(req)));
@@ -115,9 +122,9 @@ const server=http.createServer(async(req,res)=>{inFlight++;const caller=new Abor
   return json(res,200,await knowledgeOperation(b.op,b.conversationIds,Object.fromEntries(Object.entries(input).filter(([,v])=>v!==undefined))));
  }
  if(req.method==='POST'&&['/api/semantic/extract','/api/semantic/review'].includes(u.pathname)){
-  if(semanticBusy)return json(res,429,{error:'Hay una operación semántica en curso'});const b=await read(req),id=randomUUID(),job={id,status:'running',phase:'Verificando fuentes'};jobs.set(id,job);semanticBusy=true;json(res,202,{id});
+  if(semanticBusy)return json(res,429,{error:'Hay una operación semántica en curso'});const b=await read(req),id=randomUUID(),job={id,status:'running',phase:'Verificando fuentes'};jobs.set(id,job);semanticBusy=true;
   const action=u.pathname.endsWith('/extract')?extractKnowledge:reviewKnowledge;
-  action(b,phase=>job.phase=phase).then(result=>Object.assign(job,{status:'complete',result})).catch(e=>Object.assign(job,{status:'error',error:e.message})).finally(()=>semanticBusy=false);return;
+  activity.background(()=>action(b,phase=>job.phase=phase).then(result=>Object.assign(job,{status:'complete',result})).catch(e=>Object.assign(job,{status:'error',error:e.message})).finally(()=>semanticBusy=false));json(res,202,{id});return;
  }
  if(req.method==='POST'&&u.pathname==='/api/learning'){const {op,...input}=await read(req);return json(res,200,op==='sources'?await learningSources(input.conversationIds,{signal:caller.signal}):await learningOperation(op,input,{signal:caller.signal}));}
  if(req.method==='POST'&&u.pathname==='/api/decisions'){const {op,...input}=await read(req);return json(res,200,op==='sources'?await decisionSources(input.conversationIds,{signal:caller.signal}):await decisionOperation(op,input,{signal:caller.signal}));}
@@ -134,16 +141,16 @@ const server=http.createServer(async(req,res)=>{inFlight++;const caller=new Abor
  if(req.method==='POST'&&u.pathname==='/api/retrospectives'){const {op,...input}=await read(req);return json(res,200,await retrospectiveOperation(op,input,{signal:caller.signal}));}
  if(req.method==='POST'&&u.pathname==='/api/volume')return json(res,200,await volumeOperation(await read(req),{signal:caller.signal}));
  if(req.method==='POST'&&u.pathname==='/api/retrieve'){const b=await read(req);return json(res,200,await retrievePackage(b.question,b.conversationIds,{...b.retrieval,signal:caller.signal}));}
- if(req.method==='POST'&&u.pathname==='/api/index'){const b=await read(req),id=randomUUID(),job={id,status:'running',phase:'Preparando índice local'};jobs.set(id,job);json(res,202,{id});indexConversations(b.conversationIds,phase=>job.phase=phase).then(result=>Object.assign(job,{status:'complete',result})).catch(e=>Object.assign(job,{status:'error',error:e.message}));return;}
+ if(req.method==='POST'&&u.pathname==='/api/index'){const b=await read(req),id=randomUUID(),job={id,status:'running',phase:'Preparando índice local'};jobs.set(id,job);activity.background(()=>indexConversations(b.conversationIds,phase=>job.phase=phase).then(result=>Object.assign(job,{status:'complete',result})).catch(e=>Object.assign(job,{status:'error',error:e.message})));json(res,202,{id});return;}
  if(req.method==='GET'&&u.pathname==='/api/history'){const dir=path.join(DATA,'answers'),items=fs.existsSync(dir)?fs.readdirSync(dir).filter(x=>/^[a-f0-9-]{36}\.json$/.test(x)).map(x=>{const a=JSON.parse(fs.readFileSync(path.join(dir,x),'utf8'));return{id:a.id,question:a.question,createdAt:a.createdAt,conversationIds:a.conversationIds};}).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)):[];return json(res,200,items);}
  if(req.method==='GET'&&u.pathname.startsWith('/api/answers/')){const id=u.pathname.split('/').pop();if(!/^[a-f0-9-]{36}$/.test(id))throw new Error('ID inválido');return json(res,200,JSON.parse(fs.readFileSync(path.join(DATA,'answers',id+'.json'),'utf8')));}
  if(req.method==='GET'&&u.pathname==='/api/evidence')return json(res,200,await getEvidence(u.searchParams.get('conversation'),u.searchParams.get('event')));
  if(req.method==='GET'&&u.pathname.startsWith('/api/jobs/')){const job=jobs.get(u.pathname.split('/').pop());return json(res,job?200:404,job||{error:'Consulta no encontrada'});}
- if(req.method==='POST'&&u.pathname==='/api/ask'){if(active>=2)return json(res,429,{error:'Hay dos consultas en curso; espera a que terminen.'});const body=await read(req),id=randomUUID(),job={id,status:'running',phase:'Preparando consulta'};jobs.set(id,job);active++;json(res,202,{id});answerQuestion({...body,signal:(job.controller=new AbortController()).signal},phase=>job.phase=phase).then(result=>{if(!job.controller.signal.aborted)Object.assign(job,{status:'complete',result});}).catch(e=>Object.assign(job,{status:job.controller.signal.aborted?'cancelled':'error',error:e.message})).finally(()=>active--);return;}
+ if(req.method==='POST'&&u.pathname==='/api/ask'){if(active>=2)return json(res,429,{error:'Hay dos consultas en curso; espera a que terminen.'});const body=await read(req),id=randomUUID(),job={id,status:'running',phase:'Preparando consulta'};jobs.set(id,job);active++;job.controller=new AbortController();activity.background(()=>answerQuestion({...body,signal:job.controller.signal},phase=>job.phase=phase).then(result=>{if(!job.controller.signal.aborted)Object.assign(job,{status:'complete',result});}).catch(e=>Object.assign(job,{status:job.controller.signal.aborted?'cancelled':'error',error:e.message})).finally(()=>active--));json(res,202,{id});return;}
  if(req.method==='POST'&&u.pathname==='/api/import'){if(importing)return json(res,409,{error:'Hay una importación en curso'});importing=true;try{const result=await addSource(await read(req));return json(res,200,{result,...await bootstrapLibrary({catalogue:u.searchParams.get('catalogue')==='1'})});}finally{importing=false;}}
  if(req.method==='GET'&&u.pathname==='/api/export'){const id=u.searchParams.get('id');if(!/^[a-f0-9-]{36}$/.test(id||''))throw new Error('ID inválido');const f=path.join(DATA,'answers',id+'.json');res.writeHead(200,{'content-type':'application/json','content-disposition':`attachment; filename="orbita-${id}.json"`});res.end(fs.readFileSync(f));return;}
  const assets={'/graph-publication-web.mjs':'graph-publication-web.mjs','/causal-web.mjs':'causal-web.mjs','/decision-intelligence-web.mjs':'decision-intelligence-web.mjs','/retrospectives-web.mjs':'retrospectives-web.mjs','/retrospectives.css':'retrospectives.css','/volume-web.mjs':'volume-web.mjs','/volume.css':'volume.css','/routing-web.mjs':'routing-web.mjs','/routing.css':'routing.css','/identities-web.mjs':'identities-web.mjs','/identities.css':'identities.css','/explorer-web.mjs':'explorer-web.mjs','/explorer-model.mjs':'explorer-model.mjs','/explorer.css':'explorer.css','/context-web.mjs':'context-web.mjs','/support-fields.mjs':'support-fields.mjs','/supports-web.mjs':'supports-web.mjs','/collective-fields.mjs':'collective-fields.mjs','/collectives-web.mjs':'collectives-web.mjs','/documents-web.mjs':'documents-web.mjs','/recovery-web.mjs':'recovery-web.mjs','/reevaluation-web.mjs':'reevaluation-web.mjs','/decisions-web.mjs':'decisions-web.mjs','/learning-web.mjs':'learning-web.mjs','/':'index.html','/app.js':'web.js','/p1-web.mjs':'p1-web.mjs','/semantic-web.mjs':'semantic-web.mjs','/incremental-web.mjs':'incremental-web.mjs','/style.css':'style.css'};if(req.method==='GET'&&assets[u.pathname]){const file=assets[u.pathname];res.writeHead(200,{'content-type':(file.endsWith('.js')||file.endsWith('.mjs'))?'text/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8','content-security-policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; frame-ancestors 'none'",'x-content-type-options':'nosniff'});res.end(fs.readFileSync(path.join(ROOT,'web',file)));return;}
  json(res,404,{error:'No encontrado'});
- }catch(e){if(!res.destroyed&&!res.writableEnded)json(res,400,{error:e.message});}finally{inFlight--;}});
+ }catch(e){if(!res.destroyed&&!res.writableEnded)json(res,400,{error:e.message});}finally{inFlight--;finishRequest();}});
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){server.listen(PORT,'127.0.0.1',()=>{PORT=server.address().port;console.log(`ORBITA http://127.0.0.1:${PORT}`);process.send?.({type:'orbita-ready',port:PORT});if(process.env.AFH_MANAGED!=='1')resumeAutomaticReevaluations().catch(e=>console.error('REEVALUATION_RESUME_FAILED',e.message));});if(process.env.AFH_MANAGED==='1')process.once('disconnect',()=>process.exit(0));}
 export {server};
