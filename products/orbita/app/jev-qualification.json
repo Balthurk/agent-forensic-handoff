@@ -1,0 +1,15 @@
+{
+  "schema": "orbita.jev-qualification.v1",
+  "model": "jev-1.14.0",
+  "evaluatedAt": "2026-10-24",
+  "referenceCases": 24,
+  "referenceExactMatches": 5,
+  "referenceAbstentions": 23,
+  "additionalCases": 8,
+  "additionalExactMatches": 2,
+  "referenceSha256": "c801b6756b87c5cc283391a9f901dff1b29e2248f9b0ba9ac7e932a0ba51c26e",
+  "additionalSha256": "3df39a724d6b02e6aa92450443e20dd82634b4ced0482e952c05f8a84bb1ea79",
+  "automaticPromotion": false,
+  "status": "insufficient_accuracy_for_automatic_use",
+  "scope": "This frozen request contract and synthetic evaluation only; not a general Jev benchmark or calibration on the user's corpus."
+}

@@ -23,12 +23,12 @@
     "SECURITY.md"
   ],
   "scripts": {
-    "test": "node --test",
+    "test": "node ./scripts/run-check.mjs",
     "benchmark": "node ./bin/afh.js benchmark",
     "benchmark:retrieval": "node ./bin/afh.js retrieval-benchmark",
     "doctor": "node ./bin/afh.js doctor",
     "validate:skill": "node ./scripts/validate-skill.mjs",
-    "check": "node --check ./bin/afh.js && node --check ./src/cli.js && node --test",
+    "check": "node --check ./bin/afh.js && node --check ./src/cli.js && node ./scripts/run-check.mjs",
     "release:check": "npm run check && npm run validate:skill && npm run benchmark"
   },
   "engines": {

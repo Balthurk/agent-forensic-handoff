@@ -1,0 +1,7 @@
+interface:
+  display_name: "Agent Forensic Handoff"
+  short_description: "Audit and continue prior agent sessions safely"
+  default_prompt: "Use $agent-forensic-handoff to audit a prior session and hydrate this session with evidence-backed continuation context."
+
+policy:
+  allow_implicit_invocation: true

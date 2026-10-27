@@ -1,0 +1,5 @@
+# Local optional analytics runtime. PostgreSQL remains explicit and loopback.
+pyarrow==23.0.1
+psycopg[binary]==3.2.9
+# Independent Parquet verification in the acceptance suite.
+duckdb==1.4.4

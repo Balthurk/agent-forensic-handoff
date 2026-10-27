@@ -1,0 +1,15 @@
+{
+  "name": "codex-basic",
+  "sessionId": "codex-fixture-001",
+  "critical": {
+    "eventKinds": ["session.meta", "message.user", "tool.requested", "tool.completed", "filesystem.patch", "external.subagent", "message.agent", "session.compacted"],
+    "actorKinds": ["HUMAN_USER", "PRIMARY_AGENT", "TOOL", "SUBAGENT", "HARNESS_SYSTEM"],
+    "toolStatuses": {"FAILED": 2, "COMPLETED": 2},
+    "artifacts": ["src/parser.js"],
+    "decisions": ["use a streaming JSONL parser because records may exceed memory."],
+    "timelinePairs": [["message.user", "tool.requested"], ["tool.completed", "filesystem.patch"], ["filesystem.patch", "external.subagent"]],
+    "externalMinimum": 1,
+    "unparsed": 0,
+    "hotTerms": ["streaming session parser", "src/parser.js", "ALPHA-42", "npm test"]
+  }
+}

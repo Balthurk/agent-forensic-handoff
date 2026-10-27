@@ -1,0 +1,15 @@
+{
+  "name": "claude-basic",
+  "sessionId": "claude-fixture-001",
+  "critical": {
+    "eventKinds": ["message.user", "message.agent", "tool.requested", "tool.completed", "filesystem.snapshot", "session.compacted"],
+    "actorKinds": ["HUMAN_USER", "PRIMARY_AGENT", "TOOL", "HARNESS_SYSTEM"],
+    "toolStatuses": {"COMPLETED": 1},
+    "artifacts": ["config.yaml"],
+    "decisions": [],
+    "timelinePairs": [["message.user", "tool.requested"], ["tool.requested", "tool.completed"], ["tool.completed", "filesystem.snapshot"]],
+    "externalMinimum": 0,
+    "unparsed": 0,
+    "hotTerms": ["Repair config.yaml", "config.yaml"]
+  }
+}

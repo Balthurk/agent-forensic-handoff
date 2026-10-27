@@ -1,0 +1,18 @@
+node_modules/
+.afh/
+coverage/
+dist/
+*.log
+*.tmp
+*.sqlite-wal
+*.sqlite-shm
+.DS_Store
+
+# Never commit real forensic cases or native transcripts.
+cases/
+evidence/
+*.jsonl
+*.jsonl.zst
+*.jsonl.gz
+!test/fixtures/**/*.jsonl
+!benchmarks/fixtures/**/*.jsonl

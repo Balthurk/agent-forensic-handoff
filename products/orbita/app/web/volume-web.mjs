@@ -1,0 +1,35 @@
+const launch=document.createElement('button');launch.type='button';launch.className='add-source';launch.textContent='◫ Volumen y archivo';document.querySelector('#addSource').after(launch);
+const dialog=document.createElement('dialog');dialog.className='source-dialog volume-dialog';
+dialog.innerHTML=`<button type="button" class="close" aria-label="Cerrar volumen">×</button><div class="eyebrow">CRECER CONSERVANDO EL ORIGEN</div><h2>Muchos registros.<br><em>El mismo rastro.</em></h2><p>Explora el archivo por páginas y prepara una copia analítica. Cada registro se contrasta con su original. Un registro histórico no demuestra vigencia ni permiso para actuar.</p><div class="volume-metrics" aria-live="polite"></div><p class="volume-state" role="status"></p><p class="semantic-storage-state"></p><button class="volume-cancel" hidden>Detener después del progreso confirmado</button><div class="p1-actions"><button data-op="sync">Actualizar archivo</button><button data-op="lake">Publicar cambios analíticos</button><button data-op="verify">Comprobar copia analítica</button><button data-op="status">Actualizar estado</button></div><details><summary>Backend operacional opcional</summary><p>La ruta local sigue siendo la predeterminada. PostgreSQL requiere conexión propia, ámbito autorizado y una proyección al día.</p><button data-op="postgres">Sincronizar PostgreSQL</button><label>Consultar en<select class="volume-backend"><option value="sqlite">Archivo local</option><option value="postgres">PostgreSQL configurado</option></select></label></details><form class="volume-search"><label>Texto literal en los originales<input name="query" placeholder="Palabra o frase exacta"></label><button type="submit">Explorar registros</button></form><p class="volume-page-note"></p><div class="volume-results"></div><button class="volume-next" hidden>Siguiente página</button>`;
+document.body.append(dialog);const $=s=>dialog.querySelector(s),state=$('.volume-state'),results=$('.volume-results'),metrics=$('.volume-metrics');let busy=false,cursor=null,lastQuery='',backend='sqlite',lastState=null,controller=null;
+$('button.close').onclick=()=>dialog.close();dialog.addEventListener('close',()=>controller?.abort());dialog.addEventListener('cancel',()=>controller?.abort());
+async function api(body){const r=await fetch('/api/volume',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body),signal:controller?.signal});const j=await r.json();if(!r.ok)throw new Error(j.error||'No se pudo comprobar el archivo');return j;}
+function counts(s){lastState=s;$('.semantic-storage-state').textContent=s.semanticStorage?.backend==='postgres'?'Memoria semántica en PostgreSQL. Cada respuesta conserva fuentes, versiones y comprobaciones de vigencia.':s.semanticStorage?.restored?'Memoria semántica restaurada en local; las conexiones externas siguen pausadas.':'Memoria semántica local. Las fuentes, sus revisiones y los límites de cobertura acompañan cada respuesta.';metrics.replaceChildren();for(const [value,label] of [[s.records,'registros del corte'],[s.sources,'fuentes'],[s.pending.length,'fuentes por incorporar'],[s.lake.pendingRecords,'registros por publicar']]){const card=document.createElement('div'),n=document.createElement('strong'),l=document.createElement('span');n.textContent=value.toLocaleString();l.textContent=label;card.append(n,l);metrics.append(card);}state.textContent=s.ready?'Archivo preparado para este corte. La copia analítica se verifica por separado.':'Proyección incompleta: incorpora los lotes pendientes antes de consultar.';$('[data-op="postgres"]').disabled=busy||!s.postgresConfigured||s.postgresPaused;$('.volume-backend option[value="postgres"]').disabled=!s.postgresConfigured||s.postgresPaused;}
+async function run(op){
+ if(busy)return;busy=true;controller=new AbortController();
+ for(const b of dialog.querySelectorAll('button'))if(!b.matches('.close,.volume-cancel'))b.disabled=true;
+ $('.volume-cancel').hidden=false;state.textContent='Comprobando fuentes y progreso…';
+ try{
+  let r,total=0,batches=0;
+  do{
+   r=await api({op});total+=r.added??0;batches++;
+   if(op==='sync')counts({...lastState,...r});else if(r.state)counts({...lastState,...r.state});
+   if(['sync','lake','postgres'].includes(op))state.textContent=`${total.toLocaleString()} registros nuevos confirmados · ${batches} lotes. Puedes detener y continuar después.`;
+  }while(['sync','lake','postgres'].includes(op)&&!r.ready&&batches<2000&&!controller.signal.aborted);
+  if(op==='status')counts(r);else{
+   counts(await api({op:'status'}));
+   state.textContent=op==='verify'?`Copia analítica verificada: ${r.records} registros · ${r.files.length} lotes. Conserva historia; no certifica vigencia factual.`:`${total.toLocaleString()} registros nuevos en ${batches} lotes confirmados. ${r.ready?'Corte completo.':'Queda trabajo pendiente; puedes continuar.'}`;
+  }
+  cursor=null;$('.volume-next').hidden=true;
+ }catch(e){state.textContent=controller.signal.aborted?'Operación detenida. El progreso confirmado se conserva; actualiza el estado antes de continuar.':e.message;}
+ finally{
+  busy=false;$('.volume-cancel').hidden=true;
+  for(const b of dialog.querySelectorAll('button'))b.disabled=false;
+  if(lastState)$('[data-op="postgres"]').disabled=!lastState.postgresConfigured||lastState.postgresPaused;
+ }
+}
+$('.volume-cancel').onclick=()=>controller?.abort();
+
+launch.onclick=()=>{dialog.showModal();void run('status');};for(const b of dialog.querySelectorAll('[data-op]'))b.onclick=()=>run(b.dataset.op);
+async function page(next=false){if(busy)return;busy=true;controller=new AbortController();results.replaceChildren();state.textContent='Verificando originales…';try{if(!next){cursor=null;lastQuery=$('input').value;backend=$('.volume-backend').value;}const r=await api({op:'page',query:lastQuery,limit:20,cursor,backend});for(const row of r.rows){const card=document.createElement('article'),head=document.createElement('strong'),meta=document.createElement('small'),text=document.createElement('pre');head.textContent=`Registro ${row.ordinal} · ${row.kind}`;meta.textContent=`Fuente ${row.sourceId} · SHA-256 ${row.sha}`;text.textContent=row.raw;card.append(head,meta,text);results.append(card);}cursor=r.cursor;$('.volume-next').hidden=!cursor;$('.volume-page-note').textContent=`${r.rows.length} registro(s) en esta página · originales verificados · corte ${r.high}. ${cursor?'Hay más páginas.':'Fin de los resultados de esta proyección.'}`;state.textContent=(r.singleLargeRecord?'Este original grande se entrega completo en una página propia. ':'')+'Contenido histórico. Para decidir, consulta su contexto, revisiones y vigencia en el explorador.';}catch(e){state.textContent=e.message;cursor=null;$('.volume-next').hidden=true;}finally{busy=false;}}
+$('.volume-search').onsubmit=e=>{e.preventDefault();void page();};$('.volume-next').onclick=()=>page(true);

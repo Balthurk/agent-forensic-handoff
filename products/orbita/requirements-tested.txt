@@ -1,0 +1,4 @@
+# Versions observed in the validated local test runtime; no credentials.
+duckdb==1.4.4
+pyarrow==23.0.1
+psycopg[binary]==3.2.9

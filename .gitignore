@@ -25,3 +25,14 @@ evidence/
 *.jsonl.gz
 !test/fixtures/**/*.jsonl
 !benchmarks/fixtures/**/*.jsonl
+
+# Orbita code snapshot: data, runtime and secrets remain local.
+products/orbita/**/data/
+products/orbita/**/.venv/
+products/orbita/**/__pycache__/
+products/orbita/**/*.orbita
+products/orbita/**/*.sqlite
+products/orbita/**/*.sqlite3
+products/orbita/app/provenance.json
+!products/orbita/agent-forensic-handoff/test/fixtures/**/*.jsonl
+!products/orbita/agent-forensic-handoff/benchmarks/fixtures/**/*.jsonl

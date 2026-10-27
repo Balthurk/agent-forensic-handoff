@@ -1,0 +1,22 @@
+import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import path from 'node:path';
+import net from 'node:net';
+import {exportConversation,userText,resultText,decisionFixture,actionFixture} from './decision-fixture.mjs';
+process.env.AFH_COSMOS_DATA=fs.mkdtempSync(path.join(process.env.AFH_TEST_ROOT||'C:/T','afh-decision-http-'));process.env.AFH_COSMOS_EMPTY_LIBRARY='1';
+const probe=net.createServer();await new Promise(resolve=>probe.listen(0,'127.0.0.1',resolve));const port=probe.address().port;await new Promise(resolve=>probe.close(resolve));process.env.AFH_COSMOS_PORT=String(port);
+const {server}=await import('./server.mjs');const {addSource}=await import('./corpus.mjs');
+test('F26 HTTP frame/choose/result, invalid authority, history and UI assets',async t=>{
+ await new Promise(resolve=>server.listen(port,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
+ const base='http://127.0.0.1:'+server.address().port;
+ const a=await addSource(exportConversation('operator',userText)),b=await addSource(exportConversation('observation',resultText,'tool'));const conversationIds=[a.id,b.id];
+ const api=async(op,input={})=>{const r=await fetch(base+'/api/decisions',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({op,conversationIds,...input})});return {status:r.status,data:await r.json()};};
+ const sourceResponse=await api('sources');assert.equal(sourceResponse.status,200,JSON.stringify(sourceResponse.data));const sources=sourceResponse.data;assert.ok(Array.isArray(sources));
+ const framed=await api('frame',{id:'http',case:decisionFixture(sources),actor:'editor',statement:'Encuadre HTTP',requestId:'frame'});assert.equal(framed.status,200);
+ const common={id:'http',action:'choose',expectedVersion:1,binding:framed.data.reference};
+ const denied=await api('act',{...common,detail:{...actionFixture(sources),actorKind:'agent'},requestId:'denied'});assert.equal(denied.status,400);assert.equal(denied.data.error,'OPERATOR_REQUIRED');
+ const chosen=await api('act',{...common,detail:actionFixture(sources),requestId:'chosen'});assert.equal(chosen.status,200);assert.equal(chosen.data.brief.selected,'local');
+ const observed=await api('act',{id:'http',action:'result',expectedVersion:2,binding:chosen.data.reference,detail:{...actionFixture(sources,'result'),choiceBinding:chosen.data.reference},requestId:'outcome'});assert.equal(observed.status,200);assert.equal(observed.data.brief.status,'result_recorded');
+ const history=(await api('history',{id:'http'})).data;assert.equal(history.length,3);assert.deepEqual(history[0],framed.data);
+ const listed=await api('list');assert.equal(listed.status,200);assert.equal(listed.data.bytes,Buffer.byteLength(JSON.stringify(listed.data)));
+ const html=await (await fetch(base)).text();assert.match(html,/decisions-web\.mjs/);assert.match(html,/learning-web\.mjs/);assert.match(html,/incremental-web\.mjs/);
+ const asset=await fetch(base+'/decisions-web.mjs');assert.equal(asset.status,200);assert.match(asset.headers.get('content-type'),/javascript/);
+});

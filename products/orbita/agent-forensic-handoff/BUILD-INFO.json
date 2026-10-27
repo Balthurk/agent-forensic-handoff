@@ -1,0 +1,52 @@
+{
+  "build": "bitemporal-v8-reevaluation-1",
+  "base_version": "0.3.0",
+  "parent_build": "bitemporal-v8-decisions-1",
+  "status": "CANDIDATE_F29",
+  "not_a_global_install": true,
+  "scope": [
+    "F01 complete UTF-8 package budget",
+    "F02 retrieval envelope and visible limitations",
+    "F03 explicit ES/EN query plan",
+    "F04 atomic dependency episodes",
+    "F05 independent local vectors + RRF/MMR",
+    "F06 revision-bound stage coverage",
+    "F07 pinned TSM catalogue and optional labels",
+    "F08 source-bound proposed knowledge records",
+    "Full-text FTS5 and token-bounded vector projections",
+    "Relevance, user-episode diversity and exact marginal UTF-8 cost",
+    "Derived-index failure isolated from verified source access",
+    "Strict native terminal-footer representation equivalence",
+    "F09-F17 local versioned semantic records and evidence by field",
+    "F21 contextual model extraction proposals and separate support review",
+    "F22 bounded semantic complement closure inside same budget",
+    "F18 durable explicit-file capture and immutable revisions",
+    "F19 exact compatible persistent embeddings cache",
+    "F20 retained inference, transactional outbox and local publication replay",
+    "F23 bounded durable proposal pipeline and explicit local turns/corrections",
+    "F24 exact-scope store federation and cancellation",
+    "F25 source-bound learning episodes in own N04 namespace; explicit query, API, CLI, UI, versioned corrections and bounded precedents",
+    "F26 source-bound decision cases, alternatives, explicit operator lifecycle and choice-bound outcomes; own N04 namespace",
+    "F29 explicit new-source watches, dependency closure, retained contextual review, exact N04 successor and selective local retrieval; opt-in automatic review worker resumes on ingestion/startup"
+  ],
+  "acceptance_report": "../F29.md",
+  "candidate": "bitemporal-v8-reevaluation-1",
+  "created_at": "2026-10-23T11:00:11.908034+00:00",
+  "noetis_writes_by_this_task": false,
+  "learningIncrement": {
+    "feature": "F25",
+    "parent": "bitemporal-v8-incremental-1",
+    "scope": "N04 source-bound local learning archive; proposed procedures; cumulative regression required",
+    "humanAcceptance": false,
+    "regression": "verification/FINAL-REGRESSION.json"
+  },
+  "decisionIncrement": {
+    "feature": "F26",
+    "parentManifest": "f591f470749e3bf05eb9ddc76e63060808de19e74ad8a10a1122f6e0e2f39238",
+    "humanAcceptance": false,
+    "executionAuthority": false,
+    "regression": "verification/FINAL-REGRESSION.json"
+  },
+  "increment": "F29",
+  "parent": "bitemporal-v8-decisions-1"
+}

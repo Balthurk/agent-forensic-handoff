@@ -1,0 +1,364 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-04T09:43:34.571Z",
+  "fixtureCount": 3,
+  "metrics": {
+    "parseAccounting": 1,
+    "criticalFactRecall": 1,
+    "precision": 1,
+    "unsupportedClaimRate": 0,
+    "evidenceRefResolvability": 1,
+    "artifactProvenanceAccuracy": 1,
+    "timelineAccuracy": 1,
+    "actorAttributionAccuracy": 1,
+    "continuationContextCoverage": 1,
+    "hotToSourceTokenRatio": 2.3784917514894635,
+    "continuationSuccessRate": null,
+    "continuationSuccessStatus": "REQUIRES_FRESH_AGENT_RUN; see benchmarks/continuation-protocol.md",
+    "giantSession": {
+      "requestedNoiseRecords": 10000,
+      "parsedSourceRecords": 10002,
+      "elapsedMs": 1648,
+      "recordsPerSecond": 6069,
+      "parseAccounting": true,
+      "hotTokenEstimate": 536,
+      "sourceTokenEstimate": 317297,
+      "hotToSourceTokenRatio": 0.0016892690444599225,
+      "note": "Synthetic scale smoke test; release-scale million-record fixtures remain a separate CI profile."
+    }
+  },
+  "gates": {
+    "parseAccounting": true,
+    "criticalFactRecall": true,
+    "precision": true,
+    "unsupportedClaimRate": true,
+    "evidenceRefResolvability": true,
+    "artifactProvenanceAccuracy": true,
+    "timelineAccuracy": true,
+    "actorAttributionAccuracy": true,
+    "continuationContextCoverage": true,
+    "giantParseAccounting": true,
+    "giantHotToSourceTokenRatio": true,
+    "idempotence": true
+  },
+  "passed": true,
+  "fixtures": [
+    {
+      "name": "codex-basic",
+      "caseHash": "5101fd80293f4c2b80d47ce19b4107cc34722b81ef298d3249f52095465a4d72",
+      "idempotent": true,
+      "parseAccounting": 1,
+      "criticalFactRecall": 1,
+      "precision": 1,
+      "unsupportedClaimRate": 0,
+      "evidenceRefResolvability": 1,
+      "artifactProvenanceAccuracy": 1,
+      "timelineAccuracy": 1,
+      "actorAttributionAccuracy": 1,
+      "continuationContextCoverage": 1,
+      "hotToSourceTokenRatio": 1.2573099415204678,
+      "checks": [
+        {
+          "category": "event",
+          "expected": "session.meta",
+          "ok": true
+        },
+        {
+          "category": "event",
+          "expected": "message.user",
+          "ok": true
+        },
+        {
+          "category": "event",
+          "expected": "tool.requested",
+          "ok": true
+        },
+        {
+          "category": "event",
+          "expected": "tool.completed",
+          "ok": true
+        },
+        {
+          "category": "event",
+          "expected": "filesystem.patch",
+          "ok": true
+        },
+        {
+          "category": "event",
+          "expected": "external.subagent",
+          "ok": true
+        },
+        {
+          "category": "event",
+          "expected": "message.agent",
+          "ok": true
+        },
+        {
+          "category": "event",
+          "expected": "session.compacted",
+          "ok": true
+        },
+        {
+          "category": "actor",
+          "expected": "HUMAN_USER",
+          "ok": true
+        },
+        {
+          "category": "actor",
+          "expected": "PRIMARY_AGENT",
+          "ok": true
+        },
+        {
+          "category": "actor",
+          "expected": "TOOL",
+          "ok": true
+        },
+        {
+          "category": "actor",
+          "expected": "SUBAGENT",
+          "ok": true
+        },
+        {
+          "category": "actor",
+          "expected": "HARNESS_SYSTEM",
+          "ok": true
+        },
+        {
+          "category": "tool",
+          "expected": "FAILED>=2",
+          "ok": true
+        },
+        {
+          "category": "tool",
+          "expected": "COMPLETED>=2",
+          "ok": true
+        },
+        {
+          "category": "artifact",
+          "expected": "src/parser.js",
+          "ok": true
+        },
+        {
+          "category": "decision",
+          "expected": "use a streaming JSONL parser because records may exceed memory.",
+          "ok": true
+        },
+        {
+          "category": "external",
+          "expected": ">=1",
+          "ok": true
+        },
+        {
+          "category": "unparsed",
+          "expected": 0,
+          "ok": true
+        }
+      ],
+      "timelineChecks": [
+        {
+          "before": "message.user",
+          "after": "tool.requested",
+          "ok": true
+        },
+        {
+          "before": "tool.completed",
+          "after": "filesystem.patch",
+          "ok": true
+        },
+        {
+          "before": "filesystem.patch",
+          "after": "external.subagent",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "name": "claude-basic",
+      "caseHash": "b9be2da0a60de45d6765a2a3389c87e50de4fac6f485c0d15eaf60c3daa73176",
+      "idempotent": true,
+      "parseAccounting": 1,
+      "criticalFactRecall": 1,
+      "precision": 1,
+      "unsupportedClaimRate": 0,
+      "evidenceRefResolvability": 1,
+      "artifactProvenanceAccuracy": 1,
+      "timelineAccuracy": 1,
+      "actorAttributionAccuracy": 1,
+      "continuationContextCoverage": 1,
+      "hotToSourceTokenRatio": 1.9331103678929766,
+      "checks": [
+        {
+          "category": "event",
+          "expected": "message.user",
+          "ok": true
+        },
+        {
+          "category": "event",
+          "expected": "message.agent",
+          "ok": true
+        },
+        {
+          "category": "event",
+          "expected": "tool.requested",
+          "ok": true
+        },
+        {
+          "category": "event",
+          "expected": "tool.completed",
+          "ok": true
+        },
+        {
+          "category": "event",
+          "expected": "filesystem.snapshot",
+          "ok": true
+        },
+        {
+          "category": "event",
+          "expected": "session.compacted",
+          "ok": true
+        },
+        {
+          "category": "actor",
+          "expected": "HUMAN_USER",
+          "ok": true
+        },
+        {
+          "category": "actor",
+          "expected": "PRIMARY_AGENT",
+          "ok": true
+        },
+        {
+          "category": "actor",
+          "expected": "TOOL",
+          "ok": true
+        },
+        {
+          "category": "actor",
+          "expected": "HARNESS_SYSTEM",
+          "ok": true
+        },
+        {
+          "category": "tool",
+          "expected": "COMPLETED>=1",
+          "ok": true
+        },
+        {
+          "category": "artifact",
+          "expected": "config.yaml",
+          "ok": true
+        },
+        {
+          "category": "external",
+          "expected": ">=0",
+          "ok": true
+        },
+        {
+          "category": "unparsed",
+          "expected": 0,
+          "ok": true
+        }
+      ],
+      "timelineChecks": [
+        {
+          "before": "message.user",
+          "after": "tool.requested",
+          "ok": true
+        },
+        {
+          "before": "tool.requested",
+          "after": "tool.completed",
+          "ok": true
+        },
+        {
+          "before": "tool.completed",
+          "after": "filesystem.snapshot",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "name": "generic-mixed",
+      "caseHash": "4dc20a5ee60b24a529a5229d2503a14a98ef399df054212db50570672c6001a7",
+      "idempotent": true,
+      "parseAccounting": 1,
+      "criticalFactRecall": 1,
+      "precision": 1,
+      "unsupportedClaimRate": 0,
+      "evidenceRefResolvability": 1,
+      "artifactProvenanceAccuracy": 1,
+      "timelineAccuracy": 1,
+      "actorAttributionAccuracy": 1,
+      "continuationContextCoverage": 1,
+      "hotToSourceTokenRatio": 3.9450549450549453,
+      "checks": [
+        {
+          "category": "event",
+          "expected": "message.user",
+          "ok": true
+        },
+        {
+          "category": "event",
+          "expected": "tool.requested",
+          "ok": true
+        },
+        {
+          "category": "event",
+          "expected": "tool.completed",
+          "ok": true
+        },
+        {
+          "category": "event",
+          "expected": "forensic.unparsed_record",
+          "ok": true
+        },
+        {
+          "category": "event",
+          "expected": "message.agent",
+          "ok": true
+        },
+        {
+          "category": "actor",
+          "expected": "HUMAN_USER",
+          "ok": true
+        },
+        {
+          "category": "actor",
+          "expected": "PRIMARY_AGENT",
+          "ok": true
+        },
+        {
+          "category": "actor",
+          "expected": "TOOL",
+          "ok": true
+        },
+        {
+          "category": "tool",
+          "expected": "FAILED>=1",
+          "ok": true
+        },
+        {
+          "category": "external",
+          "expected": ">=0",
+          "ok": true
+        },
+        {
+          "category": "unparsed",
+          "expected": 1,
+          "ok": true
+        }
+      ],
+      "timelineChecks": [
+        {
+          "before": "message.user",
+          "after": "tool.requested",
+          "ok": true
+        },
+        {
+          "before": "tool.requested",
+          "after": "tool.completed",
+          "ok": true
+        }
+      ]
+    }
+  ]
+}

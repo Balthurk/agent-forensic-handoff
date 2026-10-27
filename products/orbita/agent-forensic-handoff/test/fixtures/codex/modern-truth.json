@@ -1,0 +1,16 @@
+{
+  "name": "codex-modern",
+  "critical": {
+    "eventKinds": ["session.meta", "message.user", "telemetry.token_usage", "realtime.transcript", "tool.observed", "filesystem.patch", "mcp.observed", "message.agent", "session.compacted", "external.subagent", "external.collaboration", "external.extension", "telemetry.inter_agent"],
+    "actorKinds": ["HUMAN_USER", "PRIMARY_AGENT", "TOOL", "MCP_SERVER", "HARNESS_SYSTEM", "SUBAGENT", "EXTERNAL_SERVICE"],
+    "toolStatuses": {},
+    "artifacts": ["src/modern.js"],
+    "decisions": [],
+    "externalMinimum": 1,
+    "unparsed": 0,
+    "warnings": 0,
+    "validationsMinimum": 2,
+    "hotTerms": ["finish the parser", "modern artifact", "12 passed"],
+    "timelinePairs": [["message.user", "tool.observed"], ["tool.observed", "filesystem.patch"], ["filesystem.patch", "mcp.observed"]]
+  }
+}
