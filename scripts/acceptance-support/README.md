@@ -40,6 +40,14 @@ The Windows SHM helper retains its original bytes and can only open the bounded
 helper and selected Python executable hashes in a fresh manifest. Its writable
 mapping probe must be rejected by Windows.
 
+Preparation probes the selected Python's actual process identity. A Windows
+virtual-environment redirector may spawn another Python process, which cannot
+satisfy the observer's exact spawned-PID check. In that case preparation probes
+its reported base executable and binds that direct process for this standard
+library helper only. Both observations are recorded. Órbita keeps using its
+separate virtual environment and installed dependencies; no PID assertion is
+removed or relaxed.
+
 Preparation is not a test pass or product acceptance. The runner keeps the same
 test discovery and concurrency. Every assertion, oracle, real native observation,
 historical availability check and recorded skip remains part of the full run.

@@ -63,6 +63,37 @@ def blobs(identifiers):
     return result
 
 
+def direct_python(executable):
+    """Bind the native observer to one actual process, not a venv redirector."""
+    code = "import sys,os,json;print(json.dumps({'pid':os.getpid(),'base':getattr(sys,'_base_executable',sys.executable),'version':list(sys.version_info[:3])}))"
+    observations = []
+    selected = executable
+    for attempt in range(2):
+        no_links(selected)
+        assert selected.is_absolute() and selected.is_file()
+        process = subprocess.Popen([str(selected), '-I', '-B', '-c', code],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=subprocess.CREATE_NO_WINDOW)
+        try:
+            output, errors = process.communicate(timeout=20)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.communicate()
+            raise
+        assert process.returncode == 0 and not errors, 'PYTHON_IDENTITY_PROBE_FAILED'
+        observed = json.loads(output)
+        assert observed['version'] >= [3, 12, 0]
+        observations.append({'requested': str(selected), 'spawnedPid': process.pid,
+            'reportedPid': observed['pid'], 'sha256': sha(selected.read_bytes())})
+        if observed['pid'] == process.pid:
+            return selected, observations
+        # Windows venv launchers may create the actual Python as a child. The
+        # read-only observer must retain the test's exact spawned-PID binding.
+        base = Path(observed['base'])
+        assert attempt == 0 and base.is_absolute() and base.resolve() != selected, 'DIRECT_PYTHON_PROCESS_REQUIRED'
+        selected = base.resolve()
+    raise AssertionError('DIRECT_PYTHON_PROCESS_REQUIRED')
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--lab', required=True, type=Path)
@@ -77,6 +108,7 @@ def main():
     assert not lab.exists() and lab.parent.is_dir(), 'NEW_LAB_WITH_EXISTING_PARENT_REQUIRED'
     assert not lab.is_relative_to(ROOT) and not ROOT.is_relative_to(lab), 'EXTERNAL_LAB_REQUIRED'
     assert python.is_file()
+    python, python_process_observations = direct_python(python)
     node = shutil.which('node')
     assert node
     subprocess.run([node, '--input-type=module', '-e',
@@ -181,6 +213,8 @@ def main():
         'supportManifestSha256': sha(manifest_bytes), 'environment': environment,
         'filesMaterialized': len(recovered), 'historicalRuntimeFiles': sum(len(p['files']) for p in manifest['producers'].values()),
         'producers': {k: p['runtimeSha256'] for k, p in manifest['producers'].items()},
+        'shmPythonProcessObservations': python_process_observations,
+        'shmPythonExecutable': str(python),
         'legacyCommits': identities, 'legacyReportSha256': sha((lab / 'legacy/report.json').read_bytes()),
         'humanAcceptance': False, 'testsExecuted': False}
     (lab / 'PREPARATION.json').write_text(json.dumps(receipt, indent=2), encoding='utf8')
