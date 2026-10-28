@@ -1,0 +1,95 @@
+{
+  "schema": "orbita.public.qualification.v1",
+  "at": "2026-10-28T00:29:59.335247+00:00",
+  "status": "PASS_SCOPED_TECHNICAL_I04",
+  "testedRemoteCommit": "729b549005ca2c12e0d1995083de62e527c292ba",
+  "candidateSealSha256": "216c4d72aa3a46b35e36803e81472206cdd0244f2886cb9d14d14d15340715dc",
+  "publishedSourceFiles": 358,
+  "publishedSourcesUnchangedDuringTests": true,
+  "freshNodeDependencies": true,
+  "freshPythonEnvironment": true,
+  "skillMetrics": {
+    "tests": 293,
+    "pass": 292,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 1,
+    "todo": 0
+  },
+  "orbitaSuites": [
+    {
+      "name": "core",
+      "tests": 130,
+      "passed": 129,
+      "skipped": 1
+    },
+    {
+      "name": "app",
+      "tests": 270,
+      "passed": 270,
+      "skipped": 0
+    },
+    {
+      "name": "python",
+      "tests": 230,
+      "passed": 230,
+      "skipped": 0
+    }
+  ],
+  "nativeUI": {
+    "status": "PASS_SCOPED_NATIVE_MANAGED_UI_FROM_REMOTE",
+    "sixSpacesOpened": true,
+    "originalLiteralVerified": true,
+    "publishedGraphVerified": true,
+    "readerWriteControlsAbsent": true,
+    "providerCalls": 0,
+    "rawConsoleWarningsErrors": 5,
+    "expectedAnonymousSessionDenials": 3,
+    "faviconResourceErrors": 2,
+    "pageErrors": 0,
+    "cleanConsole": false,
+    "openDefect": "I04-UI-FAVICON: implicit icon resource missing; retained for I06"
+  },
+  "workingRecovery": {
+    "files": 78,
+    "bytes": 1735009,
+    "databases": 12,
+    "conversations": 3,
+    "records": 6,
+    "newProcess": true,
+    "scope": "Synthetic managed workspace"
+  },
+  "scaleRecovery": {
+    "files": 20035,
+    "bytes": 13210004199,
+    "databases": 1003,
+    "exactPages": 8,
+    "currentAndHistoricalPackagesExact": true,
+    "backupMs": 1183977.0489,
+    "restoreMs": 1622660.0762,
+    "newRemotePerformanceClaim": false
+  },
+  "priorOperationalBackup": {
+    "increment": "I03",
+    "scope": "Previously verified 11-source development corpus; retained local encrypted archive and DPAPI key"
+  },
+  "cleanupConsumer": {
+    "status": "PASS_FULL_F36_CONSUMER_AFTER_OLD_ARCHIVE_CLEANUP",
+    "failedTemporaryCleanupStatuses": [
+      "PASS_FULL_F36_CONSUMER_AFTER_FAILED_TEMPORARY_CLEANUP",
+      "PASS_FULL_F36_CONSUMER_AFTER_FAILED_TEMPORARY_CLEANUP"
+    ],
+    "newDeletionsByClosure": 0
+  },
+  "privateEvidencePublished": false,
+  "humanAcceptance": false,
+  "productivePromotion": false,
+  "remainingIncrements": [
+    "I05",
+    "I06",
+    "I07",
+    "I08",
+    "I09",
+    "I10"
+  ]
+}

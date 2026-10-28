@@ -1,7 +1,7 @@
 {
   "schema": "orbita.public-source-candidate.v1",
   "at": "2026-10-27T22:49:56.372909+00:00",
-  "status": "I04_SOURCE_CANDIDATE_LOCAL_QUALIFIED_REMOTE_PENDING",
+  "status": "I04_SCOPED_TECHNICAL_SEALED_REMOTE_REBUILT",
   "files": [
     {
       "path": "agent-forensic-handoff/.github/workflows/ci.yml",
@@ -2522,7 +2522,7 @@
     "pyarrow"
   ],
   "sourceUnchanged": true,
-  "fullQualificationClaimed": false,
+  "fullQualificationClaimed": true,
   "privacyReview": {
     "status": "REVIEWED_EXACT_SYNTHETIC_EXCEPTIONS",
     "exceptions": [
@@ -2560,9 +2560,13 @@
     "nativeUI": "PASS_SCOPED_MANAGED_UI",
     "workingRestore": "78 files; 12 databases; 3 conversations; 6 records; new worker reads original and published generation",
     "scaleRecovery": "PASS: 20035 files; 13210004199 bytes; 1003 databases; 8 pages and exact current/historical packages",
-    "freshRemoteInstallationAndTests": "PENDING",
+    "freshRemoteInstallationAndTests": "PASS",
     "humanAcceptance": false,
-    "runtimePromotion": false
+    "runtimePromotion": false,
+    "currentIncrementSealed": true,
+    "testedRemoteCommit": "729b549005ca2c12e0d1995083de62e527c292ba",
+    "qualification": "QUALIFICATION-I04.json"
   },
-  "priorQualification": "QUALIFICATION-I03.json applies to the historical commit and source hashes it identifies; it is not I04 remote acceptance"
+  "priorQualification": "QUALIFICATION-I03.json applies to the historical commit and source hashes it identifies; it is not I04 remote acceptance",
+  "qualificationScope": "I04 scoped technical delivery only; no human acceptance or production promotion"
 }
