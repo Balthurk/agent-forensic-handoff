@@ -13,6 +13,7 @@ import {contextNeeds} from '../agent-forensic-handoff/src/context-package.js';
 import {discoverContext,contextPlan,retainContext} from './context.mjs';
 import {cancellationPoint} from './deadline.mjs';
 import {cachedEmbeddingProvider} from './embedding-cache.mjs';
+import {semanticSeeds,contextDiscovery} from './semantic-discovery.mjs';
 export {loadTaxonomy,SEMANTIC_TYPES};
 let providerPromise;
 const provider=()=>providerPromise??=(createTransformersProvider().catch(e=>{providerPromise=null;throw e;}));
@@ -85,7 +86,7 @@ export async function listProposals(){if(!fs.existsSync(proposalDir))return [];c
   }catch(e){out.push({id:filename.slice(0,-5),bindingStatus:'invalid',error:e.message});}}
  return out;
 }
-export async function retrievePackage(question,ids,{mode='hybrid',profile='conversational',maxBytes=100000,labels=[],facets={},extraLinks={},rerank='mmr',semanticKnowledge=true,knownAt=null,validAt=null,roots=[],hops=2,needs=[],signal}={}){
+export async function retrievePackage(question,ids,{mode='hybrid',profile='conversational',maxBytes=100000,labels=[],facets={},extraLinks={},rerank='mmr',semanticKnowledge=true,knownAt=null,validAt=null,roots=[],hops=2,needs=[],signal}={},{embeddingProvider=provider}={}){
  contextNeeds(question,needs);await cancellationPoint(signal);refreshLibrary();const started=Date.now(),plan=queryPlan(question,{profile});if(!['lexical','semantic','hybrid'].includes(mode))throw new Error('Invalid retrieval mode');
  for(const time of [knownAt,validAt])if(time!==null&&(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(time)||time.endsWith('-00:00')||Number.isNaN(Date.parse(time))))throw new Error('Use an explicit RFC3339 instant with known timezone');
  if((knownAt||validAt)&&!semanticKnowledge)throw new Error('Temporal cuts require the semantic record channel');
@@ -93,7 +94,7 @@ export async function retrievePackage(question,ids,{mode='hybrid',profile='conve
  if(!Array.isArray(ids)||!ids.length||ids.length>20)throw new Error('Select 1..20 conversations');const selected=[...new Set(ids)].map(itemFor);
  const tax=loadTaxonomy();if(!Array.isArray(labels)||labels.some(id=>!tax.nodes.some(n=>n.id===id)))throw new Error('Unknown label');
  for(const [id,vals] of Object.entries(facets)){const f=tax.facets.find(f=>f.id===id);if(!f||!Array.isArray(vals)||vals.some(v=>!f.values.some(x=>x.id===v)))throw new Error('Unknown facet');}
- const records=[],sources=[],backends=[],links={},ranks=new Map(),occurrences=new Map(),duplicates=new Map(),caseCache=[];
+ const records=[],sources=[],backends=[],links={},ranks=new Map(),occurrences=new Map(),duplicates=new Map(),caseCache=[],discoveryCandidates=[];
  for(const item of selected){await cancellationPoint(signal);try{const c=await verifiedCase(item);caseCache.push(c);for(const m of c.messages){if(!m.occurrenceId)continue;const set=occurrences.get(m.occurrenceId)||new Set();set.add(m.payloadSha256);occurrences.set(m.occurrenceId,set);}}catch(e){signal?.throwIfAborted();backends.push({conversationId:item.id,channel:'source',status:'unavailable',reason:e.message});}}
  const identityStates=classifyOccurrences(caseCache.flatMap(c=>c.messages));
  const identityConflicts=[...identityStates.values()].filter(v=>v.status==='conflict').length;
@@ -110,8 +111,9 @@ export async function retrievePackage(question,ids,{mode='hybrid',profile='conve
   else backends.push({conversationId:item.id,channel:'lexical_full_text',status:'not_requested'});
   if(mode!=='lexical'){
    try{const projectionDir=findSemanticProjection(item.path,{representation:'full_source_text'});if(!projectionDir)throw new Error('FULLTEXT_INDEX_REQUIRED');
-    await cancellationPoint(signal);const result=await semanticSearch(item.path,question,{projectionDir,provider:await provider(),limit:60,minSimilarity:.35});
+    await cancellationPoint(signal);const result=await semanticSearch(item.path,question,{projectionDir,provider:await embeddingProvider(),limit:60,minSimilarity:.35});
     if(result.modeEffective==='unavailable')throw new Error(result.assessment.gaps.join('; '));const available=new Set(list.map(m=>m.id));const hits=result.results.filter(r=>available.has(r.id));
+    discoveryCandidates.push(...semanticSeeds(result,list,{conversationId:item.id,caseHash:c.manifest.caseHash}));
     backends.push({conversationId:item.id,channel:'semantic_full_text',status:hits.length?'ok':'no_match',candidates:hits.length,projection:result.projectionId,coverage:result.coverage});
     hits.forEach((r,i)=>{const key=keyOf(item.id,r.id);ranks.set(key,(ranks.get(key)||0)+1/(60+i+1));});
    }catch(e){signal?.throwIfAborted();backends.push({conversationId:item.id,channel:'semantic_full_text',status:'unavailable',reason:e.message});}
@@ -119,7 +121,8 @@ export async function retrievePackage(question,ids,{mode='hybrid',profile='conve
  }
  let knowledgeContext=null,discovered=null,contextPlanValue=null;
  if(semanticKnowledge&&(profile!=='exact'||roots.length||knownAt||validAt)){try{
-   const context=await discoverContext(question,ids,{knownAt,validAt,roots,signal});discovered=context;
+   const discovery=contextDiscovery(discoveryCandidates,plan.aliases);
+   const context=await discoverContext(question,ids,{knownAt,validAt,roots,signal,discovery});discovered=context;
    if(context.status==='not_extracted'&&!context.contextUnits?.length&&(knownAt||validAt))throw new Error('SEMANTIC_HISTORY_NOT_AVAILABLE');
    if(context.status!=='not_extracted'||context.contextUnits?.length){
     if(plan.semanticTemporalSelection)plan.semanticTemporalSelection.applied=true;
@@ -129,7 +132,7 @@ export async function retrievePackage(question,ids,{mode='hybrid',profile='conve
     const itemMap=new Map(items.map(x=>[x.clauseVersionId,x]));
     for(const item of items){const neighbors=context.edges.filter(e=>e.from===item.clauseVersionId||e.to===item.clauseVersionId).flatMap(e=>[itemMap.get(e.from),itemMap.get(e.to)]).filter(Boolean);const deps=[...new Set([item,...neighbors].flatMap(x=>x.evidenceKeys))];
      for(const k of item.evidenceKeys)if(records.some(r=>r.key===k)){ranks.set(k,(ranks.get(k)||0)+1/30);links[k]=[...new Set([...(links[k]||[]),...deps.filter(d=>d!==k)])];}}
-    const {contextUnits,contextCut,contextScan,contextBlockers,contextState,outsideSelection,contextCoverage,...semantic}=context;knowledgeContext={...semantic,items};backends.push({channel:'semantic_records',status:items.length?'ok':'no_match',clauses:items.length});
+    const {contextUnits,contextCut,contextScan,contextBlockers,contextState,outsideSelection,contextCoverage,contextDiscovery,...semantic}=context;knowledgeContext={...semantic,items};backends.push({channel:'semantic_records',status:items.length?'ok':'no_match',clauses:items.length});
    }
   }catch(e){signal?.throwIfAborted();backends.push({channel:'semantic_records',status:'unavailable',reason:e.message});if(knownAt||validAt)knowledgeContext={items:[],edges:[],missing:[{reason:e.message}],requiresAbstention:true,coverage:'Requested semantic temporal selection unavailable; raw sources do not resolve it'};}
  }

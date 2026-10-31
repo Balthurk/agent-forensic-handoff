@@ -58,7 +58,9 @@ def ref(memory,source_id,quote,start=None):
     e=memory.evidence(source_id);text=e['text']
     require(isinstance(quote,str) and bool(quote),'QUOTE_REQUIRED')
     if start is None:
-        require(text.count(quote)==1,'QUOTE_AMBIGUOUS_OR_MISSING');start=text.index(quote)
+        # Search from the next codepoint so overlapping occurrences are ambiguous.
+        first=text.find(quote)
+        require(first>=0 and text.find(quote,first+1)<0,'QUOTE_AMBIGUOUS_OR_MISSING');start=first
     require(type(start) is int and 0<=start<len(text) and text[start:start+len(quote)]==quote,'QUOTE_MISMATCH')
     return {'id':e['id'],'revision':e['revision'],'quote':quote,'locator':{'coordinate_system':'unicode_codepoints','source_encoding':'AFH-representation-text-v1','decoder_version':'afh-evidence-text-v1','start':start,'end':start+len(quote)}}
 

@@ -209,10 +209,15 @@ def resolve(records,request):
                 result['candidates'].append(dict(id='candidate-'+digest([entities[a]['reference'],entities[b]['reference']])[:32],left=entities[a]['reference'],right=entities[b]['reference'],reason='literal_name_or_alias_match',typeConflict=entities[a]['entityType']!=entities[b]['entityType'],confidence='not_scored',identityEstablished=False))
     result['entities']=list(entities.values());result['links']=links;return result
 
-def context_unit(board,question):
+def context_unit(board,question,discovered=(),hints=()):
     from .context_retrieval import words
+    from .context_discovery import references_match
+    question=' '.join([question,*hints])
     tokens=words(question);entities=board['entities'];query=' '+normalized(question)+' '
     hit={e['reference']['id'] for e in entities if tokens & words(' '.join([e['label'],*e['aliases']])) or any(normalized(name) and ' '+normalized(name)+' ' in query for name in [e['label'],*e['aliases']])}
+    hit.update(e['reference']['id'] for e in entities if references_match(e['sourceRefs'],discovered))
+    for link in board['links']:
+        if references_match(link['sourceRefs'],discovered):hit.update((link['left']['id'],link['right']['id']))
     if not hit:return None
     # Close all explicit comparisons, including adverse/pending/withdrawn ones.
     changed=True

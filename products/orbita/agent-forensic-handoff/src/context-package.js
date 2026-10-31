@@ -16,7 +16,7 @@ export function publicContextUnit(unit,{page=false}={}) {
 export function contextSummary(plan,included) {
  const admitted=plan.units.filter(u=>!u.blocked&&u.evidenceKeys.length&&u.evidenceKeys.every(k=>included.has(k)));
  const omitted=plan.units.filter(u=>!admitted.includes(u));
- if(plan.compact)return {schema:'afh.context.v1',snapshot:plan.snapshot?{id:plan.snapshot.id,unitCount:plan.snapshot.unitCount,resume:plan.snapshot.resume}:null,cut:plan.cut,
+ if(plan.compact)return {schema:'afh.context.v1',snapshot:plan.snapshot?{id:plan.snapshot.id,unitCount:plan.snapshot.unitCount,resume:plan.snapshot.resume}:null,cut:plan.cut,...(plan.discovery?{coverage:{discovery:plan.discovery.summary}}:{}),
   needs:plan.needs.map(id=>({id,status:id==='source'&&included.size?'evidence_selected':admitted.some(u=>(u.observedNeeds??u.needs).includes(id))?'candidate_evidence':omitted.some(u=>u.needs.includes(id))?'context_omitted':'not_established'})),
   units:admitted.map(u=>publicContextUnit(u)),omissions:omitted.length,blockerCount:plan.blockers.length,requiresAbstention:true,completeness:'not_certified',executionAuthority:false,detailLocation:'snapshot_pages'};
  return {schema:'afh.context.v1',snapshot:plan.snapshot,cut:plan.cut,coverage:plan.coverage,

@@ -1,7 +1,7 @@
 {
   "schema": "orbita.public-source-candidate.v1",
-  "at": "2026-10-27T22:49:56.372909+00:00",
-  "status": "I04_SCOPED_TECHNICAL_SEALED_REMOTE_REBUILT",
+  "at": "2026-10-31T06:09:24.617907+00:00",
+  "status": "I05_SOURCE_CANDIDATE_LOCAL_QUALIFIED_REMOTE_AND_UI_PENDING",
   "files": [
     {
       "path": "agent-forensic-handoff/.github/workflows/ci.yml",
@@ -270,6 +270,13 @@
       "transformation": null
     },
     {
+      "path": "agent-forensic-handoff/python/afh_semantic/context_discovery.py",
+      "sourceSha256": "dd0d8893eaf22e2f745f88306c6fef21566f872e13f4717102cc342baef0f191",
+      "publishedCandidateSha256": "dd0d8893eaf22e2f745f88306c6fef21566f872e13f4717102cc342baef0f191",
+      "bytes": 4311,
+      "transformation": null
+    },
+    {
       "path": "agent-forensic-handoff/python/afh_semantic/context_history.py",
       "sourceSha256": "de3eb388bc899fd36dce542a00cbfc75a10609f0c8c3ee5f3bd8471aff3092b7",
       "publishedCandidateSha256": "de3eb388bc899fd36dce542a00cbfc75a10609f0c8c3ee5f3bd8471aff3092b7",
@@ -278,9 +285,9 @@
     },
     {
       "path": "agent-forensic-handoff/python/afh_semantic/context_retrieval.py",
-      "sourceSha256": "39a18102ecf03feb8465b4530bf0bf4c8a3926e008c9bc7cfaa8a2cb8615fe20",
-      "publishedCandidateSha256": "39a18102ecf03feb8465b4530bf0bf4c8a3926e008c9bc7cfaa8a2cb8615fe20",
-      "bytes": 16707,
+      "sourceSha256": "0ddcffb4ab3cd8fd09879f2d8c2e7853094b86794d934dac8f3c05af7cd91c66",
+      "publishedCandidateSha256": "0ddcffb4ab3cd8fd09879f2d8c2e7853094b86794d934dac8f3c05af7cd91c66",
+      "bytes": 17698,
       "transformation": null
     },
     {
@@ -306,16 +313,16 @@
     },
     {
       "path": "agent-forensic-handoff/python/afh_semantic/host.py",
-      "sourceSha256": "9ecb634b9e1da980501a528cf06fe10239f297f65e839bf1070b6e0bfdf3e04c",
-      "publishedCandidateSha256": "9ecb634b9e1da980501a528cf06fe10239f297f65e839bf1070b6e0bfdf3e04c",
-      "bytes": 34529,
+      "sourceSha256": "2933331cae8dbdf968537469a73556d75d75034bcfdb5240e431309ae7aa97de",
+      "publishedCandidateSha256": "2933331cae8dbdf968537469a73556d75d75034bcfdb5240e431309ae7aa97de",
+      "bytes": 34652,
       "transformation": null
     },
     {
       "path": "agent-forensic-handoff/python/afh_semantic/identities.py",
-      "sourceSha256": "b2822f933eb51b1072e4fa8cdb1da34ae267cd7f314a11c564d746367af1a6ea",
-      "publishedCandidateSha256": "b2822f933eb51b1072e4fa8cdb1da34ae267cd7f314a11c564d746367af1a6ea",
-      "bytes": 19864,
+      "sourceSha256": "6d294da595a2613bfba46913c9f448702d12a72e94ef2b80404d121d38b6e96a",
+      "publishedCandidateSha256": "6d294da595a2613bfba46913c9f448702d12a72e94ef2b80404d121d38b6e96a",
+      "bytes": 20227,
       "transformation": null
     },
     {
@@ -404,9 +411,9 @@
     },
     {
       "path": "agent-forensic-handoff/python/afh_semantic/retrospectives.py",
-      "sourceSha256": "689e8778196e3cb26fc4fccdd3a2f7cdc8d37e456529adfb1e6f34a53230e199",
-      "publishedCandidateSha256": "689e8778196e3cb26fc4fccdd3a2f7cdc8d37e456529adfb1e6f34a53230e199",
-      "bytes": 12014,
+      "sourceSha256": "7e3dc838019fda8f367de750a2cf84276e84ef70dce3c2af34c3cd4d8375b617",
+      "publishedCandidateSha256": "7e3dc838019fda8f367de750a2cf84276e84ef70dce3c2af34c3cd4d8375b617",
+      "bytes": 12422,
       "transformation": null
     },
     {
@@ -470,6 +477,13 @@
       "sourceSha256": "e67b02ca82a3ca1cb4ada6c7b8fee8991bbfd74dbf7560943c835b7988ac975e",
       "publishedCandidateSha256": "e67b02ca82a3ca1cb4ada6c7b8fee8991bbfd74dbf7560943c835b7988ac975e",
       "bytes": 7134,
+      "transformation": null
+    },
+    {
+      "path": "agent-forensic-handoff/python/test_context_discovery.py",
+      "sourceSha256": "8533000c41bf67c222e3b8b6548371b53e29f017ad9043e031da9c25de8f211a",
+      "publishedCandidateSha256": "8533000c41bf67c222e3b8b6548371b53e29f017ad9043e031da9c25de8f211a",
+      "bytes": 13592,
       "transformation": null
     },
     {
@@ -540,6 +554,13 @@
       "sourceSha256": "332d0e99bb8f6055ee183ba59935e411c16b537d8b6652572854a48d9f64e1e8",
       "publishedCandidateSha256": "332d0e99bb8f6055ee183ba59935e411c16b537d8b6652572854a48d9f64e1e8",
       "bytes": 6132,
+      "transformation": null
+    },
+    {
+      "path": "agent-forensic-handoff/python/test_quote_locators.py",
+      "sourceSha256": "6aad356d68e30054addfe86dd40dc15be3e269a6e394e578dfa1c00788158512",
+      "publishedCandidateSha256": "6aad356d68e30054addfe86dd40dc15be3e269a6e394e578dfa1c00788158512",
+      "bytes": 6960,
       "transformation": null
     },
     {
@@ -747,9 +768,9 @@
     },
     {
       "path": "agent-forensic-handoff/src/context-package.js",
-      "sourceSha256": "19f302f0b0f5a7b9f83bd894b581c652717aa6b4972ce75218a723c4d3f9878f",
-      "publishedCandidateSha256": "19f302f0b0f5a7b9f83bd894b581c652717aa6b4972ce75218a723c4d3f9878f",
-      "bytes": 3018,
+      "sourceSha256": "ee22420973e5b3ea551331b75c9a2f659444c16accb90b30e8066e49e2cc74e0",
+      "publishedCandidateSha256": "ee22420973e5b3ea551331b75c9a2f659444c16accb90b30e8066e49e2cc74e0",
+      "bytes": 3087,
       "transformation": null
     },
     {
@@ -1356,9 +1377,9 @@
     },
     {
       "path": "app/access-server.mjs",
-      "sourceSha256": "ccf7a78805c19485b3470136c4ee23102283f7551a029cdadbccc233f6ee0886",
-      "publishedCandidateSha256": "ccf7a78805c19485b3470136c4ee23102283f7551a029cdadbccc233f6ee0886",
-      "bytes": 14432,
+      "sourceSha256": "ef81146966ed3f3f8d613efe4281725cd3c7ccc5cc057001d115a3ff6bd86e8f",
+      "publishedCandidateSha256": "ef81146966ed3f3f8d613efe4281725cd3c7ccc5cc057001d115a3ff6bd86e8f",
+      "bytes": 14451,
       "transformation": null
     },
     {
@@ -1489,9 +1510,9 @@
     },
     {
       "path": "app/context.mjs",
-      "sourceSha256": "14eb432a4af94f8dc4354aedf444a7ef9c137bcc0a95097c9ed8e2cb5a64113e",
-      "publishedCandidateSha256": "14eb432a4af94f8dc4354aedf444a7ef9c137bcc0a95097c9ed8e2cb5a64113e",
-      "bytes": 12240,
+      "sourceSha256": "798df3dfe7dbbd23bc811f2f7756c2089d9a084f1342f2af29d4128b9cd1cd79",
+      "publishedCandidateSha256": "798df3dfe7dbbd23bc811f2f7756c2089d9a084f1342f2af29d4128b9cd1cd79",
+      "bytes": 12498,
       "transformation": null
     },
     {
@@ -1804,9 +1825,9 @@
     },
     {
       "path": "app/knowledge.mjs",
-      "sourceSha256": "0788a7728655afe1df33c577da91f6b950f286556b0dfaef0de974a461b97706",
-      "publishedCandidateSha256": "0788a7728655afe1df33c577da91f6b950f286556b0dfaef0de974a461b97706",
-      "bytes": 22531,
+      "sourceSha256": "207a2db077a789f3314afa390c765617ccf2440720cdb2528eefa21ed1b8c51c",
+      "publishedCandidateSha256": "207a2db077a789f3314afa390c765617ccf2440720cdb2528eefa21ed1b8c51c",
+      "bytes": 23085,
       "transformation": null
     },
     {
@@ -1880,6 +1901,20 @@
       "transformation": null
     },
     {
+      "path": "app/managed-transport-fixture.mjs",
+      "sourceSha256": "231b2cace1ecdf5f8829670025ad761602bc458944b08e709058a20f29c7e8de",
+      "publishedCandidateSha256": "231b2cace1ecdf5f8829670025ad761602bc458944b08e709058a20f29c7e8de",
+      "bytes": 1459,
+      "transformation": null
+    },
+    {
+      "path": "app/managed-transport.test.mjs",
+      "sourceSha256": "d52a12027575e59a04a308a4d1d167927d41093e537333e725b8cab345a771c2",
+      "publishedCandidateSha256": "d52a12027575e59a04a308a4d1d167927d41093e537333e725b8cab345a771c2",
+      "bytes": 3958,
+      "transformation": null
+    },
+    {
       "path": "app/memory-cli.mjs",
       "sourceSha256": "0364216370b98786e5bdf7ee9e1235201b270ec4a87dafb8b88c7e3b93bef36c",
       "publishedCandidateSha256": "0364216370b98786e5bdf7ee9e1235201b270ec4a87dafb8b88c7e3b93bef36c",
@@ -1888,9 +1923,9 @@
     },
     {
       "path": "app/memory.mjs",
-      "sourceSha256": "ed4017392346bab9d07aad215459f279bec0cdc12c52f9b2fd7bcf36821413f3",
-      "publishedCandidateSha256": "ed4017392346bab9d07aad215459f279bec0cdc12c52f9b2fd7bcf36821413f3",
-      "bytes": 20522,
+      "sourceSha256": "0d17276dfff65d06f93f7e4a58485b295902658f8ef707b33fbbd4e195cab172",
+      "publishedCandidateSha256": "0d17276dfff65d06f93f7e4a58485b295902658f8ef707b33fbbd4e195cab172",
+      "bytes": 20875,
       "transformation": null
     },
     {
@@ -1954,6 +1989,20 @@
       "sourceSha256": "89edbfca3ba4ab8029dfe56972b3477fea8fc11926eba718712d07f2d64c3c9b",
       "publishedCandidateSha256": "89edbfca3ba4ab8029dfe56972b3477fea8fc11926eba718712d07f2d64c3c9b",
       "bytes": 5696,
+      "transformation": null
+    },
+    {
+      "path": "app/quote-locators-fixture.mjs",
+      "sourceSha256": "6203ef1fef06c9c4792d50c838644589fb8bbad2ebdd53906d0bba00ff73087e",
+      "publishedCandidateSha256": "6203ef1fef06c9c4792d50c838644589fb8bbad2ebdd53906d0bba00ff73087e",
+      "bytes": 819,
+      "transformation": null
+    },
+    {
+      "path": "app/quote-locators.test.mjs",
+      "sourceSha256": "bd841eb7745fa9a313ed822647f7a94a11f21ad89e8a548ba9eaeca67827d613",
+      "publishedCandidateSha256": "bd841eb7745fa9a313ed822647f7a94a11f21ad89e8a548ba9eaeca67827d613",
+      "bytes": 7204,
       "transformation": null
     },
     {
@@ -2028,9 +2077,9 @@
     },
     {
       "path": "app/reevaluation.mjs",
-      "sourceSha256": "726f67edda75ed9ea6e9371a73a1d967dd616b0e2e8fb44abefe8bdbe574038f",
-      "publishedCandidateSha256": "726f67edda75ed9ea6e9371a73a1d967dd616b0e2e8fb44abefe8bdbe574038f",
-      "bytes": 18227,
+      "sourceSha256": "ad9a3e1a724c4184631076734fbc0ceedd901784558f40ca144ec918db2923e7",
+      "publishedCandidateSha256": "ad9a3e1a724c4184631076734fbc0ceedd901784558f40ca144ec918db2923e7",
+      "bytes": 18655,
       "transformation": null
     },
     {
@@ -2094,6 +2143,27 @@
       "sourceSha256": "35bdb6cf375dddb8456f8da4475c3f0cb9451f087b64d0f4a71dfc3eb7f391c6",
       "publishedCandidateSha256": "35bdb6cf375dddb8456f8da4475c3f0cb9451f087b64d0f4a71dfc3eb7f391c6",
       "bytes": 1665,
+      "transformation": null
+    },
+    {
+      "path": "app/semantic-discovery-fixture.mjs",
+      "sourceSha256": "17bc49825f1d1dd0bfdb269cc987aa4eb26dbe01696986c63d68f04ce5e6c2a4",
+      "publishedCandidateSha256": "17bc49825f1d1dd0bfdb269cc987aa4eb26dbe01696986c63d68f04ce5e6c2a4",
+      "bytes": 2137,
+      "transformation": null
+    },
+    {
+      "path": "app/semantic-discovery.mjs",
+      "sourceSha256": "f573f825a36e69fe0ccb4fede27703182e9bfa9b29d13b3f39181a8d2e988ae5",
+      "publishedCandidateSha256": "f573f825a36e69fe0ccb4fede27703182e9bfa9b29d13b3f39181a8d2e988ae5",
+      "bytes": 4382,
+      "transformation": null
+    },
+    {
+      "path": "app/semantic-discovery.test.mjs",
+      "sourceSha256": "041b13a4be39bcad2f70c5590b694313b4b92fe5157d48926932f0f4decf350e",
+      "publishedCandidateSha256": "041b13a4be39bcad2f70c5590b694313b4b92fe5157d48926932f0f4decf350e",
+      "bytes": 15727,
       "transformation": null
     },
     {
@@ -2510,7 +2580,7 @@
       "transformation": null
     }
   ],
-  "bytes": 3113003,
+  "bytes": 3177118,
   "excluded": [
     "app/provenance.json",
     "all personal data, raw evidence, runtime configurations and credentials",
@@ -2522,7 +2592,7 @@
     "pyarrow"
   ],
   "sourceUnchanged": true,
-  "fullQualificationClaimed": true,
+  "fullQualificationClaimed": false,
   "privacyReview": {
     "status": "REVIEWED_EXACT_SYNTHETIC_EXCEPTIONS",
     "exceptions": [
@@ -2549,24 +2619,46 @@
     "sealedPredecessors": [
       "I01",
       "I02",
-      "I03"
+      "I03",
+      "I04"
     ],
-    "currentIncrement": "I04",
+    "currentIncrement": "I05",
     "cumulative": {
-      "passed": 629,
+      "passed": 671,
       "failed": 0,
       "skipped": 1
     },
-    "nativeUI": "PASS_SCOPED_MANAGED_UI",
-    "workingRestore": "78 files; 12 databases; 3 conversations; 6 records; new worker reads original and published generation",
-    "scaleRecovery": "PASS: 20035 files; 13210004199 bytes; 1003 databases; 8 pages and exact current/historical packages",
-    "freshRemoteInstallationAndTests": "PASS",
+    "A10": "Closed internally: strict Unicode quote locators; 14 focal tests; 643 cumulative passes and one inherited skip; native UI and fresh-process restore",
+    "additionalTransport": "Real upstream ECONNRESET reproduced; one connection per request; no replay after lost mutation response; two new tests",
+    "A12": "26 focal tests; semantic candidates from verified indexes; global 60 seed limit; complete adverse context and exact alias proofs; no new authority",
+    "fixedLocalEmbeddingOracle": {
+      "sourcesRecall": 0.8,
+      "clausesRecallBefore": 0,
+      "clausesRecallAfter": 0.8,
+      "falsePositives": 0,
+      "negativeQuestions": 2,
+      "unresolvedPositiveParaphrases": 1,
+      "model": "Xenova/paraphrase-multilingual-MiniLM-L12-v2",
+      "generativeCalls": 0
+    },
+    "lexicalPacketsUnchanged": 10,
+    "workingRestore": {
+      "files": 262,
+      "bytes": 17165271,
+      "pageAndSnapshotExactInNewProcess": true
+    },
+    "scaleRecovery": "Fresh complete I05 F36 backup/restore under Node24.20.0 and SQLite3.53.4; 20035files/13210004199bytes,1003databases,1000conversations/101000records, eight pages and current/historical packages exact",
+    "qualifiedRuntime": {
+      "version": "v24.20.0",
+      "uv": "1.52.1",
+      "sqlite": "3.53.4",
+      "execPath": "C:\\T\\orbita-audit-i05-20261028\\portable-node-24.20.0\\node-v24.20.0-win-x64\\node.exe",
+      "availableParallelism": 22
+    },
+    "freshRemoteInstallationAndTests": "PENDING",
+    "nativeUI": "A10 passed; A12 remote UI pending",
     "humanAcceptance": false,
-    "runtimePromotion": false,
-    "currentIncrementSealed": true,
-    "testedRemoteCommit": "729b549005ca2c12e0d1995083de62e527c292ba",
-    "qualification": "QUALIFICATION-I04.json"
+    "runtimePromotion": false
   },
-  "priorQualification": "QUALIFICATION-I03.json applies to the historical commit and source hashes it identifies; it is not I04 remote acceptance",
-  "qualificationScope": "I04 scoped technical delivery only; no human acceptance or production promotion"
+  "priorQualification": "QUALIFICATION-I04.json and earlier documents retain their historical source and commit scopes. This export has not completed I05 acceptance."
 }

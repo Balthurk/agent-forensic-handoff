@@ -27,7 +27,7 @@ export async function contextState(ids,{signal,excludeStores=[]}={}) {
 }
 export async function discoverContext(question,ids,options={}) {
  const before=await contextState(ids,options);
- const result=await knowledgeOperation('context_query',ids,{question,knownAt:options.knownAt??null,validAt:options.validAt??null,roots:options.roots??[]},options);
+ const result=await knowledgeOperation('context_query',ids,{question,knownAt:options.knownAt??null,validAt:options.validAt??null,roots:options.roots??[],...(options.discovery?{discovery:options.discovery}:{})},options);
  const after=await contextState(ids,options);demand(before.fingerprint===after.fingerprint,'CONTEXT_CHANGED_DURING_DISCOVERY');
  return {...result,contextState:before};
 }
@@ -51,7 +51,8 @@ export function contextPlan(question,context,records,links,sources,requestedNeed
   return {...unit,observedNeeds:observations(unit),evidenceKeys,blocked};
  });
  return {units,needs:contextNeeds(question,requestedNeeds),cut:context.contextCut,blockers:context.contextBlockers??[],
-  coverage:{sources:sources.length,textRepresentations:records.length,semanticTargets:sources.reduce((n,s)=>n+(s.coverage?.extracted?.records??0),0),scanned:context.contextScan??{},outsideSelection:context.outsideSelection??0,completeness:'not_certified',limits:'Selected revisions only; unextracted text and implicit references may contain further exceptions. No-match never proves absence.'},snapshot:null};
+  ...(context.contextDiscovery?{discovery:context.contextDiscovery}:{}),
+  coverage:{sources:sources.length,textRepresentations:records.length,semanticTargets:sources.reduce((n,s)=>n+(s.coverage?.extracted?.records??0),0),scanned:context.contextScan??{},outsideSelection:context.outsideSelection??0,completeness:'not_certified',limits:'Selected revisions only; unextracted text and implicit references may contain further exceptions. No-match never proves absence.',...(context.contextDiscovery?{discovery:context.contextDiscovery.summary}:{})},snapshot:null};
 }
 export async function retainContext({question,ids,options,plan,records,seeds,links,state,signal}) {
  await cancellationPoint(signal);demand(state,'CONTEXT_STATE_REQUIRED');
@@ -59,7 +60,7 @@ export async function retainContext({question,ids,options,plan,records,seeds,lin
  for(const seed of seeds){const closure=dependencyClosure(seed,byKey,links);if(closure.members.every(k=>covered.has(k)))continue;
   const evidenceKeys=[...new Set([...closure.members,...closure.missing])];units.push({id:'original-'+sha(seed).slice(0,24),kind:'original',title:'Original y antecedentes capturados',sourceRefs:[],needs:['source','antecedent'],observedNeeds:['source','antecedent'],requiresReview:true,blocked:!!closure.missing.length,evidenceKeys,data:{seed,missing:closure.missing}});evidenceKeys.forEach(k=>covered.add(k));
  }
- const snapshot={schema:'afh.context-snapshot.v1',question,conversationIds:[...new Set(ids)].sort(),options,cut:plan.cut,state,coverage:plan.coverage,needs:plan.needs,blockers:plan.blockers,units,evidence:records.filter(r=>covered.has(r.key))};
+ const snapshot={schema:'afh.context-snapshot.v1',question,conversationIds:[...new Set(ids)].sort(),options,cut:plan.cut,state,coverage:plan.coverage,needs:plan.needs,blockers:plan.blockers,units,evidence:records.filter(r=>covered.has(r.key)),...(plan.discovery?{discovery:plan.discovery}:{})};
  const raw=JSON.stringify(snapshot);demand(Buffer.byteLength(raw)<=32000000,'CONTEXT_SNAPSHOT_BYTE_BUDGET');const id=sha(raw),dir=path.join(ROOT,id);
  fs.mkdirSync(ROOT,{recursive:true});
  try{fs.mkdirSync(dir);fs.writeFileSync(path.join(dir,'snapshot.json'),raw,{flag:'wx'});fs.writeFileSync(path.join(dir,'cursor.key'),randomBytes(32),{flag:'wx'});fs.writeFileSync(path.join(dir,'manifest.json'),JSON.stringify({id,sha256:id,bytes:Buffer.byteLength(raw),units:units.length}),{flag:'wx'});}catch(e){if(e.code!=='EEXIST')throw e;readSnapshot(id);}

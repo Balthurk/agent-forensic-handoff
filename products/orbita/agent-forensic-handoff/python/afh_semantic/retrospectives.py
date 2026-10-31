@@ -125,7 +125,12 @@ def query(records, request):
     return result
 
 def context_units(records, request):
-    result=query(records,dict(request,view='corpus_reconstruction')); units=[]
+    from .context_retrieval import discovery_match, query_words, words
+    discovered=bool(request.get('_discovery_refs'))
+    result=query(records,dict(request,view='corpus_reconstruction',**({'question':''} if discovered else {}))); units=[]
+    if discovered:
+        terms=query_words(request)
+        result['items']=[item for item in result['items'] if terms & words(_json(item['record']['payload']['retrospective']['detail'])) or discovery_match(request,item['sourceRefs'])]
     for item in result['items']:
         units.append(dict(id='retrospective-'+item['reference']['digest'][:24],kind='retrospective',title=item['title'],sourceRefs=item['sourceRefs'],needs=['source','antecedent','scope','validity','contradiction'],requiresReview=True,blocked=bool(result['outsideSelection']),data=item))
     return result,units

@@ -13,6 +13,7 @@ from .relational_memory import instant
 from .collectives import sql_cut, history as collective_history, public as collective_public
 from .decisions import verify_chain, public as decision_public
 from .postgres_backend import restrict_sources
+from .context_discovery import prepare_discovery, references_match
 
 STOP = set('que como cual cuales donde cuando para por con una uno unos unas del los las el la de se es en y o mi me sobre esta este esto hay fue han ya mas todo toda todos todas puedes puede quiero saber dime explica segun informacion conversacion conversaciones haz the a an and or what which where when how did does is are was were to of in on for please'.split())
 
@@ -48,6 +49,15 @@ def heads(records, known, limit=500):
 def source_refs(values):
     return list({(r['id'], r['revision']): r for value in values for r in value}.values())
 
+def discovery_match(request, refs):
+    return references_match(refs, request.get('_discovery_refs', ()))
+
+def query_words(request):
+    return words(request.get('question', '')) | words(' '.join(request.get('_discovery_hints', ())))
+
+def clause_refs(clause):
+    return [clause['target_ref']] + [dict(id=w['source_id'], revision=w['revision']) for ws in clause['evidence_by_field'].values() for w in ws]
+
 def semantic(records, request, known, at):
     empty = dict(schema='afh-semantic-context-1', items=[], edges=[], missing=[], limitations=[],
                  requiresAbstention=True, status='not_extracted', coverage='No admitted semantic records')
@@ -58,9 +68,9 @@ def semantic(records, request, known, at):
     roots = request.get('roots', [])
     require(isinstance(roots, list) and len(roots) <= 100 and all(isinstance(x, str) for x in roots), 'ROOT_BUDGET')
     require(all(x in versions for x in roots), 'ROOT_NOT_AVAILABLE')
-    terms = words(request.get('question', ''))
+    terms = query_words(request)
     text = lambda item: _json([item['record']['payload']['text'], item['clause']['predicate'], item['clause']['arguments'], item['clause'].get('conditions', [])])
-    selected = set(roots) if roots else {vid for vid, item in active.items() if terms & words(text(item))}
+    selected = set(roots) if roots else {vid for vid, item in active.items() if terms & words(text(item)) or discovery_match(request, clause_refs(item['clause']))}
     # Compare potential complements sharing an explicit argument/scope. The
     # match is a discovery hint, not an exception, revocation or entity merge.
     anchors = set()
@@ -108,13 +118,16 @@ def semantic(records, request, known, at):
 
 def dispatch_context(request):
     require(isinstance(request.get('question'), str) and 0 < len(request['question']) <= 8000, 'CONTEXT_QUESTION')
+    discovered, hints, receipt = prepare_discovery(request)
+    # Always overwrite private hints, including when no discovery was supplied.
+    request = dict(request, _discovery_refs=discovered, _discovery_hints=hints)
     known = request.get('knownAt') or now(); at = request.get('validAt') or known
     instant(known); instant(at)
     mode = 'historical' if request.get('knownAt') else 'current'
     with store(request) as records:
         knowledge, units, extracted = semantic(records, request, known, at)
     blockers = []; outside = 0; scanned = {'semanticRecords': extracted, 'collectives': 0, 'decisions': 0}
-    terms = words(request['question'])
+    terms = query_words(request)
     matched_sources = {r['id'] for u in units for r in u['sourceRefs']}
     for folder in ('collectives', 'decisions'):
         with store(request, folder) as records:
@@ -126,7 +139,7 @@ def dispatch_context(request):
                     outside += 1; continue
                 p = record['payload']; detail = p.get('collective', {}).get('detail') if folder == 'collectives' else p.get('decision_case', {}).get('case')
                 if not detail: continue
-                if not (terms & words(_json(detail)) or matched_sources & {r['id'] for r in p['source_refs']}): continue
+                if not (terms & words(_json(detail)) or matched_sources & {r['id'] for r in p['source_refs']} or discovery_match(request, p['source_refs'])): continue
                 if folder == 'collectives':
                     verified = collective_history(records, p['collective']['id'], known_at=known)[-1]
                     data = collective_public(records, verified, at)
@@ -170,7 +183,7 @@ def dispatch_context(request):
             from .identities import resolve, context_unit
             board=resolve(records,dict(request,knownAt=known,validAt=at,mode=mode))
             scanned['identities']=len(board['entities'])+len(board['links']);outside+=board['outsideSelection']
-            identity=context_unit(board,request['question'])
+            identity=context_unit(board,request['question'],discovered,hints)
             if identity:
                 units.append(identity)
                 if identity['blocked']:blockers.append(dict(unitId=identity['id'],reason='identity_comparison_outside_selection'))
@@ -191,7 +204,7 @@ def dispatch_context(request):
             def decisions_of(item):
                 d=item['record']['payload']['intelligence']['detail']
                 return {d[k]['caseId'] for k in ('decision','targetDecision') if k in d}
-            hit={i['reference']['id'] for i in board['items'] if terms & words(_json(i['record']['payload']['intelligence']['detail']))}
+            hit={i['reference']['id'] for i in board['items'] if terms & words(_json(i['record']['payload']['intelligence']['detail'])) or discovery_match(request, i['sourceRefs'])}
             changed=True
             while changed:
                 before=set(hit);cases=set().union(*(decisions_of(i) for i in board['items'] if i['reference']['id'] in hit)) if hit else set()
@@ -211,10 +224,11 @@ def dispatch_context(request):
             cases={u['data']['case']['reference']['caseId'] for u in units if u['kind']=='decision'}
             for item in board['items']:
                 d=item['record']['payload']['causal']['detail']
-                if terms_match(request['question'],item) or d['decision'] and d['decision']['caseId'] in cases:
+                if terms_match(' '.join([request['question'], *hints]),item) or discovery_match(request, item['sourceRefs']) or d['decision'] and d['decision']['caseId'] in cases:
                     units.append(dict(id='causal-'+item['reference']['digest'][:24],kind='causal_explanation',title=item['title'],sourceRefs=item['sourceRefs'],needs=['source','antecedent','scope','validity','contradiction','decision_support'],requiresReview=True,blocked=bool(board['outsideSelection']),data=item))
             if board['outsideSelection']:blockers.append(dict(reason='causal_outside_selection'))
     require(len(units) <= 100, 'CONTEXT_UNIT_BUDGET')
     return dict(**{k: v for k, v in knowledge.items() if k not in ('contextUnits',)}, contextUnits=units,
                 contextCut=dict(knownAt=known, validAt=at, mode=mode), contextScan=scanned, contextBlockers=blockers, outsideSelection=outside,
-                contextCoverage='All bounded selected semantic heads inspected; unextracted text, implicit references and unknown validity prevent a global completeness claim.')
+                contextCoverage='All bounded selected semantic heads inspected; unextracted text, implicit references and unknown validity prevent a global completeness claim.',
+                **(dict(contextDiscovery=receipt) if receipt else {}))

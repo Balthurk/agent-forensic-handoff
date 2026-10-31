@@ -100,7 +100,7 @@ export function createAccessServer({root,port=4492,clock}={}){
   const controller=new AbortController(),cancel=()=>{if(!res.writableEnded)controller.abort();};req.once('aborted',cancel);res.once('close',cancel);
   const timer=setTimeout(()=>controller.abort(),180000);timer.unref();
   try{
-   const upstream=await fetch(`http://127.0.0.1:${worker.port}${u.pathname}${u.search}`,{method:req.method,headers:{'x-orbita-worker':worker.secret,...(req.method==='GET'?{}:{'content-type':'application/json'})},...(req.method==='GET'?{}:{body:JSON.stringify(b)}),signal:controller.signal,redirect:'error'});
+   const upstream=await fetch(`http://127.0.0.1:${worker.port}${u.pathname}${u.search}`,{method:req.method,headers:{'x-orbita-worker':worker.secret,connection:'close',...(req.method==='GET'?{}:{'content-type':'application/json'})},...(req.method==='GET'?{}:{body:JSON.stringify(b)}),signal:controller.signal,redirect:'error'});
    const bytes=Buffer.from(await upstream.arrayBuffer());demand(bytes.length<=64*1024**2,'ACCESS_RESPONSE_BUDGET',503);store.fence(credential,access,role);
    store.audit(session.user,'request_completed',id,{method:req.method,route:p,operation:b.op||null,status:upstream.status,accessRevision:access.workspace.revision,membershipRevision:access.membershipRevision});
    const headers={...security,'content-type':upstream.headers.get('content-type')||'application/json','x-orbita-workspace':id,'x-orbita-access-revision':String(access.workspace.revision),'x-orbita-principal':session.user};
