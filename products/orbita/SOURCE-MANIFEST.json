@@ -1,7 +1,7 @@
 {
   "schema": "orbita.public-source-candidate.v1",
   "at": "2026-10-31T06:09:24.617907+00:00",
-  "status": "I05_SOURCE_CANDIDATE_LOCAL_QUALIFIED_REMOTE_AND_UI_PENDING",
+  "status": "I05_SCOPED_TECHNICAL_SEALED_REMOTE_REBUILT",
   "files": [
     {
       "path": "agent-forensic-handoff/.github/workflows/ci.yml",
@@ -2592,7 +2592,7 @@
     "pyarrow"
   ],
   "sourceUnchanged": true,
-  "fullQualificationClaimed": false,
+  "fullQualificationClaimed": true,
   "privacyReview": {
     "status": "REVIEWED_EXACT_SYNTHETIC_EXCEPTIONS",
     "exceptions": [
@@ -2655,10 +2655,14 @@
       "execPath": "C:\\T\\orbita-audit-i05-20261028\\portable-node-24.20.0\\node-v24.20.0-win-x64\\node.exe",
       "availableParallelism": 22
     },
-    "freshRemoteInstallationAndTests": "PENDING",
-    "nativeUI": "A10 passed; A12 remote UI pending",
+    "freshRemoteInstallationAndTests": "PASS",
+    "nativeUI": "PASS_SCOPED_NATIVE_A12_FROM_REMOTE",
     "humanAcceptance": false,
-    "runtimePromotion": false
+    "runtimePromotion": false,
+    "currentIncrementSealed": true,
+    "testedRemoteCommit": "1fe4e7e6941b1723f8c265aedad4aafba5706420",
+    "qualification": "QUALIFICATION-I05.json"
   },
-  "priorQualification": "QUALIFICATION-I04.json and earlier documents retain their historical source and commit scopes. This export has not completed I05 acceptance."
+  "priorQualification": "QUALIFICATION-I04.json and earlier documents retain their historical source and commit scopes. QUALIFICATION-I05.json records the scoped technical seal; no human acceptance or production promotion is claimed.",
+  "qualificationScope": "I05 scoped technical delivery only; no human acceptance or production promotion"
 }

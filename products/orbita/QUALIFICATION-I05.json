@@ -1,0 +1,125 @@
+{
+  "schema": "orbita.public.qualification.v1",
+  "at": "2026-10-31T07:44:02.143987+00:00",
+  "status": "PASS_SCOPED_TECHNICAL_I05",
+  "testedRemoteCommit": "1fe4e7e6941b1723f8c265aedad4aafba5706420",
+  "candidateSealSha256": "1d369cef6f9dccb38d06b6aae16a1a6d71f15e5bd5e94f1fb48d4fe438e65883",
+  "publishedSourceFiles": 368,
+  "publishedSourcesUnchangedDuringTests": true,
+  "freshNodeDependencies": true,
+  "freshPythonEnvironment": true,
+  "skillMetrics": {
+    "tests": 293,
+    "pass": 292,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 1,
+    "todo": 0
+  },
+  "orbitaSuites": [
+    {
+      "name": "core",
+      "tests": 130,
+      "passed": 129,
+      "skipped": 1
+    },
+    {
+      "name": "app",
+      "tests": 286,
+      "passed": 286,
+      "skipped": 0
+    },
+    {
+      "name": "python",
+      "tests": 256,
+      "passed": 256,
+      "skipped": 0
+    }
+  ],
+  "nativeUI": {
+    "status": "PASS_SCOPED_NATIVE_A12_FROM_REMOTE",
+    "adverseContextVisible": true,
+    "twoOriginalsExact": true,
+    "snapshotPageVerified": true,
+    "negativeNoMatchVisible": true,
+    "diagnostics": {
+      "browserConsole": [],
+      "consoleCaptureScope": "captured browser diagnostics during this tab; no claim about earlier runs",
+      "automationWaitFailure": "UI-WAIT-FAILURE.json",
+      "originalRequestCompleted200AfterWaitTimeout": true,
+      "requestReplayed": false,
+      "inheritedFaviconIssue": "I04-UI-FAVICON remains tracked for I06; not claimed repaired"
+    },
+    "generativeProviderCalls": 0
+  },
+  "managedTransport": {
+    "status": "PASS_SCOPED_NATIVE_MANAGED_INDEX_FROM_REMOTE",
+    "indexJobCompleted": true,
+    "pollsSuccessful": true,
+    "sourceLiteralExact": true,
+    "newFocalTests": 2,
+    "noMutationReplay": true,
+    "qualificationDataRoot": "short local path",
+    "unresolvedLimitation": "Native SQLite creation failed under the long laboratory path; preserved and assigned to PG01, not claimed repaired"
+  },
+  "fixedSyntheticOracle": {
+    "sources": {
+      "tp": 8,
+      "fp": 0,
+      "fn": 2
+    },
+    "clausesBefore": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 10
+    },
+    "clausesAfter": {
+      "tp": 8,
+      "fp": 0,
+      "fn": 2
+    },
+    "negativeQuestions": 2,
+    "unresolvedPositiveParaphrases": 1,
+    "lexicalPacketsUnchanged": 10,
+    "qualityGeneralization": false
+  },
+  "workingRecovery": {
+    "files": 262,
+    "bytes": 17165271,
+    "databases": 20,
+    "conversations": 8,
+    "records": 16,
+    "pageAndSnapshotExactInNewProcess": true
+  },
+  "scaleRecovery": {
+    "mode": "Fresh complete I05 backup and restore under Node24.20.0/SQLite3.53.4",
+    "runtime": {
+      "version": "v24.20.0",
+      "sqlite": "3.53.4",
+      "nodeSha256": "5c976096e04e5c2c1f091938926234cc9fbebfe9787ddd149351b3b0ecc707b5"
+    },
+    "files": 20035,
+    "bytes": 13210004199,
+    "exactPages": 8,
+    "currentAndHistoricalPackagesExact": true,
+    "fresh13GBRestore": true
+  },
+  "priorOperationalBackup": {
+    "increment": "I03",
+    "scope": "Verified development corpus retained outside public Git with encrypted archive and locally protected key"
+  },
+  "preservedA12FailedCumulativeAttempts": 8,
+  "nativeIncidentCause": "NOT_ESTABLISHED",
+  "serviceFailureObservation": "Janus evaluation timeout and Cassandra pauses observed in retained server logs during a failed run; exclusive client or native causality not asserted",
+  "privateEvidencePublished": false,
+  "humanAcceptance": false,
+  "productivePromotion": false,
+  "remainingIncrements": [
+    "PG01",
+    "I06",
+    "I07",
+    "I08",
+    "I09",
+    "I10"
+  ]
+}
