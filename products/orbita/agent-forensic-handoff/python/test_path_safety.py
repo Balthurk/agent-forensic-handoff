@@ -40,6 +40,8 @@ class PathSafetyTests(unittest.TestCase):
 
     def long_parent(self):
         parent = self.root / ('a' * 90) / ('b' * 90)
+        while len(str(parent)) <= 260:
+            parent = parent / ('c' * 90)
         self.assertGreater(len(str(parent)), 260)
         self.native_fixture(parent).mkdir(parents=True)
         return parent

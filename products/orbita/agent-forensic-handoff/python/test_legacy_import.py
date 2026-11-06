@@ -115,6 +115,8 @@ class LegacyImport(unittest.TestCase):
 
     def long_native_source(self):
         original=self.seed();root=self.native/('long-a-ñ #%'+'a'*85)/('long-b-'+'b'*85)/'source'
+        while len(str(root))<=260:
+            root=root.parent/('long-c-'+'c'*85)/root.name
         extended=Path('\\\\?\\'+str(root));self.assertGreater(len(str(root)),260);extended.mkdir(parents=True)
         raw=(self.native/'cache.sqlite').read_bytes();(extended/'cache.sqlite').write_bytes(raw)
         plan=dict(original,sourceRoot=str(root))

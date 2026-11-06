@@ -3127,9 +3127,9 @@
     },
     {
       "path": "agent-forensic-handoff/python/test_legacy_import.py",
-      "sourceSha256": "1c40e962f7b0f2e410786f5268f354d0645efeb9be8c22e2f55c65df1cd079d0",
-      "publishedCandidateSha256": "1c40e962f7b0f2e410786f5268f354d0645efeb9be8c22e2f55c65df1cd079d0",
-      "bytes": 25334,
+      "sourceSha256": "533e442a0c51a5c47ef8b6bb9bc49128a195a88a9e2a093ac73da86c2c65df81",
+      "publishedCandidateSha256": "533e442a0c51a5c47ef8b6bb9bc49128a195a88a9e2a093ac73da86c2c65df81",
+      "bytes": 25427,
       "transformation": null
     },
     {
@@ -3141,9 +3141,9 @@
     },
     {
       "path": "agent-forensic-handoff/python/test_legacy_plan.py",
-      "sourceSha256": "094d93f74dc1ae0b063402026c66b180f7bb83c70b1b434b5f6bb8e578431b67",
-      "publishedCandidateSha256": "094d93f74dc1ae0b063402026c66b180f7bb83c70b1b434b5f6bb8e578431b67",
-      "bytes": 16579,
+      "sourceSha256": "0cb6feac95fe0a8e6820600725d392fa9254c15e505d1fa6d396e380ed56d167",
+      "publishedCandidateSha256": "0cb6feac95fe0a8e6820600725d392fa9254c15e505d1fa6d396e380ed56d167",
+      "bytes": 16674,
       "transformation": null
     },
     {
@@ -3176,9 +3176,9 @@
     },
     {
       "path": "agent-forensic-handoff/python/test_path_safety.py",
-      "sourceSha256": "edf7adb6024a6532629a90ad33a5a12665d7e8bcb20932dc06ea4c3b17c3eb6c",
-      "publishedCandidateSha256": "edf7adb6024a6532629a90ad33a5a12665d7e8bcb20932dc06ea4c3b17c3eb6c",
-      "bytes": 8320,
+      "sourceSha256": "501323c854ee11cc09022fc29544c0c2fee2ebddda9298dc3fce4c968bdabf6c",
+      "publishedCandidateSha256": "501323c854ee11cc09022fc29544c0c2fee2ebddda9298dc3fce4c968bdabf6c",
+      "bytes": 8402,
       "transformation": null
     },
     {

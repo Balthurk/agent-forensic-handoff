@@ -104,7 +104,10 @@ class LegacyPlan(unittest.TestCase):
         self.assertEqual(result['status'],'PASS_EXPLICIT_IMPORT')
 
     def test_long_paths_and_directory_addition_during_retained_scan(self):
-        self.native=self.native/('a'*90)/('b'*90);native_path(self.native).mkdir(parents=True)
+        self.native=self.native/('a'*90)/('b'*90)
+        while len(str(self.native))<=260:
+            self.native=self.native/('c'*90)
+        native_path(self.native).mkdir(parents=True)
         self.database();self.assertGreater(len(str(self.native)),260)
         plan=build_plan(self.native);self.assertEqual(len(plan['entries']),1)
         original=NativeReadHold.verify;added=False
