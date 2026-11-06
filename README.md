@@ -1,3 +1,9 @@
+# Órbita I04 — rama pública de instalación
+
+Esta rama conserva el código completo hasta I04. Empieza por **[Instalar Órbita I04](ORBITA-I04-INSTALAR.md)** para descargar, instalar y arrancar la aplicación en otro equipo. El producto está en **[products/orbita](products/orbita)** y su cierre técnico en [QUALIFICATION-I04.json](products/orbita/QUALIFICATION-I04.json). Los cambios posteriores y PG01 no forman parte de esta rama.
+
+---
+
 # Agent Forensic Handoff
 
 [![CI](https://github.com/Balthurk/agent-forensic-handoff/actions/workflows/ci.yml/badge.svg)](https://github.com/Balthurk/agent-forensic-handoff/actions/workflows/ci.yml)
