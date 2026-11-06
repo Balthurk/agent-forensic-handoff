@@ -5,9 +5,9 @@ import {causalOperation} from './causal.mjs';
 import {intelligenceOperation} from './decision-intelligence.mjs';
 import {retrospectiveOperation} from './retrospectives.mjs';
 import {volumeOperation} from './volume.mjs';
-import http from 'node:http';import fs from 'node:fs';import path from 'node:path';import {randomUUID} from 'node:crypto';import {fileURLToPath} from 'node:url';
+import http from 'node:http';import nativeFiles from 'node:fs';import fs from '../agent-forensic-handoff/src/common-files.js';import {closeCommonStore} from '../agent-forensic-handoff/src/common-store.js';import {setTimeout as delay} from 'node:timers/promises';import path from 'node:path';import {randomUUID} from 'node:crypto';import {fileURLToPath} from 'node:url';
 import {getLibrary,addSource,retrieve,getEvidence,validateAnswer,DATA} from './corpus.mjs';import {infer,answerSchema,authStatus,MODELS,GAP_TEXT} from './llm.mjs';
-import {retrievePackage,coverage,indexConversations,loadTaxonomy,SEMANTIC_TYPES,createProposal,listProposals} from './memory.mjs';
+import {retrievePackage,coverage,indexConversations,loadTaxonomy,SEMANTIC_TYPES,createProposal,listProposals,closeMemory} from './memory.mjs';
 import {knowledgeOperation,extractKnowledge,reviewKnowledge} from './knowledge.mjs';
 import {registerCapture,captureOnce,captureStatus} from './capture.mjs';
 import {generationStatus,generationRequest} from './retained-generation.mjs';
@@ -29,11 +29,12 @@ import {supportOperation,supportSources} from './justifications.mjs';
 import {createBackup,restoreBackup,restoreState,activateRestore,disjoint} from './recovery.mjs';
 import {reevaluationOperation,resumeAutomaticReevaluations,pauseAutomaticReevaluations} from './reevaluation.mjs';
 const ROOT=path.dirname(fileURLToPath(import.meta.url)),jobs=new Map();let PORT=Number(process.env.AFH_COSMOS_PORT||4322),active=0,importing=false,semanticBusy=false,recoveryBusy=false,inFlight=0;
-const activity=new WorkerActivity();
+const activity=new WorkerActivity(),callers=new Set();let shuttingDown=false,shutdownTask;
 if(process.env.AFH_MANAGED==='1')process.on('message',m=>{
  if(!/^[a-f0-9-]{36}$/.test(m?.nonce||''))return;
  if(m.type==='orbita-quiesce')process.send?.({type:'orbita-quiesced',nonce:m.nonce,idle:activity.quiesce(m.nonce)});
  if(m.type==='orbita-resume')process.send?.({type:'orbita-resumed',nonce:m.nonce,resumed:activity.resume(m.nonce)});
+ if(m.type==='orbita-shutdown')void closeServer().then(()=>{if(process.connected)process.disconnect();},()=>{process.exitCode=1;console.error('SERVER_SHUTDOWN_FAILED');if(process.connected)process.disconnect();});
 });
 const json=(res,status,value)=>{res.writeHead(status,{'content-type':'application/json; charset=utf-8','cache-control':'no-store'});res.end(JSON.stringify(value));};
 async function read(req){let n=0,chunks=[];for await(const d of req){n+=d.length;if(n>64*1024*1024)throw new Error('El archivo supera 64 MB');chunks.push(d);}return JSON.parse(Buffer.concat(chunks).toString()||'{}');}
@@ -62,7 +63,7 @@ export async function answerQuestion({question,conversationIds,model='gpt-6.1-so
  await cancellationPoint(signal);budget.check();if(persist){fs.mkdirSync(path.join(DATA,'answers'),{recursive:true});fs.writeFileSync(path.join(DATA,'answers',receipt.id+'.json'),JSON.stringify(receipt,null,2));}return receipt;
  }finally{budget.close();}
 }
-const server=http.createServer(async(req,res)=>{const finishRequest=activity.request(res);if(!finishRequest)return json(res,503,{error:'ACCESS_WORKER_QUIESCED'});inFlight++;const caller=new AbortController();const cancelCaller=()=>{if(!res.writableEnded)caller.abort(new Error('CALLER_DISCONNECTED'));};req.on('aborted',cancelCaller);res.on('close',cancelCaller);res.on('finish',()=>req.removeListener('aborted',cancelCaller));try{
+const server=http.createServer(async(req,res)=>{const finishRequest=shuttingDown?null:activity.request(res);if(!finishRequest)return json(res,503,{error:'ACCESS_WORKER_QUIESCED'});inFlight++;const caller=new AbortController();callers.add(caller);const cancelCaller=()=>{if(!res.writableEnded)caller.abort(new Error('CALLER_DISCONNECTED'));};req.on('aborted',cancelCaller);res.on('close',cancelCaller);res.on('finish',()=>req.removeListener('aborted',cancelCaller));try{
  if(process.env.AFH_PRIVATE_TOKEN&&req.headers['x-orbita-worker']!==process.env.AFH_PRIVATE_TOKEN)return json(res,401,{error:'ACCESS_WORKER_AUTH_REQUIRED'});
  const host=req.headers.host;if(![`127.0.0.1:${PORT}`,`localhost:${PORT}`].includes(host)){json(res,403,{error:'Host no permitido'});return;}
  if(req.headers.origin&&!['http://127.0.0.1:'+PORT,'http://localhost:'+PORT].includes(req.headers.origin)){json(res,403,{error:'Origen no permitido'});return;}
@@ -149,8 +150,20 @@ const server=http.createServer(async(req,res)=>{const finishRequest=activity.req
  if(req.method==='POST'&&u.pathname==='/api/ask'){if(active>=2)return json(res,429,{error:'Hay dos consultas en curso; espera a que terminen.'});const body=await read(req),id=randomUUID(),job={id,status:'running',phase:'Preparando consulta'};jobs.set(id,job);active++;job.controller=new AbortController();activity.background(()=>answerQuestion({...body,signal:job.controller.signal},phase=>job.phase=phase).then(result=>{if(!job.controller.signal.aborted)Object.assign(job,{status:'complete',result});}).catch(e=>Object.assign(job,{status:job.controller.signal.aborted?'cancelled':'error',error:e.message})).finally(()=>active--));json(res,202,{id});return;}
  if(req.method==='POST'&&u.pathname==='/api/import'){if(importing)return json(res,409,{error:'Hay una importación en curso'});importing=true;try{const result=await addSource(await read(req));return json(res,200,{result,...await bootstrapLibrary({catalogue:u.searchParams.get('catalogue')==='1'})});}finally{importing=false;}}
  if(req.method==='GET'&&u.pathname==='/api/export'){const id=u.searchParams.get('id');if(!/^[a-f0-9-]{36}$/.test(id||''))throw new Error('ID inválido');const f=path.join(DATA,'answers',id+'.json');res.writeHead(200,{'content-type':'application/json','content-disposition':`attachment; filename="orbita-${id}.json"`});res.end(fs.readFileSync(f));return;}
- const assets={'/graph-publication-web.mjs':'graph-publication-web.mjs','/causal-web.mjs':'causal-web.mjs','/decision-intelligence-web.mjs':'decision-intelligence-web.mjs','/retrospectives-web.mjs':'retrospectives-web.mjs','/retrospectives.css':'retrospectives.css','/volume-web.mjs':'volume-web.mjs','/volume.css':'volume.css','/routing-web.mjs':'routing-web.mjs','/routing.css':'routing.css','/identities-web.mjs':'identities-web.mjs','/identities.css':'identities.css','/explorer-web.mjs':'explorer-web.mjs','/explorer-model.mjs':'explorer-model.mjs','/explorer.css':'explorer.css','/context-web.mjs':'context-web.mjs','/support-fields.mjs':'support-fields.mjs','/supports-web.mjs':'supports-web.mjs','/collective-fields.mjs':'collective-fields.mjs','/collectives-web.mjs':'collectives-web.mjs','/documents-web.mjs':'documents-web.mjs','/recovery-web.mjs':'recovery-web.mjs','/reevaluation-web.mjs':'reevaluation-web.mjs','/decisions-web.mjs':'decisions-web.mjs','/learning-web.mjs':'learning-web.mjs','/':'index.html','/app.js':'web.js','/p1-web.mjs':'p1-web.mjs','/semantic-web.mjs':'semantic-web.mjs','/incremental-web.mjs':'incremental-web.mjs','/style.css':'style.css'};if(req.method==='GET'&&assets[u.pathname]){const file=assets[u.pathname];res.writeHead(200,{'content-type':(file.endsWith('.js')||file.endsWith('.mjs'))?'text/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8','content-security-policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; frame-ancestors 'none'",'x-content-type-options':'nosniff'});res.end(fs.readFileSync(path.join(ROOT,'web',file)));return;}
+ const assets={'/graph-publication-web.mjs':'graph-publication-web.mjs','/causal-web.mjs':'causal-web.mjs','/decision-intelligence-web.mjs':'decision-intelligence-web.mjs','/retrospectives-web.mjs':'retrospectives-web.mjs','/retrospectives.css':'retrospectives.css','/volume-web.mjs':'volume-web.mjs','/volume.css':'volume.css','/routing-web.mjs':'routing-web.mjs','/routing.css':'routing.css','/identities-web.mjs':'identities-web.mjs','/identities.css':'identities.css','/explorer-web.mjs':'explorer-web.mjs','/explorer-model.mjs':'explorer-model.mjs','/explorer.css':'explorer.css','/context-web.mjs':'context-web.mjs','/support-fields.mjs':'support-fields.mjs','/supports-web.mjs':'supports-web.mjs','/collective-fields.mjs':'collective-fields.mjs','/collectives-web.mjs':'collectives-web.mjs','/documents-web.mjs':'documents-web.mjs','/recovery-web.mjs':'recovery-web.mjs','/reevaluation-web.mjs':'reevaluation-web.mjs','/decisions-web.mjs':'decisions-web.mjs','/learning-web.mjs':'learning-web.mjs','/':'index.html','/app.js':'web.js','/p1-web.mjs':'p1-web.mjs','/semantic-web.mjs':'semantic-web.mjs','/incremental-web.mjs':'incremental-web.mjs','/style.css':'style.css'};if(req.method==='GET'&&assets[u.pathname]){const file=assets[u.pathname];res.writeHead(200,{'content-type':(file.endsWith('.js')||file.endsWith('.mjs'))?'text/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8','content-security-policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; frame-ancestors 'none'",'x-content-type-options':'nosniff'});res.end(nativeFiles.readFileSync(path.join(ROOT,'web',file)));return;}
  json(res,404,{error:'No encontrado'});
- }catch(e){if(!res.destroyed&&!res.writableEnded)json(res,400,{error:e.message});}finally{inFlight--;finishRequest();}});
-if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){server.listen(PORT,'127.0.0.1',()=>{PORT=server.address().port;console.log(`ORBITA http://127.0.0.1:${PORT}`);process.send?.({type:'orbita-ready',port:PORT});if(process.env.AFH_MANAGED!=='1')resumeAutomaticReevaluations().catch(e=>console.error('REEVALUATION_RESUME_FAILED',e.message));});if(process.env.AFH_MANAGED==='1')process.once('disconnect',()=>process.exit(0));}
+ }catch(e){if(!res.destroyed&&!res.writableEnded)json(res,400,{error:e.message});}finally{callers.delete(caller);inFlight--;finishRequest();}});
+if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){server.listen(PORT,'127.0.0.1',()=>{PORT=server.address().port;console.log(`ORBITA http://127.0.0.1:${PORT}`);process.send?.({type:'orbita-ready',port:PORT});if(process.env.AFH_MANAGED!=='1')resumeAutomaticReevaluations().catch(e=>console.error('REEVALUATION_RESUME_FAILED',e.message));});const shutdown=()=>closeServer().catch(e=>{console.error(e.message);process.exitCode=1;});for(const signal of ['SIGINT','SIGTERM'])process.once(signal,shutdown);if(process.env.AFH_MANAGED==='1')process.once('disconnect',shutdown);}
+export function closeServer(){
+ if(shutdownTask)return shutdownTask;
+ shuttingDown=true;
+ const task=(async()=>{
+  const reason=new Error('SERVER_STOPPING'),deadline=Date.now()+15000;
+  for(const caller of callers)caller.abort(reason);
+  for(const job of jobs.values())job.controller?.abort(reason);
+  const closed=new Promise(resolve=>server.close(resolve));server.closeAllConnections();
+  while(activity.http||activity.jobs.size){if(Date.now()>=deadline)throw new Error('SERVER_CONSUMERS_CLOSE_TIMEOUT');await delay(20);}
+  await closed;pauseAutomaticReevaluations(true);await closeMemory();return closeCommonStore();
+ })();shutdownTask=task;void task.catch(()=>{if(shutdownTask===task)shutdownTask=null;});return task;
+}
 export {server};

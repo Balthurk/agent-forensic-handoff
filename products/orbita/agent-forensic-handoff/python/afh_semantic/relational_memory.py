@@ -8,15 +8,11 @@ System history only. Paths explain connections, never transitivity or causality.
 from collections import deque
 from datetime import datetime, timezone, timedelta
 import re
-import sqlite3
 
 from .knowledge_records import RecordError, _identifier, _json, _text
 
-DEFAULT_BUDGET = {"max_rows": 2000, "max_input_bytes": 4000000,
-                  "max_sql_steps": 300000, "max_work": 20000,
-                  "max_edges": 1000, "max_nodes": 200,
-                  "max_sources": 100, "max_source_bytes": 4000000,
-                  "max_context_bytes": 64000}
+from .relational_budget import DEFAULT_BUDGET, Budget as _Budget, Limit as _Limit, read_scope
+
 _TIMESTAMP = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}:\d{2})$")
 
 def instant(value):
@@ -79,27 +75,6 @@ def validate_graph(payload):
     if start is not None and end is not None and start>=end:
         raise RecordError("INVALID_TEMPORAL_RANGE")
 
-class _Limit(Exception):
-    pass
-
-class _Budget:
-    def __init__(self,limits):
-        if limits is not None and (not isinstance(limits,dict) or set(limits)-set(DEFAULT_BUDGET)):
-            raise RecordError("INVALID_BUDGET")
-        self.limits={**DEFAULT_BUDGET,**(limits or {})}
-        for name,value in self.limits.items():
-            if isinstance(value,bool) or not isinstance(value,int) or value<1 or value>DEFAULT_BUDGET[name]*10:
-                raise RecordError("INVALID_BUDGET",name)
-        if self.limits["max_context_bytes"]<2048: raise RecordError("INVALID_BUDGET","context minimum 2048 bytes")
-        self.used={name[4:]:0 for name in self.limits}
-    def take(self,name,count=1):
-        self.used[name]+=count
-        if self.used[name]>self.limits["max_"+name]: raise _Limit(name)
-    def progress(self):
-        try: self.take("sql_steps",100); return 0
-        except _Limit: return 1
-
-
 def _project(record, contradicts=()):
     """Allowlist the context; arbitrary preserved metadata is not historical output."""
     p=record["payload"]
@@ -130,37 +105,31 @@ class RelationalMemory:
         cutoff=instant(known_at) if known_at is not None else None
         records=self.records
         selected=[]
-        records.db.set_progress_handler(budget.progress,100)
-        try:
-            clauses=["scope=?"]; params=[scope]
-            if record_id is not None: clauses.append("record_id=?"); params.append(record_id)
-            if cutoff is not None:
-                # New N04 timestamps are canonical UTC microseconds. Floor the query's
-                # nanoseconds only for this indexed prefilter; verify exact values below.
-                try:
-                    sql_cut=(datetime(1970,1,1,tzinfo=timezone.utc)+timedelta(microseconds=cutoff//1000)).isoformat(timespec="microseconds")
-                except (OverflowError,ValueError) as error:
-                    raise RecordError("INVALID_TIME", "UTC outside supported calendar") from error
-                clauses.append("recorded_at<=?"); params.append(sql_cut)
-            params.append(budget.limits["max_rows"]+1)
-            sizes="+".join("length(CAST("+key+" AS BLOB))" for key in ("record_id","scope","recorded_at","payload","payload_sha256","request_id","request_sha256"))
-            rows=records.db.execute("SELECT rowid AS _rowid,"+sizes+"+128 AS bytes FROM record_versions WHERE "+" AND ".join(clauses)+" ORDER BY rowid LIMIT ?",params)
-            for header in rows:
-                budget.take("rows"); budget.take("work"); budget.take("input_bytes",header["bytes"])
-                row=records.db.execute("SELECT rowid AS _rowid,* FROM record_versions WHERE rowid=?",(header["_rowid"],)).fetchone()
-                # Every revision USED must have its entire envelope verified. The
-                # future is not loaded or reported by this historical query.
-                record=records._envelope(row,verify_sources=False)
-                if cutoff is not None and instant(record["recorded_at"])>cutoff: continue
-                if "graph" not in record["payload"]: continue
-                if record["integrity"]!="envelope_v1": raise RecordError("HISTORICAL_INTEGRITY_UNAVAILABLE")
-                selected.append(record)
-            return selected
-        except sqlite3.OperationalError as error:
-            if "interrupt" in str(error).lower(): raise _Limit("sql_steps") from error
-            raise
-        finally:
-            records.db.set_progress_handler(None,0)
+        budget.check()
+        clauses=["scope=?"]; params=[scope]
+        if record_id is not None: clauses.append("record_id=?"); params.append(record_id)
+        if cutoff is not None:
+            # New N04 timestamps are canonical UTC microseconds. Floor the query's
+            # nanoseconds only for this indexed prefilter; verify exact values below.
+            try:
+                sql_cut=(datetime(1970,1,1,tzinfo=timezone.utc)+timedelta(microseconds=cutoff//1000)).isoformat(timespec="microseconds")
+            except (OverflowError,ValueError) as error:
+                raise RecordError("INVALID_TIME", "UTC outside supported calendar") from error
+            clauses.append("recorded_at<=?"); params.append(sql_cut)
+        params.append(budget.limits["max_rows"]+1)
+        sizes="+".join("length(CAST("+key+" AS BLOB))" for key in ("record_id","scope","recorded_at","payload","payload_sha256","request_id","request_sha256"))
+        rows=records.db.execute("SELECT rowid AS _rowid,"+sizes+"+128 AS bytes FROM record_versions WHERE "+" AND ".join(clauses)+" ORDER BY rowid LIMIT ?",params)
+        for header in rows:
+            budget.take("rows"); budget.take("work"); budget.take("input_bytes",header["bytes"])
+            row=records.db.execute("SELECT rowid AS _rowid,* FROM record_versions WHERE rowid=?",(header["_rowid"],)).fetchone()
+            # Every revision USED must have its entire envelope verified. The
+            # future is not loaded or reported by this historical query.
+            record=records._envelope(row,verify_sources=False)
+            if cutoff is not None and instant(record["recorded_at"])>cutoff: continue
+            if "graph" not in record["payload"]: continue
+            if record["integrity"]!="envelope_v1": raise RecordError("HISTORICAL_INTEGRITY_UNAVAILABLE")
+            selected.append(record)
+        return selected
 
     def _sources(self,record,budget,verified):
         for ref in record["payload"]["source_refs"]:
@@ -168,11 +137,9 @@ class RelationalMemory:
             if key in verified: continue
             budget.take("sources"); budget.take("work")
             memory = self.records.memory
-            if callable(getattr(memory, "source_size", None)):
-                size = memory.source_size(*key)
-            else:
-                row=memory.db.execute("SELECT r.byte_length FROM records r WHERE r.id=? AND r.revision=? AND EXISTS(SELECT 1 FROM occurrences o WHERE o.revision=r.revision AND o.project=?)",key).fetchone()
-                size = None if row is None else row[0]
+            if not callable(getattr(memory, "source_size", None)):
+                raise RecordError("SOURCE_SIZE_CONTRACT_REQUIRED")
+            size = memory.source_size(*key)
             if size is None: raise RecordError("SOURCE_SCOPE_MISMATCH")
             budget.take("source_bytes",size)
             verified[key]=self.records._source(ref,key[2])
@@ -224,12 +191,13 @@ class RelationalMemory:
     def history(self,record_id,scope,*,known_at=None,budget=None):
         _identifier(record_id); meter=_Budget(budget)
         try:
-            rows=self._acquire(scope,known_at,meter,record_id)
-            verified={}; cache={}
-            output=[self._projection(row,meter,verified,known_at=known_at,valid=None,
-                                     include_uncertain=False,cache=cache) for row in rows]
-            if len(_json(output).encode("utf-8"))>meter.limits["max_context_bytes"]: raise _Limit("context_bytes")
-            return output
+            with read_scope(self.records,meter):
+                rows=self._acquire(scope,known_at,meter,record_id)
+                verified={}; cache={}
+                output=[self._projection(row,meter,verified,known_at=known_at,valid=None,
+                                         include_uncertain=False,cache=cache) for row in rows]
+                if len(_json(output).encode("utf-8"))>meter.limits["max_context_bytes"]: raise _Limit("context_bytes")
+                return output
         except _Limit as error: raise RecordError("QUERY_BUDGET_EXCEEDED",str(error)) from error
 
     def get(self,record_id,scope,*,known_at=None,valid_at=None,include_uncertain=False,budget=None):
@@ -237,14 +205,15 @@ class RelationalMemory:
         if not isinstance(include_uncertain,bool): raise RecordError("INVALID_QUERY")
         meter=_Budget(budget); valid=instant(valid_at) if valid_at is not None else None
         try:
-            rows=self._acquire(scope,known_at,meter,record_id)
-            if not rows: raise RecordError("NOT_FOUND")
-            row=max(rows,key=lambda r:r["version"])
-            if not self._valid(row,valid,include_uncertain): raise RecordError("NOT_FOUND")
-            output=self._projection(row,meter,{},known_at=known_at,valid=valid,
-                                    include_uncertain=include_uncertain)
-            if len(_json(output).encode("utf-8"))>meter.limits["max_context_bytes"]: raise _Limit("context_bytes")
-            return output
+            with read_scope(self.records,meter):
+                rows=self._acquire(scope,known_at,meter,record_id)
+                if not rows: raise RecordError("NOT_FOUND")
+                row=max(rows,key=lambda r:r["version"])
+                if not self._valid(row,valid,include_uncertain): raise RecordError("NOT_FOUND")
+                output=self._projection(row,meter,{},known_at=known_at,valid=valid,
+                                        include_uncertain=include_uncertain)
+                if len(_json(output).encode("utf-8"))>meter.limits["max_context_bytes"]: raise _Limit("context_bytes")
+                return output
         except _Limit as error: raise RecordError("QUERY_BUDGET_EXCEEDED",str(error)) from error
 
     def context(self,scope,*,roots=None,known_at=None,valid_at=None,include_uncertain=False,
@@ -276,114 +245,119 @@ class RelationalMemory:
                 "roots":[], "scanned_bytes":0,
                 "cost_scope":"logical UTF-8 scanned; work charges characters, tokens, comparisons and sort; acquisition unchanged"}
         try:
-            rows=self._acquire(scope,known_at,meter)
-            latest={}
-            for row in rows:
-                meter.take("work")
-                if row["id"] not in latest or row["version"]>latest[row["id"]]["version"]: latest[row["id"]]=row
-            eligible={key:row for key,row in latest.items() if self._valid(row,valid,include_uncertain)}
-            if len(eligible)<len(latest):
-                packet["omissions"].append({"reason":"validity_not_matching_or_unknown","count":len(latest)-len(eligible)})
-            nodes={key:row for key,row in eligible.items() if row["payload"]["graph"]["kind"]=="entity"}
-            if query is not None:
-                selection=packet["selection"]; selection["eligible"]=len(nodes)
-                # Charge scans before casefold/tokenization, including long nonmatching text.
-                # N04 row bytes already count in input_bytes; query bytes are additional input.
-                meter.take("input_bytes",len(query.encode("utf-8")))
-                def terms(value):
-                    meter.take("work",len(value))
-                    selection["scanned_bytes"]+=len(value.encode("utf-8"))
-                    found=set()
-                    for match in re.finditer(r"\w+",value.casefold()):
-                        meter.take("work"); found.add(match.group())
-                    return found
-                wanted=terms(query); matches=[]
-                for key,row in nodes.items():
-                    meter.take("work"); selection["examined"]+=1
-                    payload=row["payload"]
-                    searchable=terms(payload["text"]) | terms(payload["graph"]["entity_type"])
-                    meter.take("work",len(wanted))
-                    score=sum(term in searchable for term in wanted)
-                    if score and (query_match=="any" or score==len(wanted)):
-                        matches.append((-score,key))
-                selection["matching"]=len(matches)
-                meter.take("work",len(matches)*max(1,len(matches).bit_length()))
-                matches.sort()
-                roots=[key for _,key in matches[:root_limit]]
-                selection["roots"]=roots
-                selection["omitted"]=max(0,len(matches)-root_limit)
-            edges={}; missing_endpoints=0
-            for key,row in eligible.items():
-                meter.take("work")
-                g=row["payload"]["graph"]
-                if g["kind"]!="relation": continue
-                if g["subject"] not in nodes or g["object"] not in nodes:
-                    missing_endpoints+=1; continue
-                if predicates is not None and g["predicate"] not in predicates: continue
-                meter.take("edges"); edges[key]=row
-            if missing_endpoints:
-                packet["omissions"].append({"reason":"endpoint_not_eligible","count":missing_endpoints})
-            if roots is None:
-                chosen=set(nodes)|set(edges); paths=[]
-                meter.take("nodes",len(nodes))
-            else:
-                adjacency={key:[] for key in nodes}
-                for key,row in edges.items():
-                    meter.take("work"); g=row["payload"]["graph"]
-                    if direction in ("out","both"): adjacency[g["subject"]].append((key,g["object"]))
-                    if direction in ("in","both"): adjacency[g["object"]].append((key,g["subject"]))
-                for neighbors in adjacency.values(): neighbors.sort()
-                chosen=set(); visited=set(); queue=deque(); paths=[]
-                for root in roots:
-                    if root in nodes and root not in visited:
-                        meter.take("nodes"); visited.add(root); chosen.add(root); queue.append(([root],[]))
-                while queue:
-                    path,links=queue.popleft()
-                    if len(links)>=max_hops: continue
-                    for edge,target in adjacency[path[-1]]:
-                        meter.take("work")
-                        # Deduplicate expansion, never the assertions themselves:
-                        # parallel, negative and cycle-closing edges remain evidence.
-                        if edge in chosen: continue
-                        expand=target not in visited
-                        if expand:
-                            meter.take("nodes"); visited.add(target)
-                        chosen.update((edge,target))
-                        next_path,next_links=path+[target],links+[edge]
-                        refs=[]
-                        for link in next_links:
-                            refs.extend({k:ref[k] for k in ("id","revision")} for ref in edges[link]["payload"]["source_refs"])
-                        claims=[]
-                        for link in next_links:
-                            claim=edges[link]["payload"]
-                            claims.append({"id":link,"classification":claim["graph"]["classification"],
-                                           **{field:claim[field] for field in ("modality","negated","conditions","status")}})
-                        paths.append({"nodes":next_path,"edges":next_links,"source_refs":refs,
-                                      "claims":claims,"conditions_evaluated":False,
-                                      "interpretation":"connections_between_recorded_claims",
-                                      "cycle_closure":target in path})
-                        if expand: queue.append((next_path,next_links))
-            verified={}; visible={**nodes,**edges}; projected={}
-            for key in sorted(chosen):
-                projected[key]=self._projection(eligible[key],meter,verified,known_at=known_at,
-                                                valid=valid,include_uncertain=include_uncertain,
-                                                candidates=visible)
-                packet["records"].append(projected[key])
-            omitted=sum(row["contradictions_omitted"] for row in packet["records"])
-            if omitted:
-                packet["omissions"].append({"reason":"contradiction_target_not_eligible","count":omitted})
-            for path in paths:
-                for claim in path["claims"]:
+            with read_scope(self.records,meter):
+                rows=self._acquire(scope,known_at,meter)
+                latest={}
+                for row in rows:
                     meter.take("work")
-                    claim["contradicts"]=projected[claim["id"]]["payload"]["contradicts"]
-                    claim["contradictions_omitted"]=projected[claim["id"]]["contradictions_omitted"]
-            packet["paths"]=paths
-            packet["status"]="records_found" if packet["records"] else "no_precedent_found"
+                    if row["id"] not in latest or row["version"]>latest[row["id"]]["version"]: latest[row["id"]]=row
+                eligible={key:row for key,row in latest.items() if self._valid(row,valid,include_uncertain)}
+                if len(eligible)<len(latest):
+                    packet["omissions"].append({"reason":"validity_not_matching_or_unknown","count":len(latest)-len(eligible)})
+                nodes={key:row for key,row in eligible.items() if row["payload"]["graph"]["kind"]=="entity"}
+                if query is not None:
+                    selection=packet["selection"]; selection["eligible"]=len(nodes)
+                    # Charge scans before casefold/tokenization, including long nonmatching text.
+                    # N04 row bytes already count in input_bytes; query bytes are additional input.
+                    meter.take("input_bytes",len(query.encode("utf-8")))
+                    def terms(value):
+                        meter.take("work",len(value))
+                        selection["scanned_bytes"]+=len(value.encode("utf-8"))
+                        found=set()
+                        for match in re.finditer(r"\w+",value.casefold()):
+                            meter.take("work"); found.add(match.group())
+                        return found
+                    wanted=terms(query); matches=[]
+                    for key,row in nodes.items():
+                        meter.take("work"); selection["examined"]+=1
+                        payload=row["payload"]
+                        searchable=terms(payload["text"]) | terms(payload["graph"]["entity_type"])
+                        meter.take("work",len(wanted))
+                        score=sum(term in searchable for term in wanted)
+                        if score and (query_match=="any" or score==len(wanted)):
+                            matches.append((-score,key))
+                    selection["matching"]=len(matches)
+                    meter.take("work",len(matches)*max(1,len(matches).bit_length()))
+                    matches.sort()
+                    roots=[key for _,key in matches[:root_limit]]
+                    selection["roots"]=roots
+                    selection["omitted"]=max(0,len(matches)-root_limit)
+                edges={}; missing_endpoints=0
+                for key,row in eligible.items():
+                    meter.take("work")
+                    g=row["payload"]["graph"]
+                    if g["kind"]!="relation": continue
+                    if g["subject"] not in nodes or g["object"] not in nodes:
+                        missing_endpoints+=1; continue
+                    if predicates is not None and g["predicate"] not in predicates: continue
+                    meter.take("edges"); edges[key]=row
+                if missing_endpoints:
+                    packet["omissions"].append({"reason":"endpoint_not_eligible","count":missing_endpoints})
+                if roots is None:
+                    chosen=set(nodes)|set(edges); paths=[]
+                    meter.take("nodes",len(nodes))
+                else:
+                    adjacency={key:[] for key in nodes}
+                    for key,row in edges.items():
+                        meter.take("work"); g=row["payload"]["graph"]
+                        if direction in ("out","both"): adjacency[g["subject"]].append((key,g["object"]))
+                        if direction in ("in","both"): adjacency[g["object"]].append((key,g["subject"]))
+                    for neighbors in adjacency.values(): neighbors.sort()
+                    chosen=set(); visited=set(); queue=deque(); paths=[]
+                    for root in roots:
+                        if root in nodes and root not in visited:
+                            meter.take("nodes"); visited.add(root); chosen.add(root); queue.append(([root],[]))
+                    while queue:
+                        path,links=queue.popleft()
+                        if len(links)>=max_hops: continue
+                        for edge,target in adjacency[path[-1]]:
+                            meter.take("work")
+                            # Deduplicate expansion, never the assertions themselves:
+                            # parallel, negative and cycle-closing edges remain evidence.
+                            if edge in chosen: continue
+                            expand=target not in visited
+                            if expand:
+                                meter.take("nodes"); visited.add(target)
+                            chosen.update((edge,target))
+                            next_path,next_links=path+[target],links+[edge]
+                            refs=[]
+                            for link in next_links:
+                                refs.extend({k:ref[k] for k in ("id","revision")} for ref in edges[link]["payload"]["source_refs"])
+                            claims=[]
+                            for link in next_links:
+                                claim=edges[link]["payload"]
+                                claims.append({"id":link,"classification":claim["graph"]["classification"],
+                                               **{field:claim[field] for field in ("modality","negated","conditions","status")}})
+                            paths.append({"nodes":next_path,"edges":next_links,"source_refs":refs,
+                                          "claims":claims,"conditions_evaluated":False,
+                                          "interpretation":"connections_between_recorded_claims",
+                                          "cycle_closure":target in path})
+                            if expand: queue.append((next_path,next_links))
+                verified={}; visible={**nodes,**edges}; projected={}
+                for key in sorted(chosen):
+                    projected[key]=self._projection(eligible[key],meter,verified,known_at=known_at,
+                                                    valid=valid,include_uncertain=include_uncertain,
+                                                    candidates=visible)
+                    packet["records"].append(projected[key])
+                omitted=sum(row["contradictions_omitted"] for row in packet["records"])
+                if omitted:
+                    packet["omissions"].append({"reason":"contradiction_target_not_eligible","count":omitted})
+                for path in paths:
+                    for claim in path["claims"]:
+                        meter.take("work")
+                        claim["contradicts"]=projected[claim["id"]]["payload"]["contradicts"]
+                        claim["contradictions_omitted"]=projected[claim["id"]]["contradictions_omitted"]
+                packet["paths"]=paths
+                packet["status"]="records_found" if packet["records"] else "no_precedent_found"
         except _Limit as error:
             # A partial input could select a superseded revision: discard it completely.
             packet["records"]=[]; packet["paths"]=[]
             if "selection" in packet: packet["selection"]["roots"]=[]
             packet["status"]="budget_exceeded"; packet["omissions"]=[{"reason":"budget_"+str(error),"coverage":"incomplete; no partial selection returned"}]
+        if meter.expired() and packet["status"]!="budget_exceeded":
+            packet["records"]=[];packet["paths"]=[];packet["status"]="budget_exceeded"
+            if "selection" in packet:packet["selection"]["roots"]=[]
+            packet["omissions"]=[{"reason":"budget_query_ms","coverage":"incomplete; no partial selection returned"}]
         packet["budget"]={"limits":meter.limits,"used":meter.used}
         # Size includes metadata, evidence refs, paths, omissions and this receipt.
         for _ in range(4):
@@ -393,6 +367,18 @@ class RelationalMemory:
             if "selection" in packet: packet["selection"]["roots"]=[]
             packet["omissions"]=[{"reason":"budget_context_bytes","coverage":"incomplete; no partial selection returned"}]
             for _ in range(4): meter.used["context_bytes"]=len(_json(packet).encode("utf-8"))
+        if meter.used["context_bytes"]>meter.limits["max_context_bytes"]:
+            raise RecordError("QUERY_BUDGET_EXCEEDED","diagnostic envelope exceeds context budget")
+        if meter.expired() and packet["status"]!="budget_exceeded":
+            packet["records"]=[];packet["paths"]=[];packet["status"]="budget_exceeded"
+            if "selection" in packet:packet["selection"]["roots"]=[]
+            packet["omissions"]=[{"reason":"budget_query_ms","coverage":"incomplete; no partial selection returned"}]
+            for _ in range(4):meter.used["context_bytes"]=len(_json(packet).encode("utf-8"))
+            if meter.used["context_bytes"]>meter.limits["max_context_bytes"]:
+                raise RecordError("QUERY_BUDGET_EXCEEDED","diagnostic envelope exceeds context budget")
+        # query_ms may have gained a digit at the final deadline check. Include
+        # that actual value in the byte receipt before returning the envelope.
+        for _ in range(4):meter.used["context_bytes"]=len(_json(packet).encode("utf-8"))
         if meter.used["context_bytes"]>meter.limits["max_context_bytes"]:
             raise RecordError("QUERY_BUDGET_EXCEEDED","diagnostic envelope exceeds context budget")
         return packet

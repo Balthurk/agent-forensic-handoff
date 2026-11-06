@@ -5,14 +5,14 @@ complete semantic components and decision alternatives, or explicit blockers.
 It neither approves interpretations nor infers missing validity/authority.
 """
 import re, unicodedata
-from pathlib import Path
+from orbita_store.paths import Path
 from contextlib import contextmanager
 from .knowledge_records import KnowledgeRecords, RecordError, _json
 from .host import AFHMemory, clause_index, query_records, digest, now, require
 from .relational_memory import instant
 from .collectives import sql_cut, history as collective_history, public as collective_public
 from .decisions import verify_chain, public as decision_public
-from .postgres_backend import restrict_sources
+from .common_backend import restrict_sources
 from .context_discovery import prepare_discovery, references_match
 
 STOP = set('que como cual cuales donde cuando para por con una uno unos unas del los las el la de se es en y o mi me sobre esta este esto hay fue han ya mas todo toda todos todas puedes puede quiero saber dime explica segun informacion conversacion conversaciones haz the a an and or what which where when how did does is are was were to of in on for please'.split())
@@ -24,13 +24,13 @@ def words(value):
 @contextmanager
 def store(request, folder=''):
     root = Path(request['root']) / folder
-    if not (root / 'records.sqlite3').exists():
+    if not (root / 'records.pgstore').exists():
         yield None
         return
-    memory = AFHMemory(root, request['sources'], request['scope'])
-    records = KnowledgeRecords(memory, root / 'records.sqlite3', read_only=True)
+    memory = AFHMemory(root, request['sources'], request['scope'], read_only=True)
+    records = KnowledgeRecords(memory, root / 'records.pgstore', read_only=True)
     try:
-        restrict_sources(records)
+        restrict_sources(records,bounded_diagnostics=True)
         records.db.execute('BEGIN')
         yield records
     finally:

@@ -1,11 +1,12 @@
 import fs from "node:fs";
+import commonFiles from './common-files.js';
+import {rehydrateCase} from './case-publication.js';
 import path from "node:path";
 import { auditSession } from "./audit.js";
 import { AFH_VERSION, DEFAULTS } from "./constants.js";
-import { CaseDatabase } from "./database.js";
 import { doctor } from "./doctor.js";
 import { installSkill } from "./install.js";
-import { loadManifest, readEvidence, readHotContext, renderCase, searchCase, showEvent } from "./render.js";
+import { loadManifest, readEvidence, readHotContext, searchCase, showEvent } from "./render.js";
 import { parseCli, boolFlag } from "./util.js";
 import { runBenchmark } from "./benchmark.js";
 import { verifyCaseIntegrity } from "./integrity.js";
@@ -67,17 +68,15 @@ export async function main(argv) {
     });
     if (flags.json) return print(JSON.stringify(result, null, 2));
     print(`${result.reused ? "Reused" : "Created"} forensic case: ${result.caseDir}`);
-    print(fs.readFileSync(path.join(result.caseDir, "human-receipt.md"), "utf8"));
+    print(commonFiles.readFileSync(path.join(result.caseDir, "human-receipt.md"), "utf8"));
     return;
   }
 
   if (command === "hydrate") {
     const caseDir = requiredCase(positional.shift());
-    const manifest = loadManifest(caseDir);
+    loadManifest(caseDir);
     if (flags.budget) {
-      const db = new CaseDatabase(path.join(caseDir, "case.sqlite"));
-      try { await renderCase(db, caseDir, manifest, { tokenBudget: Number(flags.budget) }); }
-      finally { db.close(); }
+      await rehydrateCase(caseDir,{tokenBudget:Number(flags.budget)});
     }
     return print(readHotContext(caseDir));
   }
@@ -350,10 +349,10 @@ export async function main(argv) {
   }
 
   if (command === "doctor") {
-    const checks = doctor();
+    const checks = doctor({root:flags.root,modelHome:flags['model-home']});
+    if(checks.some(check=>check.required&&!check.ok))process.exitCode=1;
     if (flags.json) return print(JSON.stringify(checks, null, 2));
     for (const check of checks) print(`${check.ok ? "OK" : "WARN"}  ${check.name}: ${check.detail}`);
-    if (checks.some((check) => !check.ok && ["Node.js >=22", "SQLite"].includes(check.name))) process.exitCode = 1;
     return;
   }
 
@@ -401,7 +400,7 @@ export async function main(argv) {
   }
 
   if (command === "benchmark") {
-    const result = await runBenchmark({ output: flags.out, giantRecords: Number(flags["giant-records"] || 10_000) });
+    const result = await runBenchmark({ output: flags.out, caseRoot:flags['case-root'], giantRecords: Number(flags["giant-records"] || 10_000) });
     print(JSON.stringify(result, null, 2));
     if (!result.passed) process.exitCode = 1;
     return;
@@ -409,6 +408,7 @@ export async function main(argv) {
   if (command === "retrieval-benchmark") {
     const result = await runRetrievalBenchmark({
       output: flags.out,
+      caseRoot:flags['case-root'],
       fixture: flags.fixture,
       truth: flags.truth,
       model: flags.model,
@@ -442,7 +442,7 @@ Usage:
   afh evidence-open <case-dir> <representation-id> [--start N --end N]
   afh export-n01 <case-dir> [case-dir...] [--scope active|all] [--known-at ISO] [--output file.json]
   afh import-share <https://chatgpt.com/share/UUID> [--html-file saved.html] [--case-dir path]
-      [--workspace PATH] [--verify V0|V1] [--budget 6000] [--out AFH_HOME]
+      [--workspace PATH] [--verify V0|V1] [--budget 6000] [--out COMMON_ROOT]
       [--no-children] [--max-child-sessions 32] [--inline-blob-bytes 16384]
       [--max-total-source-bytes 8589934592]
       [--allow-prefix] [--allow-symlink] [--json]
@@ -472,8 +472,8 @@ Usage:
   afh evidence <case-dir> <afh://evidence/...> [--json]
   afh verify-case <case-dir> [--quick] [--json]
   afh install-skill [--target codex|claude|antigravity|all|generic] [--path PATH] [--force]
-  afh benchmark [--giant-records 10000] [--out PATH]
-  afh retrieval-benchmark --out PATH [--model MODEL] [--model-home PATH]
+  afh benchmark --out EXPORT_PATH [--case-root COMMON_ROOT] [--giant-records 10000]
+  afh retrieval-benchmark --out EXPORT_PATH [--case-root COMMON_ROOT] [--model MODEL] [--model-home PATH]
       [--allow-model-download] [--fixture PATH] [--truth PATH]
   afh doctor [--json]
 

@@ -1,6 +1,9 @@
+from common_test_fixture import WorkspaceFixture, connect_semantic, corrupt_path, temporary_corruption
+from psycopg import IntegrityError
 import copy, tempfile, unittest, sqlite3
 from contextlib import closing
-from pathlib import Path
+from orbita_store.paths import Path
+from pathlib import Path as NativePath
 from afh_semantic.host import dispatch
 from afh_semantic.collectives import digest
 from afh_semantic.knowledge_records import RecordError
@@ -14,7 +17,7 @@ def detail(sources):
 
 class CollectiveTest(unittest.TestCase):
     def setUp(self):
-        self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup);self.root=Path(self.tmp.name)
+        self.tmp=WorkspaceFixture(self._testMethodName);self.addCleanup(self.tmp.cleanup);self.root=Path(self.tmp.name)
         self.sources=[source('alice','Alice revisa el proyecto.'),source('bob','Bob revisa el proyecto.')]
     def call(self,op,**kw):return dispatch(dict(root=str(self.root),scope='s',sources=self.sources,op='collective_'+op,**kw))
     def put(self,key='event-a',d=None,**kw):return self.call('put',id=key,detail=d or detail(self.sources),requestId=kw.pop('requestId',key),**kw)
@@ -78,8 +81,7 @@ class CollectiveTest(unittest.TestCase):
         old=self.call('get',id='event-a',version=1);self.assertEqual(old['reference'],a['reference'])
     def test_envelope_tampering_not_reported_as_empty_success(self):
         self.put()
-        with closing(sqlite3.connect(self.root/'collectives/records.sqlite3')) as db, db:
-            db.execute('DROP TRIGGER records_no_update');db.execute("UPDATE record_versions SET payload_sha256='bad'")
+        corrupt_path(self.root/'collectives/records.pgstore','record_versions',{'payload_sha256':'bad'})
         p=self.call('query');self.assertEqual(p['status'],'incomplete');self.assertEqual(p['items'],[]);self.assertTrue(p['errors'])
 
 if __name__=='__main__':unittest.main()

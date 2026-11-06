@@ -14,6 +14,8 @@ sys.path.insert(0, str(ROOT / 'agent-forensic-handoff' / 'python'))
 sys.path.insert(0, str(ROOT / 'app'))
 from afh_semantic import postgres_backend
 import volume_store
+from orbita_store.config import plain_local_path
+from orbita_store import StoreError
 
 
 class PathSafetyTests(unittest.TestCase):
@@ -29,14 +31,25 @@ class PathSafetyTests(unittest.TestCase):
                 else: link.unlink()
         self.assertEqual(self.root.parent, self.parent)
         self.assertTrue(self.root.name.startswith('orbita-i03-path-'))
-        shutil.rmtree(self.root)
+        shutil.rmtree(self.native_fixture(self.root))
+
+    def native_fixture(self, value):
+        # Independent fixture spelling: do not use the helper under test to
+        # create the long paths whose inspection is being verified.
+        return Path('\\\\?\\' + str(value)) if os.name == 'nt' else value
+
+    def long_parent(self):
+        parent = self.root / ('a' * 90) / ('b' * 90)
+        self.assertGreater(len(str(parent)), 260)
+        self.native_fixture(parent).mkdir(parents=True)
+        return parent
 
     def readers(self):
-        return (volume_store.plain, postgres_backend.plain)
+        return (volume_store.plain, postgres_backend.plain, plain_local_path)
 
     def reject(self, target, code):
         for reader in self.readers():
-            with self.subTest(reader=reader.__module__), self.assertRaisesRegex(ValueError if reader is postgres_backend.plain else volume_store.VolumeError, code):
+            with self.subTest(reader=reader.__module__), self.assertRaisesRegex(StoreError if reader is plain_local_path else ValueError if reader is postgres_backend.plain else volume_store.VolumeError, code):
                 reader(target)
 
     def link(self, target, link):
@@ -78,11 +91,34 @@ class PathSafetyTests(unittest.TestCase):
         self.reject(link, 'HARDLINK'); self.reject(target, 'HARDLINK')
         self.assertEqual(target.read_bytes(), b'owned fixture\x00\xff')
 
+    def test_long_regular_path_is_inspected_without_changing_logical_spelling(self):
+        target = self.long_parent() / 'literal.bin'
+        self.native_fixture(target).write_bytes(b'long native evidence\x00\xff')
+        for reader in self.readers(): self.assertEqual(reader(target), target)
+        self.assertEqual(self.native_fixture(target).read_bytes(), b'long native evidence\x00\xff')
+
+    def test_long_hardlinked_entry_is_not_mistaken_for_a_missing_path(self):
+        target = self.root / 'unique'; target.write_bytes(b'keep exact bytes')
+        link = self.long_parent() / 'hardlink'
+        os.link(self.native_fixture(target), self.native_fixture(link))
+        self.reject(link, 'HARDLINK')
+        self.assertEqual(target.read_bytes(), b'keep exact bytes')
+
+    def test_long_junction_is_rejected_even_with_a_missing_descendant(self):
+        target = self.root / 'target'; target.mkdir()
+        link = self.long_parent() / 'junction'
+        # CreateJunction builds the NT substitute target itself. Its short
+        # absolute target must not be given another extended namespace.
+        self.link(target, self.native_fixture(link))
+        self.assertTrue(os.path.samefile(self.native_fixture(link), target))
+        self.reject(link / 'missing', 'LINK_PATH')
+
     def test_old_python_refused_before_volume_or_semantic_store_creation(self):
         volume = self.root / 'volume root'; semantic = self.root / 'records.sqlite3'
         with patch.object(sys, 'version_info', (3, 11, 99)):
             with self.assertRaisesRegex(volume_store.VolumeError, 'PYTHON_3_12_REQUIRED'): volume_store.Store(volume).close()
             with self.assertRaisesRegex(ValueError, 'PYTHON_3_12_REQUIRED'): postgres_backend.connect(semantic).close()
+            with self.assertRaisesRegex(StoreError, 'PYTHON_3_12_REQUIRED'): plain_local_path(semantic)
         self.assertFalse(volume.exists()); self.assertFalse(semantic.exists())
 
     def test_missing_junction_capability_fails_explicitly_before_creation(self):

@@ -1,0 +1,53 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "resolution",
+    "selections",
+    "pending"
+  ],
+  "properties": {
+    "resolution": {
+      "type": "string",
+      "enum": [
+        "resolved",
+        "unknown",
+        "ambiguous",
+        "insufficient_context",
+        "unrepresented"
+      ]
+    },
+    "selections": {
+      "type": "array",
+      "maxItems": 7,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "quote"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "tsm:descriptive",
+              "tsm:normative",
+              "tsm:procedural",
+              "tsm:deliberative",
+              "tsm:interpretive",
+              "tsm:evaluative",
+              "tsm:prospective"
+            ]
+          },
+          "quote": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "pending": {
+      "type": "string"
+    }
+  }
+}

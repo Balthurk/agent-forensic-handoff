@@ -9,6 +9,16 @@ class PathSafetyError(ValueError):
     pass
 
 
+def native_path(value):
+    """Win32 extended spelling for native I/O, never a logical PG binding."""
+    path = Path(value)
+    text = str(path)
+    if os.name == 'nt' and path.is_absolute() and not text.startswith('\\\\?\\'):
+        text = '\\\\?\\UNC\\' + text[2:] if text.startswith('\\\\') else '\\\\?\\' + text
+        return Path(text)
+    return path
+
+
 def require_runtime():
     if tuple(sys.version_info[:2]) < (3, 12):
         raise PathSafetyError('PYTHON_3_12_REQUIRED')
@@ -25,7 +35,10 @@ def plain_path(value):
     # checking its existing ancestors, including an ancestor before '..'.
     for item in (path, *path.parents):
         try:
-            info = item.lstat()
+            # Legacy Win32 path limits can report an existing long entry as
+            # absent. Inspect the actual entry and every ancestor, retaining
+            # the caller's logical spelling and traversal checks.
+            info = (native_path(item) if len(str(item)) >= 248 else item).lstat()
         except FileNotFoundError:
             continue
         except OSError as error:

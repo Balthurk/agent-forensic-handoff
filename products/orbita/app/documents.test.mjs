@@ -1,5 +1,6 @@
-import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import path from 'node:path';
-const root=fs.mkdtempSync('C:/T/orbita-documents-test-');process.env.AFH_COSMOS_DATA=root;
+import test from 'node:test';import assert from 'node:assert/strict';import fs from '../agent-forensic-handoff/src/common-files.js';import path from 'node:path';
+fs.mkdirSync(process.env.ORBITA_POSTGRES_TEST_ROOT,{recursive:true});
+const root=fs.mkdtempSync(process.env.ORBITA_POSTGRES_TEST_ROOT+'/orbita-documents-test-');process.env.AFH_COSMOS_DATA=root;
 const {importDocument,reconcileDocuments}=await import('./documents.mjs');const {getLibrary,getEvidence,library,loadCase}=await import('./corpus.mjs');const {verifiedSources}=await import('./knowledge.mjs');const {retrievePackage,closeMemory}=await import('./memory.mjs');
 const {verifyCaseIntegrity}=await import('../agent-forensic-handoff/src/integrity.js');const {documentBlocks}=await import('../agent-forensic-handoff/src/document-evidence.js');
 test('text formats preserve exact Unicode, CRLF, BOM and original ranges with document authorship',async()=>{

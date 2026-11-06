@@ -1,5 +1,6 @@
-import fs from 'node:fs';import path from 'node:path';
-import {createHash,createHmac,randomBytes,timingSafeEqual} from 'node:crypto';
+import fs from '../agent-forensic-handoff/src/common-files.js';import path from 'node:path';
+import {createHash,createHmac,timingSafeEqual} from 'node:crypto';
+import {publishSnapshot} from './common-snapshots.mjs';
 import {DATA,refreshLibrary} from './corpus.mjs';import {knowledgeOperation,verifiedSources} from './knowledge.mjs';
 import {contextState} from './context.mjs';import {identityOperation} from './identities.mjs';
 const need=(v,c)=>{if(!v)throw new Error(c);},sha=x=>createHash('sha256').update(x).digest('hex');
@@ -20,8 +21,7 @@ export function versionedView(prefix,folder){
    const state=await contextState(conversationIds,stateOptions),board=await knowledgeOperation(prefix+'_query',conversationIds,body,options);
    need((await contextState(conversationIds,stateOptions)).fingerprint===state.fingerprint,'VIEW_CHANGED_DURING_DISCOVERY');
    const snapshot={schema:'afh.versioned-view.v1',prefix,state,conversationIds:[...new Set(conversationIds)].sort(),board};const raw=JSON.stringify(snapshot);
-   need(Buffer.byteLength(raw)<=32000000,'VIEW_SNAPSHOT_BUDGET');id=sha(raw);const dir=path.join(root,id);fs.mkdirSync(root,{recursive:true});
-   try{fs.mkdirSync(dir);fs.writeFileSync(path.join(dir,'snapshot.json'),raw,{flag:'wx'});fs.writeFileSync(path.join(dir,'cursor.key'),randomBytes(32),{flag:'wx'});}catch(e){if(e.code!=='EEXIST')throw e;read(id);}
+   need(Buffer.byteLength(raw)<=32000000,'VIEW_SNAPSHOT_BUDGET');id=sha(raw);publishSnapshot(root,id,raw);
   }
   const {snapshot,key}=read(id);need(snapshot.prefix===prefix&&JSON.stringify([...new Set(conversationIds)].sort())===JSON.stringify(snapshot.conversationIds),'VIEW_SELECTION_MISMATCH');
   const fresh=await contextState(conversationIds,stateOptions),freshness={current:fresh.fingerprint===snapshot.state.fingerprint};const {items,...meta}=snapshot.board;

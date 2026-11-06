@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS stores(id TEXT PRIMARY KEY,scope TEXT,root TEXT UNIQUE,identityHash TEXT);

@@ -1,8 +1,9 @@
-import fs from "node:fs";
 import path from "node:path";
 import { CaseDatabase } from "./database.js";
 import { EPISTEMIC } from "./constants.js";
-import { atomicWrite, safeJson, shortHash, stableStringify } from "./util.js";
+import { safeJson, shortHash, stableStringify } from "./util.js";
+import {transactionIO} from './common-transaction.js';
+import {exactCaseSeal,publishCaseManifest} from './case-seal.js';
 import { computeCaseMetrics, substantiveUserText } from "./reducers.js";
 import { readEvidence } from "./render.js";
 import {
@@ -1227,12 +1228,9 @@ function tryRecoverManifestFromSealLog(db, manifest, actualTemporalIdentity, act
   };
 }
 
-function assertPreAppendIntegrity(db, root) {
+export function assertPreAppendIntegrity(db, root) {
   const manifestPath = path.join(root, "case.json");
-  if (!fs.existsSync(manifestPath)) {
-    throw new Error("CASE_INTEGRITY_FAILED: Cannot append governed temporal fact because case.json is missing.");
-  }
-  const manifest = safeJson(fs.readFileSync(manifestPath, "utf8"), null);
+  const io=transactionIO(db),manifest=io.readJson(manifestPath);
   if (!manifest || manifest.status !== "COMPLETE") {
     throw new Error("CASE_INTEGRITY_FAILED: Cannot append governed temporal fact to an incomplete case.");
   }
@@ -1242,6 +1240,9 @@ function assertPreAppendIntegrity(db, root) {
   const actualTemporalIdentity = computeTemporalIdentity(db);
   const actualGraphIdentity = computeGraphIdentity(db);
   const currentMetrics = computeCaseMetrics(db);
+  const actualRows=db.logicalManifest();
+  const rowsMismatch=manifest.storage?.engine!=='postgresql-common'||manifest.storage?.path!=='case.pgstore'
+    ||stableStringify(manifest.storage?.manifest??null)!==stableStringify(actualRows);
 
   const temporalMismatch = manifest.temporalIdentity != null && actualTemporalIdentity !== manifest.temporalIdentity;
   const graphMismatch = manifest.graphIdentity != null && actualGraphIdentity !== manifest.graphIdentity;
@@ -1256,8 +1257,12 @@ function assertPreAppendIntegrity(db, root) {
   }
 
   let recoveredManifest = false;
-  if (temporalMismatch || graphMismatch || metricMismatch) {
-    const recovered = tryRecoverManifestFromSealLog(db, manifest, actualTemporalIdentity, actualGraphIdentity, currentMetrics);
+  if (temporalMismatch || graphMismatch || metricMismatch || rowsMismatch) {
+    const candidate=exactCaseSeal(db,root,manifest,actualRows);
+    const journal=!(temporalMismatch||graphMismatch||metricMismatch)
+      ||tryRecoverManifestFromSealLog(db,manifest,actualTemporalIdentity,actualGraphIdentity,currentMetrics);
+    const recovered=candidate&&journal&&candidate.temporalIdentity===actualTemporalIdentity
+      &&candidate.graphIdentity===actualGraphIdentity&&stableStringify(candidate.metrics)===stableStringify(currentMetrics)?candidate:null;
     if (!recovered) {
       if (temporalMismatch) {
         throw new Error(
@@ -1269,12 +1274,10 @@ function assertPreAppendIntegrity(db, root) {
           `CASE_INTEGRITY_FAILED: Pre-existing graph state is tampered (actual=${actualGraphIdentity} !== expected=${manifest.graphIdentity}). Refusing to append or reseal.`,
         );
       }
-      throw new Error("CASE_INTEGRITY_FAILED: Pre-existing case metrics do not match manifest.");
+      throw new Error("CASE_INTEGRITY_FAILED: Pre-existing case rows or metrics do not match an exact full seal.");
     }
-    manifest.temporalIdentity = recovered.temporalIdentity;
-    manifest.graphIdentity = recovered.graphIdentity;
-    manifest.metrics = recovered.metrics;
-    atomicWrite(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    Object.assign(manifest,recovered);
+    io.atomicWrite(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
     recoveredManifest = true;
   }
 
@@ -1289,9 +1292,11 @@ function assertPreAppendIntegrity(db, root) {
 
 export function recoverTemporalManifest(caseDir) {
   const root = path.resolve(caseDir);
-  const db = new CaseDatabase(path.join(root, "case.sqlite"), { readOnly: true });
+  const db = new CaseDatabase(path.join(root, "case.pgstore"), { create: false });
   try {
+    db.beginConsistentWrite();
     const { manifest, recoveredManifest } = assertPreAppendIntegrity(db, root);
+    db.commit();
     return {
       caseDir: root,
       recovered: recoveredManifest,
@@ -1341,7 +1346,7 @@ export function appendGovernedTemporalFact(caseDir, input = {}) {
   }
   const epistemic = rawEpistemic ? rawEpistemic.trim().toUpperCase() : EPISTEMIC.DIRECT;
 
-  // Upfront strict validation of all scalar fields before opening or mutating SQLite
+  // Strict scalar validation precedes opening or mutating the common store.
   const requestedId = assertStringOrNull(input.id !== undefined ? input.id : input.factId, "id");
   const sourceEventId = assertStringOrNull(
     input.sourceEventId ?? input.source_event_id ?? input.eventId ?? input.event_id,
@@ -1379,9 +1384,10 @@ export function appendGovernedTemporalFact(caseDir, input = {}) {
     throw new Error(`Invalid knownAt timestamp: ${knownAtRaw}`);
   }
 
-  const db = new CaseDatabase(path.join(root, "case.sqlite"));
+  const db = new CaseDatabase(path.join(root, "case.pgstore"), {create:false});
   try {
-    // Verify pre-append case integrity (and auto-recover unsealed temporal_seal_log transactions if a prior case.json write failed)
+    db.beginConsistentWrite();
+    // Integrity, revision choice, rows, full seal and case.json share one cut.
     const {
       manifest,
       manifestPath,
@@ -1429,7 +1435,7 @@ export function appendGovernedTemporalFact(caseDir, input = {}) {
           `MANUAL_AUTHORITY_REJECTED: PROVENANCE_MISMATCH: Evidence URI (${uri}) does not belong to cited sourceEventId (${sourceEventId}).`,
         );
       }
-      const resolved = readEvidence(root, uri);
+      const resolved = readEvidence(root, uri, {database:db,readRange:transactionIO(db).readRange});
       if (!resolved || !resolved.recordSha256) {
         throw new Error(`MANUAL_AUTHORITY_REJECTED: Unresolvable evidence URI: ${uri}`);
       }
@@ -1512,6 +1518,7 @@ export function appendGovernedTemporalFact(caseDir, input = {}) {
         latest.object_kind === objectKind &&
         sameUserPayload
       ) {
+        db.commit();
         return {
           id: latest.id,
           logicalId: requestedId || latest.id,
@@ -1624,7 +1631,6 @@ export function appendGovernedTemporalFact(caseDir, input = {}) {
     let postGraphIdentity;
     let postTemporalIdentity;
 
-    db.begin();
     try {
       const newFactObj = {
         id: factId,
@@ -1706,16 +1712,15 @@ export function appendGovernedTemporalFact(caseDir, input = {}) {
         createdAt: new Date().toISOString(),
       });
 
+      manifest.metrics = postMetrics;
+      manifest.graphIdentity = postGraphIdentity;
+      manifest.temporalIdentity = postTemporalIdentity;
+      publishCaseManifest(db,root,manifest);
       db.commit();
     } catch (txError) {
       try { db.rollback(); } catch {}
       throw txError;
     }
-
-    manifest.metrics = postMetrics;
-    manifest.graphIdentity = postGraphIdentity;
-    manifest.temporalIdentity = postTemporalIdentity;
-    atomicWrite(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
     return {
       id: factId,
@@ -1739,7 +1744,7 @@ export function appendGovernedTemporalFact(caseDir, input = {}) {
 }
 
 export function reconstructStateAtMoment(caseDir, options = {}) {
-  const db = new CaseDatabase(path.join(path.resolve(caseDir), "case.sqlite"), { readOnly: true });
+  const db = new CaseDatabase(path.join(path.resolve(caseDir), "case.pgstore"), { readOnly: true });
   try {
     const cut = resolveBiTemporalCut(db, {
       asOf: options.asOf,
@@ -1859,7 +1864,7 @@ export function reconstructStateAtMoment(caseDir, options = {}) {
 
 export function traceWhy(caseDir, targetId, options = {}) {
   const maxDepth = Math.min(Number(options.depth || 6), 15);
-  const db = new CaseDatabase(path.join(path.resolve(caseDir), "case.sqlite"), { readOnly: true });
+  const db = new CaseDatabase(path.join(path.resolve(caseDir), "case.pgstore"), { readOnly: true });
   try {
     let seedEventId = null;
     let targetRecord = null;
@@ -2063,7 +2068,7 @@ export function traceWhy(caseDir, targetId, options = {}) {
 }
 
 export function listEntities(caseDir, options = {}) {
-  const db = new CaseDatabase(path.join(path.resolve(caseDir), "case.sqlite"), { readOnly: true });
+  const db = new CaseDatabase(path.join(path.resolve(caseDir), "case.pgstore"), { readOnly: true });
   try {
     const kindFilter = options.kind ? String(options.kind).toUpperCase() : null;
     const sessionFilter = options.session || null;

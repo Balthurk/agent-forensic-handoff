@@ -1,5 +1,5 @@
-import fs from 'node:fs';import path from 'node:path';import {createHash,randomUUID} from 'node:crypto';import {fileURLToPath} from 'node:url';
-import {DatabaseSync} from 'node:sqlite';
+import fs from '../agent-forensic-handoff/src/common-files.js';import path from 'node:path';import {createHash,randomUUID} from 'node:crypto';import {fileURLToPath} from 'node:url';
+import {DatabaseSync} from '../agent-forensic-handoff/src/common-store.js';
 import {loadManifest,readEvidence} from '../agent-forensic-handoff/src/render.js';
 import {verifyCaseIntegrity} from '../agent-forensic-handoff/src/integrity.js';
 import {auditSession} from '../agent-forensic-handoff/src/audit.js';
@@ -14,14 +14,13 @@ export const library=JSON.parse(fs.readFileSync(registryFile,'utf8'));const cach
 for(const item of library){const local=path.join(DATA,'cases',item.id);if(fs.existsSync(local))item.path=local;}
 export function refreshLibrary(){const items=JSON.parse(fs.readFileSync(registryFile,'utf8'));for(const item of items){const local=path.join(DATA,'cases',item.id);if(fs.existsSync(local))item.path=local;}library.splice(0,library.length,...items);return library;}
 function save(changes){
- const db=new DatabaseSync(path.join(DATA,'library-lock.sqlite'));
- db.exec('PRAGMA busy_timeout=5000; BEGIN IMMEDIATE');
+ const db=new DatabaseSync(path.join(DATA,'library-lock.pgstore'),{family:'library',create:true});
+ db.exec('BEGIN IMMEDIATE');
  try{
   const previous=fs.readFileSync(registryFile,'utf8'),disk=JSON.parse(previous);
   const combined=new Map(disk.map(i=>[i.id,i]));for(const i of changes)combined.set(i.id,i);
   const serialized=JSON.stringify([...combined.values()],null,2);
-  // Reconciliation often republishes already committed items. Keep their exact
-  // file and avoid an unnecessary Windows replacement while a reader is open.
+  // Reconciliation keeps the exact object version when nothing changed.
   if(serialized!==previous){
    const tmp=registryFile+'.'+randomUUID()+'.tmp',fd=fs.openSync(tmp,'wx');
    try{fs.writeFileSync(fd,serialized);fs.fsyncSync(fd);}finally{fs.closeSync(fd);}
@@ -41,7 +40,7 @@ export async function loadCase(item){
   // Original evidence is authoritative. Derived indexes have their own verification
   // in memory.mjs; a broken vector sidecar must degrade that channel, not hide sources.
   const verification=await verifyCaseIntegrity(item.path,{verifyProjections:false});if(!verification.passed)throw new Error(`Integridad inválida: ${item.title}`);
-  const manifest=loadManifest(item.path),db=new DatabaseSync(path.join(item.path,'case.sqlite'),{readOnly:true});
+  const manifest=loadManifest(item.path),db=new DatabaseSync(path.join(item.path,'case.pgstore'),{family:'case',readOnly:true});
   const rows=db.prepare('SELECT e.id,e.native_id,e.kind,e.observed_at,e.record_ordinal,r.uri,r.record_sha256 FROM event e JOIN evidence_ref r ON r.event_id=e.id WHERE e.canonical=1 ORDER BY e.record_ordinal,e.subordinal').all();db.close();
   const common=manifest.identityEvidence?JSON.parse(fs.readFileSync(path.join(item.path,'identity.json'),'utf8')):null;
   const document=captureDocument(manifest,item);
@@ -62,7 +61,7 @@ export async function getLibrary(){(await import('./documents.mjs')).reconcileDo
 export async function importCapturedRevision({id,bytes,title,captureJob,revisionHash,beforePublish=()=>{},isCurrent=()=>true}){
  if(!/^capture-[a-f0-9-]+$/.test(id)||createHash('sha256').update(bytes).digest('hex')!==revisionHash)throw new Error('CAPTURE_REVISION_BINDING');
  const caseDir=path.join(DATA,'cases',id);fs.mkdirSync(path.dirname(caseDir),{recursive:true});
- if(!fs.existsSync(caseDir)){const staging=caseDir+'.staging-'+randomUUID(),input=path.join(DATA,id+'.'+randomUUID()+'.jsonl');fs.writeFileSync(input,bytes,{flag:'wx'});try{await auditSession(input,{caseDir:staging,harness:'auto'});const verified=await verifyCaseIntegrity(staging,{verifyProjections:false});if(!verified.passed)throw new Error('CAPTURE_IMPORTED_CASE_INVALID');fs.renameSync(staging,caseDir);}finally{fs.unlinkSync(input);}}
+ if(!fs.existsSync(caseDir)){const staging=caseDir+'.staging-'+randomUUID(),input=path.join(DATA,id+'.'+randomUUID()+'.jsonl');fs.writeFileSync(input,bytes,{flag:'wx'});try{await auditSession(input,{caseDir:staging,harness:'auto',inputStorage:'postgresql-common'});const verified=await verifyCaseIntegrity(staging,{verifyProjections:false});if(!verified.passed)throw new Error('CAPTURE_IMPORTED_CASE_INVALID');fs.renameSync(staging,caseDir);}finally{fs.unlinkSync(input);}}
  const originals=fs.readdirSync(path.join(caseDir,'evidence','sources'));if(!originals.some(f=>createHash('sha256').update(fs.readFileSync(path.join(caseDir,'evidence','sources',f))).digest('hex')===revisionHash))throw new Error('CAPTURE_EXISTING_CASE_HASH_MISMATCH');
  const item={id,title,path:caseDir,url:null,addedAt:new Date().toISOString(),captureJob,revisionHash,currentRevision:true};await loadCase(item);beforePublish();refreshLibrary();
  const current=isCurrent();item.currentRevision=current;for(const prior of library)if(current&&prior.captureJob===captureJob&&prior.id!==id)prior.currentRevision=false;
@@ -78,7 +77,7 @@ export async function addSource({url,filename,content,contentBase64}){
    else if(typeof content==='string')bytes=Buffer.from(content);else throw new Error('Contenido ausente');
    if(!bytes.length||bytes.length>40*1024*1024)throw new Error('El límite de importación es 40 MiB');
    const input=path.join(DATA,id+path.extname(filename).toLowerCase());
-   fs.writeFileSync(input,bytes);try{result=await auditSession(input,{caseDir,harness:'auto'});}finally{fs.unlinkSync(input);}
+   fs.writeFileSync(input,bytes);try{result=await auditSession(input,{caseDir,harness:'auto',inputStorage:'postgresql-common'});}finally{fs.unlinkSync(input);}
  }
 
  const item={id,title:result.capture?JSON.parse(fs.readFileSync(path.join(caseDir,'evidence', 'sources',fs.readdirSync(path.join(caseDir,'evidence','sources'))[0]),'utf8').split('\n')[0]).conversation.title:filename.replace(/\.(jsonl|ndjson|json|zip|html?)$/i,''),path:caseDir,url:url||null,addedAt:new Date().toISOString()};

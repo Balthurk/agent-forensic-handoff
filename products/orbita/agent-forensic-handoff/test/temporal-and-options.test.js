@@ -1,5 +1,5 @@
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { spawnSync } from "node:child_process";
+import { spawnSync as nativeSpawnSync } from "node:child_process";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -19,10 +19,20 @@ import {
   verifyCaseIntegrity,
 } from "../src/index.js";
 import { CaseDatabase } from "../src/database.js";
+import common from '../src/common-files.js';
+import {closeCommonStore} from '../src/common-store.js';
+import {DatabaseSync as LegacyInputDatabase} from 'node:sqlite';
+const commonRoot=process.env.ORBITA_POSTGRES_TEST_ROOT;
+const fixtureRoot=path.join(process.env.ORBITA_POSTGRES_TEST_RECEIPTS,'native-temporal');
+fs.mkdirSync(fixtureRoot,{recursive:true});
+const caseRoot=(root,name)=>path.join(commonRoot,'temporal',path.basename(root),name);
+const spawnSync=(file,args,options)=>nativeSpawnSync(file,args,{...options,windowsHide:true,timeout:60000});
+test.after(()=>{if(fs.existsSync(commonRoot))throw new Error('NATIVE_OPERATIONAL_OUTPUT');closeCommonStore();});
+
 
 function temporary(t, prefix) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const root = fs.mkdtempSync(path.join(fixtureRoot, prefix));
+  // Retained in the qualification receipt; failures are never removed here.
   return root;
 }
 
@@ -107,12 +117,12 @@ test("component probes: preserves repeated messages across turns/IDs, isolates s
   fs.writeFileSync(rollout, `${lines.map((l) => JSON.stringify(l)).join("\n")}\n`);
   const res = await auditSession(rollout, {
     harness: "generic",
-    caseDir: path.join(root, "case"),
+    caseDir: caseRoot(root, "case"),
     workspace,
     includeChildren: false,
   });
 
-  const db = new CaseDatabase(path.join(res.caseDir, "case.sqlite"), { readOnly: true });
+  const db = new CaseDatabase(path.join(res.caseDir, "case.pgstore"), { readOnly: true });
   try {
     const repeatedMsgs = db.all(
       "SELECT id, canonical, record_ordinal FROM event WHERE kind='message.user' AND input_preview LIKE '%Repeat check alphabeta%'",
@@ -176,12 +186,12 @@ test("2D bi-temporal consumer: distinguishes valid_at vs known_at, preserves bot
 
   const audit = await auditSession(rollout, {
     harness: "generic",
-    caseDir: path.join(root, "case"),
+    caseDir: caseRoot(root, "case"),
     workspace,
     includeChildren: false,
   });
 
-  const db = new CaseDatabase(path.join(audit.caseDir, "case.sqlite"), { readOnly: true });
+  const db = new CaseDatabase(path.join(audit.caseDir, "case.pgstore"), { readOnly: true });
   let ev1;
   let ev2;
   try {
@@ -492,7 +502,7 @@ test("bi-temporal graph tracks vigente vs stale state, rollback invalidation, --
 
   const auditResult = await auditSession(rolloutPath, {
     harness: "codex",
-    caseDir: path.join(root, "case"),
+    caseDir: caseRoot(root, "case"),
     workspace,
     includeChildren: false,
   });
@@ -657,13 +667,13 @@ test("candidate-v3 regressions: distinct failed/succeeded executions, same-ID fa
   fs.writeFileSync(rollout, `${records.map((r) => JSON.stringify(r)).join("\n")}\n`);
   const audited = await auditSession(rollout, {
     harness: "codex",
-    caseDir: path.join(root, "case"),
+    caseDir: caseRoot(root, "case"),
     workspace,
     includeChildren: false,
   });
 
   // Finding 1: Both failed and succeeded executions of "npm test" must survive in tool_execution
-  const db = new CaseDatabase(path.join(audited.caseDir, "case.sqlite"), { readOnly: true });
+  const db = new CaseDatabase(path.join(audited.caseDir, "case.pgstore"), { readOnly: true });
   let evTurn1;
   let evTurn2;
   let evSess2;
@@ -828,9 +838,9 @@ test("candidate-v3 regressions: distinct failed/succeeded executions, same-ID fa
   const validCheck = await verifyCaseIntegrity(audited.caseDir);
   assert.equal(validCheck.passed, true, `Expected valid case to pass verify-case: ${JSON.stringify(validCheck.findings.filter((f) => !f.ok))}`);
 
-  const tamperedDir = path.join(root, "case-tampered");
-  fs.cpSync(audited.caseDir, tamperedDir, { recursive: true });
-  const tamperDb = new CaseDatabase(path.join(tamperedDir, "case.sqlite"));
+  const tamperedDir = caseRoot(root, "case-tampered");
+  common.cloneTreeSync(audited.caseDir, tamperedDir);
+  const tamperDb = new CaseDatabase(path.join(tamperedDir, "case.pgstore"));
   try {
     tamperDb.run(
       "UPDATE temporal_fact SET fact_text = 'mode = hacked', valid_at = '2026-10-12T23:59:59.000Z' WHERE id = $id",
@@ -923,12 +933,12 @@ test("candidate-v4 regressions: 3-revision bitemporal closure immutability (A->B
 
   const audited = await auditSession(rollout, {
     harness: "codex",
-    caseDir: path.join(root, "case"),
+    caseDir: caseRoot(root, "case"),
     workspace,
     includeChildren: false,
   });
 
-  const db = new CaseDatabase(path.join(audited.caseDir, "case.sqlite"), { readOnly: true });
+  const db = new CaseDatabase(path.join(audited.caseDir, "case.pgstore"), { readOnly: true });
   let ev1;
   let ev2;
   let ev3;
@@ -1040,9 +1050,9 @@ test("candidate-v4 regressions: 3-revision bitemporal closure immutability (A->B
   assert.equal(integrityAfterFailedAppend.passed, true);
 
   // Finding 4: Modifying an entity in a copy causes verify-case to fail, AND a subsequent legitimate append must fail and NOT reseal the tampered entity
-  const entityTamperedDir = path.join(root, "case-entity-tampered");
-  fs.cpSync(audited.caseDir, entityTamperedDir, { recursive: true });
-  const tamperDb = new CaseDatabase(path.join(entityTamperedDir, "case.sqlite"));
+  const entityTamperedDir = caseRoot(root, "case-entity-tampered");
+  common.cloneTreeSync(audited.caseDir, entityTamperedDir);
+  const tamperDb = new CaseDatabase(path.join(entityTamperedDir, "case.pgstore"));
   try {
     tamperDb.run("UPDATE entity_node SET summary = 'TAMPERED_ENTITY_SUMMARY'");
   } finally {
@@ -1075,7 +1085,7 @@ test("candidate-v4 regressions: 3-revision bitemporal closure immutability (A->B
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   const u2Clone = path.join(root, "u2-full-clone");
   fs.mkdirSync(u2Clone, { recursive: true });
-  for (const dirName of ["bin", "src", "skills", "scripts", ...(fs.existsSync(path.join(repoRoot, "schemas")) ? ["schemas"] : [])]) {
+  for (const dirName of ["bin", "src", "skills", "scripts", "python", ...(fs.existsSync(path.join(repoRoot, "schemas")) ? ["schemas"] : [])]) {
     fs.cpSync(path.join(repoRoot, dirName), path.join(u2Clone, dirName), { recursive: true });
   }
   fs.cpSync(path.join(repoRoot, "package.json"), path.join(u2Clone, "package.json"));
@@ -1103,7 +1113,7 @@ test("candidate-v4 regressions: 3-revision bitemporal closure immutability (A->B
     const p = path.join(u2Clone, relFile);
     fs.writeFileSync(
       p,
-      fs.readFileSync(p, "utf8").replace("./sqlite-compat.js", "node:sqlite"),
+      fs.readFileSync(p, "utf8").replace("./common-store.js", "node:sqlite"),
     );
   }
   fs.appendFileSync(
@@ -1126,7 +1136,7 @@ test("candidate-v4 regressions: 3-revision bitemporal closure immutability (A->B
   assert.equal(verOut.status, 0, `--version failed: ${verOut.stderr}`);
   assert.equal(verOut.stdout.trim(), "0.4.0");
 
-  const mergedCaseDir = path.join(root, "u2-merged-case");
+  const mergedCaseDir = caseRoot(root, "u2-merged-case");
   const auditOut = spawnSync(
     process.execPath,
     [path.join(u2Clone, "bin", "afh.js"), "audit", rollout, "--case-dir", mergedCaseDir, "--workspace", workspace, "--json"],
@@ -1188,12 +1198,12 @@ test("candidate-v5 regressions: coherent manifest recovery after interrupted cas
 
   const audited = await auditSession(rollout, {
     harness: "codex",
-    caseDir: path.join(root, "case"),
+    caseDir: caseRoot(root, "case"),
     workspace,
     includeChildren: false,
   });
 
-  const db = new CaseDatabase(path.join(audited.caseDir, "case.sqlite"), { readOnly: true });
+  const db = new CaseDatabase(path.join(audited.caseDir, "case.pgstore"), { readOnly: true });
   let ev1;
   let ev2;
   try {
@@ -1205,7 +1215,7 @@ test("candidate-v5 regressions: coherent manifest recovery after interrupted cas
 
   // 1. Simulate a failure when publishing case.json after SQLite commits
   const manifestPath = path.join(audited.caseDir, "case.json");
-  const oldManifestBytes = fs.readFileSync(manifestPath, "utf8");
+  const oldManifestBytes = common.readFileSync(manifestPath, "utf8");
 
   const committedFact = appendGovernedTemporalFact(audited.caseDir, {
     sourceEventId: ev1.id,
@@ -1218,7 +1228,7 @@ test("candidate-v5 regressions: coherent manifest recovery after interrupted cas
   assert.ok(committedFact.id);
 
   // Restore old case.json to simulate a crash/error right after SQLite commit before case.json was replaced
-  fs.writeFileSync(manifestPath, oldManifestBytes, "utf8");
+  common.writeFileSync(manifestPath, oldManifestBytes, "utf8");
 
   // Verify that verifyCaseIntegrity detects the incoherence between updated SQLite and old case.json
   const incoherentCheck = await verifyCaseIntegrity(audited.caseDir);
@@ -1241,7 +1251,7 @@ test("candidate-v5 regressions: coherent manifest recovery after interrupted cas
   assert.equal(recoveredCheck.passed, true, "verifyCaseIntegrity must pass after retry recovers case.json");
 
   // Simulate another interrupted case.json publish, then append a NEW fact on top: must recover and append cleanly
-  const manifestAfterFirst = fs.readFileSync(manifestPath, "utf8");
+  const manifestAfterFirst = common.readFileSync(manifestPath, "utf8");
   const secondFact = appendGovernedTemporalFact(audited.caseDir, {
     sourceEventId: ev2.id,
     subjectId: "svc:endpoint",
@@ -1250,7 +1260,7 @@ test("candidate-v5 regressions: coherent manifest recovery after interrupted cas
     factText: "url = https://api.internal.v2",
     value: { url: "https://api.internal.v2" },
   });
-  fs.writeFileSync(manifestPath, manifestAfterFirst, "utf8");
+  common.writeFileSync(manifestPath, manifestAfterFirst, "utf8");
   assert.equal((await verifyCaseIntegrity(audited.caseDir)).passed, false);
 
   const thirdFact = appendGovernedTemporalFact(audited.caseDir, {
@@ -1318,7 +1328,7 @@ test("candidate-v6 regressions: mid-commit copy failure rollback, junction/symli
     () =>
       auditSession(junctionDir, {
         harness: "codex",
-        caseDir: path.join(root, "case-junc-dir"),
+        caseDir: caseRoot(root, "case-junc-dir"),
         workspace,
       }),
     /Refusing a symlink source/,
@@ -1329,7 +1339,7 @@ test("candidate-v6 regressions: mid-commit copy failure rollback, junction/symli
     () =>
       auditSession(fileThroughJunction, {
         harness: "codex",
-        caseDir: path.join(root, "case-junc-file"),
+        caseDir: caseRoot(root, "case-junc-file"),
         workspace,
       }),
     /Refusing a symlink source/,
@@ -1338,9 +1348,9 @@ test("candidate-v6 regressions: mid-commit copy failure rollback, junction/symli
   // 1c. Discovering a session ID via Codex state_1.sqlite whose rollout_path traverses a junction must also be rejected by default
   const fakeCodexHome = path.join(root, "fake-codex-home");
   fs.mkdirSync(fakeCodexHome, { recursive: true });
-  const stateDb = new CaseDatabase(path.join(fakeCodexHome, "state_1.sqlite"));
+  const stateDb = new LegacyInputDatabase(path.join(fakeCodexHome, "state_1.sqlite"));
   try {
-    stateDb.db.exec(`
+    stateDb.exec(`
       CREATE TABLE threads (
         id TEXT PRIMARY KEY,
         rollout_path TEXT,
@@ -1357,8 +1367,7 @@ test("candidate-v6 regressions: mid-commit copy failure rollback, junction/symli
         git_origin_url TEXT
       );
     `);
-    stateDb.run(
-      "INSERT INTO threads (id, rollout_path, cwd, updated_at_ms) VALUES ($id, $path, $cwd, 1000)",
+    stateDb.prepare("INSERT INTO threads (id, rollout_path, cwd, updated_at_ms) VALUES ($id, $path, $cwd, 1000)").run(
       { id: "junc-sess-001", path: fileThroughJunction, cwd: workspace },
     );
   } finally {
@@ -1369,7 +1378,7 @@ test("candidate-v6 regressions: mid-commit copy failure rollback, junction/symli
       auditSession("junc-sess-001", {
         harness: "codex",
         codexHome: fakeCodexHome,
-        caseDir: path.join(root, "case-junc-discovered"),
+        caseDir: caseRoot(root, "case-junc-discovered"),
         workspace,
       }),
     /Refusing a symlink source/,
@@ -1379,7 +1388,7 @@ test("candidate-v6 regressions: mid-commit copy failure rollback, junction/symli
   const allowedRes = await auditSession(fileThroughJunction, {
     harness: "codex",
     allowSymlink: true,
-    caseDir: path.join(root, "case-junc-allowed"),
+    caseDir: caseRoot(root, "case-junc-allowed"),
     workspace,
   });
   assert.equal(allowedRes.manifest.status, "COMPLETE");
@@ -1389,7 +1398,7 @@ test("candidate-v6 regressions: mid-commit copy failure rollback, junction/symli
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   const u2Target = path.join(root, "u2-rollback-target");
   fs.mkdirSync(u2Target, { recursive: true });
-  for (const dirName of ["bin", "src", "skills", ...(fs.existsSync(path.join(repoRoot, "schemas")) ? ["schemas"] : [])]) {
+  for (const dirName of ["bin", "src", "skills", "python", ...(fs.existsSync(path.join(repoRoot, "schemas")) ? ["schemas"] : [])]) {
     fs.cpSync(path.join(repoRoot, dirName), path.join(u2Target, dirName), { recursive: true });
   }
   fs.cpSync(path.join(repoRoot, "package.json"), path.join(u2Target, "package.json"));

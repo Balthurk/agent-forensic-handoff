@@ -1,6 +1,8 @@
-import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import path from 'node:path';import {spawnSync} from 'node:child_process';import {fileURLToPath} from 'node:url';
-import {createBackup,restoreBackup,inventory} from './recovery.mjs';
-const lab=fs.mkdtempSync(path.join(process.env.AFH_TEST_ROOT||'C:/T','afh-recovery-state-')),here=path.dirname(fileURLToPath(import.meta.url));
+import test from 'node:test';import assert from 'node:assert/strict';import fs from '../agent-forensic-handoff/src/common-files.js';import {closeCommonStore} from '../agent-forensic-handoff/src/common-store.js';import path from 'node:path';import {spawnSync} from 'node:child_process';import {fileURLToPath} from 'node:url';
+import {createBackup as backup,restoreBackup as restore,inventory} from './recovery.mjs';
+const createBackup=options=>backup({archiveStorage:'postgresql-common',...options}),restoreBackup=options=>restore({archiveStorage:'postgresql-common',...options});
+fs.mkdirSync(process.env.ORBITA_POSTGRES_TEST_ROOT,{recursive:true});test.after(()=>{const r=closeCommonStore();assert.equal(r.drained,true);assert.equal(r.ownedExit,0);});
+const lab=fs.mkdtempSync(path.join(process.env.ORBITA_POSTGRES_TEST_ROOT,'afh-recovery-state-')),here=path.dirname(fileURLToPath(import.meta.url));
 function run(root,op){const p=spawnSync(process.execPath,[path.join(here,'recovery-state-fixture.mjs'),op],{env:{...process.env,AFH_COSMOS_DATA:root,AFH_COSMOS_EMPTY_LIBRARY:'1'},encoding:'utf8',windowsHide:true,timeout:90000});assert.equal(p.status,0,p.stdout+p.stderr);return JSON.parse(p.stdout);}
 test('F31 restores real N04, N06, learning, pending automatic review, outbox and retrieval; resumes retained work exactly once',async()=>{
  const source=path.join(lab,'source'),destination=path.join(lab,'restored'),archive=path.join(lab,'memory.orbita'),password='recovery-fixture-only';

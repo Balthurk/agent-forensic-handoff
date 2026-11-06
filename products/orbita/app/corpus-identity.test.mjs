@@ -1,6 +1,7 @@
-import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';
+import test from 'node:test';import assert from 'node:assert/strict';import fs from '../agent-forensic-handoff/src/common-files.js';
 import {draftForInput} from './corpus-plan-fixture.mjs';
-process.env.AFH_COSMOS_DATA=fs.mkdtempSync('C:/T/orbita-corpus-identity-');
+fs.mkdirSync(process.env.ORBITA_POSTGRES_TEST_ROOT,{recursive:true});
+process.env.AFH_COSMOS_DATA=fs.mkdtempSync(process.env.ORBITA_POSTGRES_TEST_ROOT+'/orbita-corpus-identity-');
 const {addSource}=await import('./corpus.mjs'),{createCorpusPlan,runCorpusPlan}=await import('./corpus-plan.mjs'),{closeMemory}=await import('./memory.mjs');
 const footer='\n<oai-mem-citation>\n<citation_entries>\nMEMORY.md:1-2|note=[Prior context]\n</citation_entries>\n<rollout_ids>\n01a1543b-2410-7202-908a-c0f6ff70e59f\n</rollout_ids>\n</oai-mem-citation>';
 async function add(name,text,session){const rows=[{timestamp:'2026-10-22T10:00:00Z',type:'session_meta',payload:{id:session,cwd:'C:/fixture'}},{timestamp:'2026-10-22T10:00:00Z',type:'response_item',payload:{type:'message',id:'native-1',role:'assistant',phase:'final',content:[{type:'output_text',text}]}}];return addSource({filename:name+'.jsonl',content:rows.map(JSON.stringify).join('\n')+'\n'});}

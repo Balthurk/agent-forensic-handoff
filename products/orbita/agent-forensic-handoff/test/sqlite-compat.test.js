@@ -36,7 +36,7 @@ test('SQLite fallback matches native CAS, triggers, SQL scripts, rollback, RETUR
   delete native.nativeAvailable;delete fallback.nativeAvailable;
   assert.deepEqual(fallback,native);
 });
-test('SQLite fallback executes real ingestion, FTS, identity evidence and historical registration filters',()=>{
+test('Common ingestion preserves originals, FTS, identity and history with or without native SQLite',()=>{
   const native=run('ingest',{fallback:false}),fallback=run('ingest');
   assert.equal(fallback.originalExact,true);assert.equal(fallback.integrity,true);assert.equal(fallback.emoji,'😀');
   assert.equal(fallback.activeSearch,1);assert.equal(fallback.alternativeDefault,0);assert.equal(fallback.alternativeAll,1);assert.equal(fallback.beforeRegistration,0);

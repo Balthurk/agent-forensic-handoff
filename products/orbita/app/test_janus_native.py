@@ -1,19 +1,25 @@
-"""Mandatory real Janus tests. Missing services/configuration are failures, never skips."""
-import copy,datetime,hashlib,json,os,pathlib,sqlite3,sys,tempfile,unittest,uuid
+"""Port of all26 real mirror oracles to the common PostgreSQL protocol."""
+import contextlib,copy,datetime,hashlib,json,os,pathlib,sys,unittest,uuid
+from unittest.mock import patch
 P=pathlib.Path(__file__).resolve().parents[1]/'agent-forensic-handoff/python';sys.path.insert(0,str(P))
 from afh_semantic.host import AFHMemory,compile_act,manifest,correct
 from afh_semantic.knowledge_records import KnowledgeRecords,RecordError
 from afh_semantic.graph_publication import dispatch_graph,latest,plan,Projection,digest
-from afh_semantic.janus_client import Janus,binding,READ,READ_BATCH
-from afh_semantic.janus_publication import Ledger
+from afh_semantic.graph_mirror import CommonGraph as Janus,binding,READ,READ_BATCH
+from orbita_store.paths import Path as CommonPath
+from common_test_fixture import WorkspaceFixture
+from orbita_store import StoreError
+from orbita_store.connection import Connection
+from orbita_store.pool import close_idle
+from afh_semantic.graph_mirror_publication import Ledger
 from test_semantic import source
 
-SETTINGS=json.loads(pathlib.Path(os.environ['AFH_G1_JANUS_TEST_CONFIG']).read_text())
+SETTINGS={'endpoints':['reader:0','reader:1']}
 class JanusTest(unittest.TestCase):
  def setUp(self):
-  self.tmp=tempfile.TemporaryDirectory(dir=SETTINGS['testRoot']);self.root=pathlib.Path(self.tmp.name)/'data';self.semantic=self.root/'semantic';self.semantic.mkdir(parents=True)
+  self.tmp=WorkspaceFixture(self.id());self.root=CommonPath(self.tmp.name)/'data';self.semantic=self.root/'semantic';self.semantic.mkdir(parents=True)
   self.sources=[source('a','Regla sintética: conservar el original.'),source('b','Retiro esa regla si el original fue revocado.','B'),source('c','La vigencia debe comprobarse.','C')]
-  self.memory=AFHMemory(self.semantic,self.sources,'scope',register=True);self.r=KnowledgeRecords(self.memory,self.semantic/'records.sqlite3');self.cfg=pathlib.Path(self.tmp.name)/'config.json'
+  self.memory=AFHMemory(self.semantic,self.sources,'scope',register=True);self.r=KnowledgeRecords(self.memory,self.semantic/'records.pgstore');self.cfg=CommonPath(self.tmp.name)/'legacy-config.json'
   self.settings={'schema':1,'endpoints':SETTINGS['endpoints'],'roots':{str(self.root):{'namespace':uuid.uuid4().hex,'active':True}}};self.savecfg();self.old=os.environ.get('AFH_G1_JANUS_CONFIG');os.environ['AFH_G1_JANUS_CONFIG']=str(self.cfg)
   self.put(0);self.put(1);self.request={'outboxId':latest(self.r,'scope')['outbox_id']};self.client=Janus(binding(self.r))
  def savecfg(self):self.cfg.write_text(json.dumps(self.settings))
@@ -21,7 +27,7 @@ class JanusTest(unittest.TestCase):
   self.r.close();self.memory.close()
   if self.old is None:os.environ.pop('AFH_G1_JANUS_CONFIG',None)
   else:os.environ['AFH_G1_JANUS_CONFIG']=self.old
-  self.tmp.cleanup()
+  close_idle();self.tmp.cleanup()
  def put(self,i):
   s=self.sources[i];act={'key':'r'+str(i),'targetSourceId':s['id'],'type':'policy','summary':s['text'],'modality':'directive','clauses':[{'key':'c','quote':s['text'],'predicate':'conservar_original','polarity':'negative' if i==1 else 'positive','resolution':'resolved','arguments':[],'conditions':[],'temporal':[],'relations':[]}]}
   p=compile_act(self.memory,act,'synthetic-tests','cut')
@@ -30,13 +36,20 @@ class JanusTest(unittest.TestCase):
   r=self.r.put(p,expected_version=0,request_id='put'+str(i))
   if i==0:self.first=r
   return r
- def op(self,op,**kw):return dispatch_graph(self.r,{'scope':'scope','op':'graph_'+op,'backend':'janusgraph',**kw})
+ def op(self,op,**kw):return dispatch_graph(self.r,{'scope':'scope','op':'graph_'+op,'backend':'postgresql-verified',**kw})
  def publish(self):return self.op('publish',**self.request)
  def query(self,r,**kw):return self.op('query',generation=r['generation'],sourceCut=r['sourceCut'],**kw)
  def error(self,code,fn):
-  with self.assertRaisesRegex((RecordError,ValueError),code):fn()
- def mutate(self,script,values):
-  return self.client.request(SETTINGS['endpoints'][0],"try {"+script+";graph.tx().commit();return groovy.json.JsonOutput.toJson(true)} finally {graph.tx().rollback()}",values)
+  with self.assertRaisesRegex((RecordError,ValueError,StoreError),code):fn()
+ def mutate(self,operation,values):
+  with contextlib.closing(self.client.connection(write=True)) as db,db:
+   if operation=='payload':db.execute("UPDATE objects SET payload='{}' WHERE uid=?",(values['uid'],))
+   elif operation=='drop-link':
+    owner,label=db.execute("SELECT l.owner_uid,l.label FROM links l JOIN objects o ON l.owner_uid=o.uid WHERE o.group_id=? AND l.label='orbita_to' ORDER BY l.owner_uid LIMIT 1",(values['group'],)).fetchone();db.execute('DELETE FROM links WHERE owner_uid=? AND label=?',(owner,label))
+   elif operation in ('extra','incoming'):
+    db.execute('INSERT INTO objects VALUES(?,?,?,?,?)',(values['uid'],values['group'],'extra',values['uid'],'{}'))
+    if operation=='incoming':db.execute('INSERT INTO links VALUES(?,?,?)',(values['uid'],'orbita_to',values['target']))
+   else:raise AssertionError('undeclared synthetic mutation')
  def test_actual_two_readers_whole_objects_edges_originals(self):
   r=self.publish();q=self.query(r);local=dispatch_graph(self.r,dict(op='graph_query',scope='scope',generation=r['generation'],sourceCut=r['sourceCut']))
   self.assertEqual(q['items'],local['items']);self.assertEqual(len(q['items']),2);self.assertEqual(q['items'][0]['relations'][0]['value']['kind'],'retracts');self.assertTrue(q['requiresAbstention']);self.assertFalse(q['policy']['executionAuthority']);self.assertEqual(len(q['remoteVerification']['receipt']['readbackHashes']),2)
@@ -46,7 +59,12 @@ class JanusTest(unittest.TestCase):
  def test_unpublished_remote_never_falls_back(self):
   r=dispatch_graph(self.r,dict(op='graph_publish',scope='scope',**self.request));self.error('RECEIPT_MISSING',lambda:self.query(r))
  def test_local_query_ignores_unavailable_remote_configuration(self):
-  r=self.publish();self.cfg.unlink();q=dispatch_graph(self.r,dict(op='graph_query',scope='scope',generation=r['generation'],sourceCut=r['sourceCut']));self.assertEqual(len(q['items']),2);self.error('CONFIG_UNAVAILABLE',lambda:self.query(r))
+  r=self.publish();self.cfg.unlink();q=dispatch_graph(self.r,dict(op='graph_query',scope='scope',generation=r['generation'],sourceCut=r['sourceCut']));self.assertEqual(len(q['items']),2)
+  self.error('NOT_QUALIFIED',lambda:dispatch_graph(self.r,dict(op='graph_query',scope='scope',generation=r['generation'],sourceCut=r['sourceCut'],backend='janusgraph')))
+  previous=os.environ.pop('ORBITA_POSTGRES_BINDING')
+  try:self.error('EXACTLY_ONE_CONFIG_REQUIRED',lambda:self.query(r))
+  finally:os.environ['ORBITA_POSTGRES_BINDING']=previous
+  self.assertEqual(len(self.query(r)['items']),2)
  def test_old_generation_cannot_be_presented_current(self):
   old=self.publish();self.put(2);self.error('CURRENT_PROJECTION_PENDING',lambda:self.query(old));self.request={'outboxId':latest(self.r,'scope')['outbox_id']};new=self.publish();self.error('CURRENT_GENERATION',lambda:self.query(old));self.assertEqual(self.query(new)['totalMembers'],3)
  def test_history_is_n04_history_checked_against_mirror_now(self):
@@ -54,18 +72,20 @@ class JanusTest(unittest.TestCase):
  def test_current_permissions_are_required_for_history(self):
   r=self.publish();at=self.query(r)['selectedAt'];self.memory.sources.pop('a');self.error('SOURCE_SCOPE',lambda:self.query(r,mode='system_history',knownAt=at))
  def test_payload_corruption_rejected(self):
-  r=self.publish();p=plan(self.r,self.request['outboxId']);uid=self.client.objects(p)[0]['uid'];self.mutate("g.V().has('orbitaUid',uid).property('orbitaPayload','{}').iterate()",{'uid':uid});self.error('READBACK_MISMATCH',lambda:self.query(r))
+  r=self.publish();p=plan(self.r,self.request['outboxId']);uid=self.client.objects(p)[0]['uid'];self.mutate('payload',{'uid':uid});self.error('READBACK_MISMATCH',lambda:self.query(r))
  def test_marker_corruption_rejected(self):
-  r=self.publish();p=plan(self.r,self.request['outboxId']);uid=self.client.objects(p,True)[-1]['uid'];self.mutate("g.V().has('orbitaUid',uid).property('orbitaPayload','{}').iterate()",{'uid':uid});self.error('READBACK_MISMATCH',lambda:self.query(r))
+  r=self.publish();p=plan(self.r,self.request['outboxId']);uid=self.client.objects(p,True)[-1]['uid'];self.mutate('payload',{'uid':uid});self.error('READBACK_MISMATCH',lambda:self.query(r))
  def test_actual_structural_link_loss_rejected(self):
-  r=self.publish();p=plan(self.r,self.request['outboxId']);self.mutate("g.V().has('orbitaGroup',group).outE('orbita_to').limit(1).drop().iterate()",{'group':self.client.group(p)});self.error('READBACK_MISMATCH',lambda:self.query(r))
+  r=self.publish();p=plan(self.r,self.request['outboxId']);self.mutate('drop-link',{'group':self.client.group(p)});self.error('READBACK_MISMATCH',lambda:self.query(r))
  def test_extra_vertex_rejected(self):
-  r=self.publish();p=plan(self.r,self.request['outboxId']);self.mutate("graph.addVertex(org.apache.tinkerpop.gremlin.structure.T.label,'orbitaObject','orbitaUid',uid,'orbitaGroup',group,'orbitaKind','extra','orbitaKey','extra','orbitaPayload','{}')",{'uid':uuid.uuid4().hex,'group':self.client.group(p)});self.error('READBACK_MISMATCH',lambda:self.query(r))
+  r=self.publish();p=plan(self.r,self.request['outboxId']);self.mutate('extra',{'uid':uuid.uuid4().hex,'group':self.client.group(p)});self.error('READBACK_MISMATCH',lambda:self.query(r))
  def test_foreign_incoming_link_cannot_invent_relationship(self):
   r=self.publish();p=plan(self.r,self.request['outboxId']);target=self.client.objects(p)[0]['uid'];uid=uuid.uuid4().hex
-  self.mutate("def v=graph.addVertex(org.apache.tinkerpop.gremlin.structure.T.label,'orbitaObject','orbitaUid',uid,'orbitaGroup',group,'orbitaKind','foreign','orbitaKey','foreign','orbitaPayload','{}');v.addEdge('orbita_to',g.V().has('orbitaUid',target).next())",{'uid':uid,'group':'foreign-'+uid,'target':target});self.error('READBACK_MISMATCH',lambda:self.query(r))
+  self.mutate('incoming',{'uid':uid,'group':'foreign-'+uid,'target':target});self.error('READBACK_MISMATCH',lambda:self.query(r))
  def test_configuration_inside_data_cannot_grant_external_access(self):
-  inside=self.root/'connection.json';inside.write_bytes(self.cfg.read_bytes());os.environ['AFH_G1_JANUS_CONFIG']=str(inside);self.error('CONFIG_',self.publish);self.assertEqual(latest(self.r,'scope')['state'],'planned')
+  inside=self.root/'connection.json';inside.write_bytes(self.cfg.read_bytes());os.environ['AFH_G1_JANUS_CONFIG']=str(inside)
+  self.error('NOT_QUALIFIED',lambda:dispatch_graph(self.r,dict(op='graph_publish',scope='scope',backend='janusgraph',**self.request)))
+  self.assertEqual(latest(self.r,'scope')['state'],'planned')
  def test_membership_change_during_bounded_readback_is_rejected(self):
   self.publish();p=plan(self.r,self.request['outboxId']);original=self.client.request;changed=False
   def request(endpoint,script,values):
@@ -73,7 +93,7 @@ class JanusTest(unittest.TestCase):
    result=original(endpoint,script,values)
    if script==READ_BATCH and not changed:
     changed=True
-    self.mutate("graph.addVertex(org.apache.tinkerpop.gremlin.structure.T.label,'orbitaObject','orbitaUid',uid,'orbitaGroup',group,'orbitaKind','extra','orbitaKey','extra','orbitaPayload','{}')",{'uid':uuid.uuid4().hex,'group':self.client.group(p)})
+    self.mutate('extra',{'uid':uuid.uuid4().hex,'group':self.client.group(p)})
    return result
   self.client.request=request;self.error('MEMBERSHIP_CHANGED',lambda:self.client.verify(p));self.assertTrue(changed)
  def test_receipt_corruption_rejected(self):
@@ -85,22 +105,37 @@ class JanusTest(unittest.TestCase):
   with l.db:l.db.execute('DELETE FROM selectors')
   l.close();self.error('SELECTOR_MISMATCH',lambda:self.query(r))
  def test_copied_root_not_admitted(self):
-  self.settings['roots']={str(self.root)+'-copy':next(iter(self.settings['roots'].values()))};self.savecfg();self.error('ROOT_NOT_ADMITTED',self.publish);self.assertEqual(latest(self.r,'scope')['state'],'planned')
+  copied=pathlib.Path(self.tmp.name+'-copy')/'data/semantic/records.pgstore'
+  self.error('PATH_NOT_BOUND',lambda:Connection(copied,family='semantic',config=self.r.db.config,create=True))
+  self.assertEqual(latest(self.r,'scope')['state'],'planned');self.assertFalse(pathlib.Path(self.tmp.name+'-copy').exists())
  def test_config_identity_change_cannot_reuse_receipt(self):
-  r=self.publish();self.settings['roots'][str(self.root)]['namespace']=uuid.uuid4().hex;self.savecfg();self.error('SELECTOR_MISMATCH',lambda:self.query(r))
+  r=self.publish();prior=os.environ['ORBITA_POSTGRES_BINDING'];changed=json.loads(prior);changed['instanceId']=str(uuid.uuid4());os.environ['ORBITA_POSTGRES_BINDING']=json.dumps(changed)
+  try:self.error('INSTANCE_MISMATCH',lambda:self.query(r))
+  finally:os.environ['ORBITA_POSTGRES_BINDING']=prior
+  self.assertEqual(self.publish()['remoteReceipt'],r['remoteReceipt'])
  def test_restore_paused_before_config_and_no_rights_from_content(self):
-  r=self.publish();pause=self.root.parent/('.'+self.root.name+'.orbita-restore.json');pause.write_text(json.dumps({'externalAccess':False}));self.cfg.unlink();self.error('EXTERNAL_ACCESS_PAUSED',lambda:self.query(r));pause.unlink()
+  r=self.publish();pause=self.root.parent/('.'+self.root.name+'.orbita-restore.json');pause.write_text(json.dumps({'externalAccess':False}));self.cfg.unlink()
+  self.error('NOT_QUALIFIED',lambda:dispatch_graph(self.r,dict(op='graph_query',scope='scope',generation=r['generation'],sourceCut=r['sourceCut'],backend='janusgraph')))
+  self.assertEqual(len(self.query(r)['items']),2)
+  # A content file cannot authorize an external backend by changing its value.
+  pause.write_text(json.dumps({'externalAccess':True}));self.error('NOT_QUALIFIED',lambda:dispatch_graph(self.r,dict(op='graph_query',scope='scope',generation=r['generation'],sourceCut=r['sourceCut'],backend='janusgraph')))
  def test_managed_not_admitted(self):
   old=os.environ.get('AFH_MANAGED');os.environ['AFH_MANAGED']='1'
-  try:self.error('MANAGED_NOT_ADMITTED',self.publish)
+  try:
+   self.error('NOT_QUALIFIED',lambda:dispatch_graph(self.r,dict(op='graph_publish',scope='scope',backend='janusgraph',**self.request)))
+   self.assertEqual(self.publish()['backend'],'postgresql-verified')
   finally:
    if old is None:os.environ.pop('AFH_MANAGED',None)
    else:os.environ['AFH_MANAGED']=old
  def test_endpoint_injection_and_public_hosts_denied(self):
   for bad in ['https://127.0.0.1:18184/gremlin','http://example.com/gremlin','http://127.0.0.1:18184/gremlin?x=1','http://user@127.0.0.1:18184/gremlin','http://127.0.0.1:18184/other']:
-   self.settings['endpoints']=[bad,SETTINGS['endpoints'][1]];self.savecfg();self.error('ENDPOINT_INVALID',self.publish)
+   self.error('READER_NOT_ADMITTED',lambda:self.client.request(bad,READ,{}))
+  self.assertEqual(latest(self.r,'scope')['state'],'planned')
  def test_single_reader_not_qualified(self):
-  self.settings['endpoints']=[SETTINGS['endpoints'][0]];self.savecfg();self.error('TWO_READERS',self.publish)
+  self.publish();p=plan(self.r,self.request['outboxId']);one=self.client.connection()
+  try:
+   with patch.object(self.client,'connection',return_value=one):self.error('TWO_READERS',lambda:self.client.verify(p))
+  finally:one.close()
  def test_configuration_is_not_health_or_acceptance(self):
   r=dispatch_graph(self.r,dict(op='graph_capabilities',scope='scope'));self.assertTrue(r['configured']);self.assertFalse(r['verified']);self.assertFalse(r['humanAcceptance']);self.assertFalse(r['automaticPromotion'])
  def test_expired_claim_cannot_select_and_replacement_increases_fence(self):

@@ -1,6 +1,9 @@
 import sys,unittest,tempfile,copy,hashlib,json,sqlite3,time
-from pathlib import Path
-sys.path.insert(0,str(Path(__file__).resolve().parent))
+from orbita_store.paths import Path
+from pathlib import Path as NativePath
+from common_test_fixture import WorkspaceFixture
+from psycopg import IntegrityError
+sys.path.insert(0,str(NativePath(__file__).resolve().parent))
 from afh_semantic.host import AFHMemory,compile_act,manifest,query_records,prepare_review,admit_review,correct,digest
 from afh_semantic.knowledge_records import KnowledgeRecords,RecordError,approval_statement
 
@@ -10,9 +13,9 @@ def source(id,text,conversation='A',role='user'):
 
 class SemanticTest(unittest.TestCase):
     def setUp(self):
-        self.tmp=tempfile.TemporaryDirectory();self.root=Path(self.tmp.name)
+        self.tmp=WorkspaceFixture(self._testMethodName);self.root=Path(self.tmp.name)
         self.sources=[source('rep-a','Ana permite staging si pasa QA. Producción está prohibida.'),source('rep-b','Revoco sólo staging; producción sigue prohibida.','B'),source('rep-c','Ana decide esperar.','C'),source('rep-d','Sí, eso.','D')]
-        self.memory=AFHMemory(self.root,self.sources,'scope',register=True);self.records=KnowledgeRecords(self.memory,self.root/'records.sqlite3')
+        self.memory=AFHMemory(self.root,self.sources,'scope',register=True);self.records=KnowledgeRecords(self.memory,self.root/'records.pgstore')
     def tearDown(self):self.records.close();self.memory.close();self.tmp.cleanup()
     def act(self,which=0):
         s=self.sources[which];quote=s['text'];e=[{'sourceId':s['id'],'quote':quote}]
@@ -20,7 +23,7 @@ class SemanticTest(unittest.TestCase):
     def payload(self,which=0):return compile_act(self.memory,self.act(which),'producer','cut-1')
     def put(self,which=0):return self.records.put(self.payload(which),expected_version=0,request_id='req-'+str(which))
     def error(self,code,fn):
-        with self.assertRaisesRegex((RecordError,ValueError,sqlite3.IntegrityError),code):fn()
+        with self.assertRaisesRegex((RecordError,ValueError,IntegrityError),code):fn()
     def test_cas_idempotency_unknown_fields(self):
         p=self.payload();p['extension']={'arbitrary':['kept',{'x':1}]};a=self.records.put(p,expected_version=0,request_id='same');b=self.records.put(p,expected_version=0,request_id='same');self.assertEqual(a,b)
         self.error('IDEMPOTENCY_CONFLICT',lambda:self.records.put({**p,'text':'other'},expected_version=0,request_id='same'))
@@ -48,7 +51,7 @@ class SemanticTest(unittest.TestCase):
     def test_homonyms_separate(self):
         a=self.payload(0);b=self.payload(2);self.assertNotEqual(a['afh_mentions'][0]['entity_candidate_id'],b['afh_mentions'][0]['entity_candidate_id'])
     def test_reimport_does_not_add_support(self):
-        self.put();self.records.close();self.memory.close();self.memory=AFHMemory(self.root,self.sources,'scope',register=True);self.records=KnowledgeRecords(self.memory,self.root/'records.sqlite3');self.assertEqual(self.memory.db.execute('SELECT count(*) FROM source_bindings').fetchone()[0],4);self.assertEqual(query_records(self.records,{'scope':'scope','question':'staging'})['independentOccurrences'],1)
+        self.put();self.records.close();self.memory.close();self.memory=AFHMemory(self.root,self.sources,'scope',register=True);self.records=KnowledgeRecords(self.memory,self.root/'records.pgstore');self.assertEqual(self.memory.db.execute('SELECT count(*) FROM source_bindings').fetchone()[0],4);self.assertEqual(query_records(self.records,{'scope':'scope','question':'staging'})['independentOccurrences'],1)
     def test_partial_correction_preserves_other_clause_and_extensions(self):
         a=self.act();b=copy.deepcopy(a['clauses'][0]);b['key']='second';b['predicate']='forbids';a['clauses'].append(b)
         p=compile_act(self.memory,a,'p','cut');p['custom']={'opaque':42};r=self.records.put(p,expected_version=0,request_id='first');p=copy.deepcopy(r['payload']);old=copy.deepcopy(p['semantic_unit']['clauses'][1]);c=p['semantic_unit']['clauses'][0];c['predicate']['value']='reports_permission';c['clause_version_id']='cv-corrected';manifest(p['semantic_unit'])
@@ -76,7 +79,7 @@ class SemanticTest(unittest.TestCase):
     def test_review_cannot_omit_a_field(self):
         r=self.put();packet,raw=self.receipt(r);raw=json.loads(raw);raw['fields'].pop();self.error('FIELD_COVERAGE',lambda:admit_review(self.records,packet,json.dumps(raw),'reviewer','producer','bad'))
     def test_corrupt_stored_payload_fails_closed(self):
-        r=self.put();self.records.db.execute('DROP TRIGGER records_no_update');self.records.db.execute("UPDATE record_versions SET payload_sha256='bad'");self.records.db.commit();self.error('RECORD_CORRUPT',lambda:self.records.get(r['id'],'scope'))
+        r=self.put();self.tmp.corrupt(self.records.db,'record_versions',{'payload_sha256':'bad'});self.error('RECORD_CORRUPT',lambda:self.records.get(r['id'],'scope'))
     def test_date_without_zone_is_preserved_as_uncertain(self):
         a=self.act();e=[{'sourceId':'rep-a','quote':self.sources[0]['text']}];a['clauses'][0]['temporal']=[{'dimension':'event','status':'exact','literal':'date from model','value':'2026-10-20','evidence':e}];p=compile_act(self.memory,a,'p','cut');c=p['semantic_unit']['clauses'][0];self.assertEqual(c['temporal'][0]['status'],'ambiguous');self.assertNotIn('value',c['temporal'][0]);self.assertEqual(c['afh_temporal_unparsed'][0]['value'],'2026-10-20');self.records.put(p,expected_version=0,request_id='uncertain')
     def test_empty_arguments_preserve_literal_without_inventing_subject(self):
@@ -104,6 +107,35 @@ class SemanticTest(unittest.TestCase):
         self.assertEqual(query_records(self.records,{'scope':'scope','question':'staging'})['items'][0]['predicate'],'claims_permission')
     def test_unselected_latest_does_not_fall_back_to_old_current(self):
         r=self.put();p=copy.deepcopy(r['payload']);p['source_refs'].append({'id':'rep-b','revision':self.sources[1]['revision']});self.records.put(p,expected_version=1,request_id='new-source');self.memory.sources.pop('rep-b');q=query_records(self.records,{'scope':'scope','question':'staging'});self.assertEqual(q['items'],[]);self.assertTrue(q['limitations'])
+    def test_common_selection_keeps_entire_lineage_and_excludes_unselected_records(self):
+        from afh_semantic.common_backend import restrict_sources,Connection as SemanticConnection
+        first=self.put(0);other=self.put(2)
+        changed=copy.deepcopy(first['payload']);changed['source_refs'].append({'id':'rep-b','revision':self.sources[1]['revision']})
+        self.records.put(changed,expected_version=1,request_id='selection-correction')
+        query='SELECT record_id,version FROM record_versions ORDER BY version'
+        # Warm the exact compiled query before the connection gains a source
+        # restriction. No prior compiled shape may bypass its fresh AST filter.
+        self.assertEqual(len(list(self.records.db.execute(query))),3)
+        self.memory.sources={key:value for key,value in self.memory.sources.items() if key=='rep-a'}
+        restrict_sources(self.records)
+        self.assertEqual([tuple(row) for row in self.records.db.execute(query)],[(first['id'],1),(first['id'],2)])
+        second=SemanticConnection(self.root/'records.pgstore',family='semantic',read_only=True)
+        try:
+            second.restrict_sources(['rep-c'])
+            self.assertEqual([tuple(row) for row in second.execute(query)],[(other['id'],1)])
+            self.assertEqual([tuple(row) for row in self.records.db.execute(query)],[(first['id'],1),(first['id'],2)])
+        finally:second.close()
+        self.assertEqual(query_records(self.records,{'scope':'scope','question':'staging'})['items'],[])
+    def test_common_paths_preserve_utf8_streams_and_abort_without_publication(self):
+        root=self.root/'bytes';root.mkdir()
+        value=('original á😀\r\n'*100003)
+        with (root/'original').open('w',encoding='utf8',newline='') as stream:stream.write(value)
+        with (root/'original').open('r',encoding='utf8',newline='') as stream:self.assertEqual(stream.read(),value)
+        self.assertEqual((root/'original').read_bytes(),value.encode())
+        with self.assertRaisesRegex(RuntimeError,'abandon'):
+            with (root/'unfinished').open('w',encoding='utf8') as stream:
+                stream.write('unpublished');raise RuntimeError('abandon')
+        self.assertFalse((root/'unfinished').exists())
     def test_precise_validity_bounds(self):
         p=self.payload();c=p['semantic_unit']['clauses'][0];bounds={'relation':'closed_interval','lower':{'value':'2026-10-01T00:00:00Z','inclusive':True,'precision':'instant','zone':{'kind':'utc_offset','offset_minutes':0}},'upper':{'value':'2026-10-10T00:00:00Z','inclusive':False,'precision':'instant','zone':{'kind':'utc_offset','offset_minutes':0}}};c['temporal']=[{'dimension':'validity','status':'exact','literal':'bounded test','bounds':bounds,'evidence_keys':['/temporal/0/bounds']}]
         for field in ['dimension','status','literal','bounds']:c['evidence_by_field']['/temporal/0/'+field]=copy.deepcopy(c['evidence_by_field']['/predicate'])

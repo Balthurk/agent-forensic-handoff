@@ -1,9 +1,12 @@
+from common_test_fixture import WorkspaceFixture, connect_semantic, corrupt_path, temporary_corruption
+from psycopg import IntegrityError
 """A10 literal-coordinate invariants. Synthetic sources, no model/provider calls."""
 import copy
 import hashlib
 import tempfile
 import unittest
-from pathlib import Path
+from orbita_store.paths import Path
+from pathlib import Path as NativePath
 
 from afh_semantic.host import AFHMemory, compile_act, ref, witness
 from afh_semantic.knowledge_records import RecordError
@@ -20,7 +23,7 @@ def source(identifier, text):
 
 class QuoteLocatorTest(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp = WorkspaceFixture(self._testMethodName)
         self.root = Path(self.tmp.name)
         self.sources = [source('overlap', 'aaaa'), source('unicode', '😀·e\u0301|aaa|aaa'),
                         source('unique', 'Una cita única al final.')]

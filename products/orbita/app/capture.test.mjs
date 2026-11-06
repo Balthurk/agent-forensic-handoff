@@ -1,6 +1,9 @@
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import path from 'node:path';import {spawnSync} from 'node:child_process';import {fileURLToPath} from 'node:url';
-const root=fs.mkdtempSync('C:/T/afh-capture-test-');process.env.AFH_COSMOS_DATA=path.join(root,'data');process.env.AFH_COSMOS_EMPTY_LIBRARY='1';
-const {registerCapture,captureOnce,captureStatus}=await import('./capture.mjs');const {library,loadCase}=await import('./corpus.mjs');const {retrievePackage}=await import('./memory.mjs');
+const commonRoot=process.env.ORBITA_POSTGRES_TEST_ROOT;assert.ok(commonRoot);const inputs=path.join(path.dirname(commonRoot),'inputs');fs.mkdirSync(inputs,{recursive:true});
+const root=fs.mkdtempSync(path.join(inputs,'capture-'));process.env.AFH_COSMOS_DATA=path.join(commonRoot,path.basename(root),'data');process.env.AFH_COSMOS_EMPTY_LIBRARY='1';
+const {registerCapture,captureOnce,captureStatus}=await import('./capture.mjs');const {library,loadCase}=await import('./corpus.mjs');const {retrievePackage,closeMemory}=await import('./memory.mjs');
+const {closeCommonStore}=await import('../agent-forensic-handoff/src/common-store.js');
+test.after(async()=>{await closeMemory();assert.equal(fs.existsSync(process.env.AFH_COSMOS_DATA),false);closeCommonStore();});
 const line=(text,id='message-1')=>JSON.stringify({timestamp:'2026-10-22T10:00:00Z',type:'response_item',payload:{type:'message',id,role:'user',content:[{type:'input_text',text}]}})+'\n';
 const header=JSON.stringify({timestamp:'2026-10-22T10:00:00Z',type:'session_meta',payload:{id:'01a154a3-e7d9-7990-9ebb-ac32839ca890',cwd:'C:/fixture'}})+'\n';
 function child(req,crash){const p=spawnSync(process.execPath,[fileURLToPath(new URL('./capture-cli.mjs',import.meta.url))],{input:JSON.stringify(req),encoding:'utf8',env:{...process.env,AFH_CRASH_AT:crash||''},windowsHide:true});return {status:p.status,...(p.stdout?JSON.parse(p.stdout):{}),stderr:p.stderr};}

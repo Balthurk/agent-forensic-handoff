@@ -2,6 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { once } from 'node:events';
+import { mkdtemp, mkdir, copyFile, writeFile, readFile, access } from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import { runOwnedProcess, providerEnvironment } from './owned-process.mjs';
 import { buildReport, collect, requestJson, renderMarkdown, sha256, validateBase, validateProvenance, main } from './orbita-preflight.mjs';
 
 function fixture() {
@@ -135,4 +139,29 @@ test('transport HTTP error, invalid JSON, redirect and timeout yield unknown evi
     const response=await requestJson(base,route,{timeoutMs:100});assert.equal(response.ok,false);assert.equal(response.error,expected);assert.equal(response.data,undefined);
   }
   assert.equal(forbidden,0);
+});
+
+test('exported diagnostic CLI reads explicit private provenance without a bundled historical file',async t=>{
+  const f=fixture(),requests=[];
+  const base=await serverFor(t,async(req,res)=>{
+    let body='';for await(const chunk of req)body+=chunk;
+    requests.push({method:req.method,url:req.url,body});
+    const lookup={'/api/bootstrap':'bootstrapBefore','/api/coverage':'coverage','/api/recovery/status':'recovery','/api/pipeline':'pipeline','/api/reevaluation':'reevaluation'};
+    const name=req.url.startsWith('/api/evidence?')?'source:memory:evt-fixture':lookup[req.url];
+    if(!name){res.writeHead(500);res.end();return;}
+    res.setHeader('Content-Type','application/json');res.end(JSON.stringify(f.collection.snapshots[name].data));
+  });
+  const root=await mkdtemp(path.join(process.env.ORBITA_POSTGRES_TEST_RECEIPTS??os.tmpdir(),'preflight-package-'));
+  const exported=path.join(root,'exported'),privateRoot=path.join(root,'private');
+  await mkdir(exported);await mkdir(privateRoot);
+  const script=path.join(exported,'orbita-preflight.mjs'),provenance=path.join(privateRoot,'provenance.json'),reportFile=path.join(privateRoot,'report.json');
+  await copyFile(new URL('./orbita-preflight.mjs',import.meta.url),script);
+  await writeFile(provenance,JSON.stringify(f.provenance),{flag:'wx'});
+  await assert.rejects(access(path.join(exported,'provenance.json')),error=>error.code==='ENOENT');
+  const result=await runOwnedProcess(process.execPath,[script,'--base-url',base,'--timeout-ms','2000','--provenance',provenance,'--json',reportFile],{env:providerEnvironment(),timeout:10000,stdoutLimit:1024**2,stderrLimit:1024**2});
+  assert.equal(result.closed,true);assert.equal(result.code,2,result.stderr);
+  const report=JSON.parse(await readFile(reportFile,'utf8'));
+  assert.equal(report.status,'REVIEW_REQUIRED');assert.equal(report.acceptance.operationAuthorizedByReport,false);
+  assert.equal(check(report,'source.C1').status,'observed');assert.equal(requests.length,7);
+  assert.deepEqual(requests.filter(r=>r.method!=='GET'),[{method:'POST',url:'/api/reevaluation',body:'{"op":"status"}'}]);
 });

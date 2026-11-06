@@ -1,6 +1,9 @@
+from common_test_fixture import WorkspaceFixture, connect_semantic, corrupt_path, temporary_corruption
+from psycopg import IntegrityError
 import copy, hashlib, json, sqlite3, tempfile, unittest
 from contextlib import closing
-from pathlib import Path
+from orbita_store.paths import Path
+from pathlib import Path as NativePath
 from afh_semantic.host import dispatch
 from afh_semantic.knowledge_records import RecordError
 
@@ -12,7 +15,7 @@ def source(i, text, role='user'):
 
 class DecisionTest(unittest.TestCase):
     def setUp(self):
-        self.tmp=tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup); self.root=Path(self.tmp.name)
+        self.tmp=WorkspaceFixture(self._testMethodName); self.addCleanup(self.tmp.cleanup); self.root=Path(self.tmp.name)
         self.sources=[source('u','Conservar originales. Comparar copia local y copia remota. Elijo local. Reabrir tras comprobar la copia.'),source('t','La copia local restauró 12 archivos; la copia remota está pendiente.','tool')]
         self.claim=lambda text:dict(text=text,evidence=[dict(sourceId='u',quote='Conservar originales')])
         self.case=dict(title='Copia recuperable',objective=self.claim('Recuperar datos'),
@@ -90,8 +93,7 @@ class DecisionTest(unittest.TestCase):
         self.case['objective']['evidence'][0]['start']=2;r=self.frame();self.assertEqual(r['record']['payload']['decision_case']['bindings']['objective'][0]['locator']['start'],2)
     def test_history_hash_tamper_blocks_even_unmatched_listing(self):
         self.frame()
-        with closing(sqlite3.connect(self.root/'decisions/records.sqlite3')) as db:
-            db.execute('DROP TRIGGER records_no_update');db.execute("UPDATE record_versions SET recorded_at='2000-01-01T00:00:00Z'");db.commit()
+        corrupt_path(self.root/'decisions/records.pgstore','record_versions',{'recorded_at':'2000-01-01T00:00:00Z'})
         with self.assertRaisesRegex(RecordError,'RECORD_CORRUPT'):self.call('get',id='backup')
         p=self.call('list',question='notfound');self.assertEqual(p['status'],'incomplete');self.assertEqual(p['items'],[]);self.assertTrue(p['errors'])
     def test_source_drift_is_incomplete_not_empty_success(self):
@@ -105,8 +107,8 @@ class DecisionTest(unittest.TestCase):
         other=dispatch(dict(root=str(self.root),scope='other',sources=self.sources,op='decision_list'));self.assertEqual(other['items'],[])
     def test_append_only_and_unknown_action_no_mutation(self):
         a=self.frame()
-        with closing(sqlite3.connect(self.root/'decisions/records.sqlite3')) as db:
-            with self.assertRaisesRegex(sqlite3.IntegrityError,'append only'):db.execute('DELETE FROM record_versions')
+        with closing(connect_semantic(self.root/'decisions/records.pgstore')) as db:
+            with self.assertRaisesRegex(IntegrityError,'append only'):db.execute('DELETE FROM record_versions')
         with self.assertRaisesRegex(RecordError,'INVALID_ACTION'):self.act(a,'execute','execute')
         self.assertEqual(len(self.call('history',id='backup')),1)
     def test_invalid_schema_and_limits(self):

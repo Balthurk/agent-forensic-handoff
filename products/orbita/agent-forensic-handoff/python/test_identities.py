@@ -1,5 +1,8 @@
+from common_test_fixture import WorkspaceFixture, connect_semantic, corrupt_path, temporary_corruption
+from psycopg import IntegrityError
 import copy, tempfile, unittest, sqlite3
-from pathlib import Path
+from orbita_store.paths import Path
+from pathlib import Path as NativePath
 from contextlib import closing
 from afh_semantic.host import dispatch
 from afh_semantic.knowledge_records import RecordError
@@ -7,7 +10,7 @@ from test_decisions import source
 
 class IdentityTest(unittest.TestCase):
     def setUp(self):
-        self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup);self.root=Path(self.tmp.name)
+        self.tmp=WorkspaceFixture(self._testMethodName);self.addCleanup(self.tmp.cleanup);self.root=Path(self.tmp.name)
         self.sources=[source('names','Órbita Alpha Beta Gamma Alice. Alias Orbita. Desde 2026-01-01 hasta 2027-01-01. Revisión local.'),source('other','Alice es otra persona. Incertidumbre registrada.')]
     def call(self,op,**kw):return dispatch(dict(root=str(self.root),scope='s',sources=self.sources,op='identity_'+op,**kw))
     def entity(self,key,label='Alice',**kw):
@@ -55,8 +58,7 @@ class IdentityTest(unittest.TestCase):
         self.assertEqual(self.call('get',kind='entity',id='a',version=1)['reference'],a['reference'])
     def test_tampered_envelope_fails_closed(self):
         self.entity('a')
-        with closing(sqlite3.connect(self.root/'identities/records.sqlite3')) as db,db:
-            db.execute('DROP TRIGGER records_no_update');db.execute("UPDATE record_versions SET payload_sha256='bad'")
+        corrupt_path(self.root/'identities/records.pgstore','record_versions',{'payload_sha256':'bad'})
         with self.assertRaises(RecordError):self.board()
     def test_current_obsolete_document_never_consolidates_historical_cut_survives(self):
         a=self.entity('a');b=self.entity('b');r=self.link(a,b);self.sources[0]['document']=dict(currentRevision=False)

@@ -1,29 +1,150 @@
-# Órbita — fuente en consolidación
+# Órbita — PostgreSQL común
 
-Esta carpeta conserva la entrega técnica I05: citas con posiciones Unicode verificadas y recuperación de contexto a partir de coincidencias semánticas, con versiones, condiciones y contraevidencia. I01–I05 están sellados. I05 pasó 671 pruebas acumuladas y una omisión heredada, restauración con páginas y originales exactos, instalación desde una descarga nueva y las baterías completas de la skill y Órbita. La interfaz se comprobó desde ese clon con consulta, contexto adverso y originales literales. El oráculo fijo conserva diez paquetes léxicos y recupera ocho de diez cláusulas relevantes; una paráfrasis positiva sigue sin resultados. La indexación administrada se comprueba en navegador real; el gateway cierra cada conexión interna tras su respuesta y no reintenta mutaciones. Los fallos previos y la limitación del icono de navegador se conservan. La indexación administrada queda cualificada con una raíz de datos corta; se conserva un fallo de apertura SQLite en la ruta larga del laboratorio, sin declararlo reparado. PG01 debe retirar esa dependencia de archivos SQLite operativos. Node 24.20.0 y SQLite 3.53.4 quedan cualificados mediante una nueva recuperación F36 completa de 20.035 archivos y 13.210.004.199 bytes, con ocho páginas y los paquetes actual e histórico exactos. PG01 (almacén PostgreSQL común) precede a I06–I10; todos siguen pendientes. No hay aceptación humana ni promoción sobre QA. SOURCE-MANIFEST.json identifica cada byte exportado y QUALIFICATION-I05.json delimita la comprobación; los documentos anteriores mantienen su alcance histórico.
+PG01 migra la persistencia operativa a una única base PostgreSQL. Los espacios,
+casos y dominios de acceso conservan sus identidades y permisos dentro de esa
+base. Las rutas de datos son localizadores lógicos vinculados al espacio
+autorizado. Los lectores de formatos anteriores se utilizan mediante las
+entradas explícitas de importación y recuperación.
 
-Se conserva la disposición app/ y agent-forensic-handoff/ para mantener los imports existentes. Las fuentes y pruebas nuevas de I01–I05 están incluidas. El código de la skill en la raíz del repositorio tiene su propio desarrollo y no sustituye esta variante de Órbita.
+Cada entrega se identifica por sus fuentes y recibos de cualificación. La
+regresión completa, equivalencia real, interfaz, F36, recuperación y
+reconstrucción remota son requisitos separados; una prueba parcial no acredita
+el conjunto. I01–I05 mantienen sus sellos históricos. PG01 precede a I06–I10.
+La aceptación humana sólo puede proceder del usuario. Los documentos
+`QUALIFICATION` anteriores describen los archivos y commits que identifican.
 
-## Entorno de esta instantánea
+## Instalación y arranque
 
-- Node22.15 o posterior según package.json; la validación local utiliza Node24.15.
-- Python 3.12 o posterior, con las capacidades de inspección de rutas requeridas, y las dependencias fijadas en requirements-tested.txt para PostgreSQL y Parquet.
-- app/START.ps1 inicia la UI local. Usar una ruta de datos fuera del checkout y un puerto libre.
-- AFH_PYTHON selecciona un único ejecutable, incluso con espacios en su ruta. app/PORTABILITY.md documenta los overrides especializados y sus prioridades. La UI puede arrancar, importar, consultar y abrir originales sin Codex instalado; la conexión de inferencia comunica CODEX_UNAVAILABLE cuando no existe. Las comprobaciones reales cubren los intérpretes Windows disponibles; no se afirma validación universal de plataformas.
-- Las pruebas PostgreSQL, Cassandra y JanusGraph requieren los servicios y configuraciones de pruebas apropiados. Las configuraciones privadas no se incluyen. No convertir pruebas ausentes o sin configurar en aceptación.
+El entorno de cualificación utiliza Windows x64, Node **24.20.0**, Python
+**3.12.10** y PostgreSQL **16.15**. Las dependencias de Python están fijadas en
+`app/requirements-common.txt`. Desde la raíz del repositorio:
 
-## Conservación y privacidad
+```powershell
+npm ci --prefix .\products\orbita\agent-forensic-handoff
+python -m venv .venv-orbita
+& .\.venv-orbita\Scripts\python.exe -m pip install -r .\products\orbita\app\requirements-common.txt
+```
 
-No se incluyen corpus, bases reales, claves, configuración privada, dependencias descargadas, laboratorios completos ni evidencias personales. El archivo app/provenance.json del entorno original contiene citas privadas y queda excluido; la comprobación preflight que necesita esas citas requiere una configuración propia válida. No se proporciona evidencia ficticia para satisfacerla.
+La analítica de volumen utiliza dependencias opcionales fijadas en
+`app/requirements-volume.txt`. Instálalas si vas a usar ese módulo o ejecutar
+su cualificación:
 
-Dos pruebas incluyen la misma URL sintética de UUID repetitivo y otra usa un token de ceros para verificar redacción. La revisión conserva sus bytes y documenta las tres excepciones por ruta y hash. No necesitan acceder a una conversación ni credencial real.
+```powershell
+& .\.venv-orbita\Scripts\python.exe -m pip install -r .\products\orbita\app\requirements-volume.txt
+```
 
-## Pruebas desde una copia limpia
+El operador prepara el servicio común, su instalación completa y los perfiles
+privados siguiendo la [guía de instalación y arranque](app/POSTGRES-START.md).
+`app/START.ps1 -CheckOnly` valida las entradas y cierra su consumidor; el mismo
+comando sin `-CheckOnly` abre la interfaz. La guía detalla los modos personal y
+administrado, los puertos y el modelo local requerido. Una configuración ausente,
+una instancia distinta o una raíz no autorizada impiden el arranque.
 
-En la raíz, `npm test` ejecuta las pruebas de la skill, incluidas las de aceptación y especificación. Sus dependencias se instalan con `npm ci` y `npm ci --prefix tools/specification`. La batería completa requiere preparar sus auxiliares y productores históricos en un laboratorio nuevo mediante `python scripts/prepare-acceptance.py --lab RUTA_ABSOLUTA_NUEVA`; después se ejecuta `npm test -- --prepared RUTA_ABSOLUTA_NUEVA/PREPARATION.json`. Las instrucciones y los hashes están en `scripts/acceptance-support/README.md` y su manifest. Esta preparación no declara pruebas superadas y no utiliza corpus real.
+La instalación de la skill en la raíz del repositorio y la de esta variante de
+Órbita son distintas. La disposición `app/` y `agent-forensic-handoff/` conserva
+los imports del producto. Las dependencias, los modelos y los perfiles privados
+no se incluyen en Git.
 
-Para Órbita, instalar sus dependencias con `npm ci --prefix products/orbita/agent-forensic-handoff`. Crear un entorno local mediante `python -m venv .venv-orbita`, instalar requirements-tested.txt con su intérprete y usarlo como AFH_PYTHON. `.venv-orbita/` queda excluido de Git. `python products/orbita/scripts/check.py --list` enumera las tres suites sin ejecutarlas. El comando completo, con ese mismo intérprete, es `python products/orbita/scripts/check.py --lab RUTA_NUEVA_FUERA_DEL_CHECKOUT`.
+## Importación y recuperación
 
-La ejecución completa exige `AFH_VOLUME_PG_TEST_CONFIG`, `AFH_SEMANTIC_PG_TEST_CONFIG` y `AFH_G1_JANUS_TEST_CONFIG` apuntando a configuraciones privadas de pruebas, con sus servicios disponibles. `AFH_P1_REAL_FIXTURE` debe señalar la conversación privada congelada que necesita el oráculo P1; no se publica ni sustituye por datos sintéticos. La falta de requisitos detiene la comprobación. Los logs y el recibo quedan en el laboratorio indicado. La instalación y las baterías completas desde remoto, además de la interfaz real, pasaron para los hashes y el commit identificados en QUALIFICATION-I03.json. Las fuentes permanecieron iguales durante esas comprobaciones. Esta batería no sustituye la UI real ni la restauración operativa. En Windows se verificó una raíz temporal externa corta para AFH_TEST_ROOT, TEMP, TMP y TMPDIR, de modo que las rutas anidadas de prueba conservasen margen para los journals SQLite.
+La [guía de importación](app/POSTGRES-IMPORT.md) exige originales conservados,
+un plan con hashes y un destino explícito. Los perfiles de pruebas no son los
+perfiles finales del usuario.
 
-Una rama de fuentes no es un respaldo operativo de datos. La retirada de copias locales requiere, además, comprobar los hashes desde remoto, reconstrucción, consumidores y un respaldo recuperable de los datos únicos.
+La [recuperación del servicio común](agent-forensic-handoff/docs/postgresql-service-recovery.md)
+incluye el respaldo completo cifrado y la restauración independiente. El archivo
+y su clave se custodian por separado. La [entrada de recuperación de servicios
+anteriores](agent-forensic-handoff/scripts/recovery/README.md) documenta la CLI
+para PostgreSQL y Cassandra/JanusGraph. Sus recibos delimitan lo comprobado;
+una ejecución de una CLI no sustituye la comprobación funcional desde la app.
+
+## Diagnóstico con procedencia privada
+
+El diagnóstico histórico `app/orbita-preflight.mjs` utiliza un archivo de
+procedencia con citas del usuario. Ese archivo se conserva en privado y no se
+incluye en la exportación. Puede indicarse una ruta externa al código:
+
+```powershell
+& 'C:\OrbitaRuntime\node-v24.20.0-win-x64\node.exe' .\products\orbita\app\orbita-preflight.mjs --base-url 'http://127.0.0.1:4475' --provenance 'C:\OrbitaPrivate\provenance.json' --json 'C:\OrbitaPrivate\diagnostico-nuevo.json'
+```
+
+Se utiliza el archivo privado existente, conservando sus citas y hashes; no se
+fabrican citas para completar la instalación. El argumento es opcional para
+instalaciones anteriores que ya tengan su archivo local. El diagnóstico sólo
+consulta el servicio local: sus observaciones no autorizan trabajo ni declaran
+aceptación humana. Este diagnóstico es independiente del arranque de la app.
+
+## Comprobación completa de Órbita
+
+El comprobador es `agent-forensic-handoff/scripts/check.py`. `--list` enumera las
+pruebas sin crear espacios ni servicios. `--preflight` comprueba entradas,
+inventario de fuentes, identidad y durabilidad del servicio, ausencia de otros
+clientes, imagen instalada y recursos: **8 GiB de RAM libre y 60 GiB de disco**.
+Un preflight correcto no declara pruebas superadas.
+
+El ejemplo usa rutas absolutas ilustrativas. El operador debe proporcionar los
+perfiles privados de la instancia común, los controles reales F35/F36, el corpus
+original congelado de P1, la copia inmutable I05 y su extensión vectorial, el
+snapshot local del modelo y Node 24.20.0. Los directorios de logs y de credenciales
+de prueba deben ser nuevos, separados entre sí y estar fuera del checkout.
+Usa una ruta corta para el laboratorio: los oráculos nativos conservan sus
+límites de ruta de Windows. Observa la salida de consola o el log que se añade
+al final; evita mantener abiertos los JSON de progreso que se reemplazan
+atómicamente mientras la batería está en ejecución.
+
+```powershell
+$Product = 'C:\Orbita\products\orbita'
+$Python = 'C:\Orbita\.venv-orbita\Scripts\python.exe'
+$Checker = Join-Path $Product 'agent-forensic-handoff\scripts\check.py'
+& $Python -X utf8 -B $Checker --list
+
+$CheckerInputs = @(
+  '--profile', 'local-serial',
+  '--lab', 'C:\T\of1',
+  '--private-directory', 'C:\OrbitaPrivate\pg01-full-1',
+  '--operator', 'C:\OrbitaPrivate\operator.json',
+  '--runtime', 'C:\OrbitaPrivate\runtime.json',
+  '--real-f35', 'C:\OrbitaPrivate\real-f35.json',
+  '--real-f36', 'C:\OrbitaPrivate\real-f36.json',
+  '--p1-fixture', 'C:\OrbitaOriginals\p1',
+  '--i05-oracle', 'C:\OrbitaOracles\i05\products\orbita',
+  '--vec-extension', 'C:\OrbitaOracles\i05\products\orbita\agent-forensic-handoff\node_modules\sqlite-vec-windows-x64\vec0.dll',
+  '--model-home', 'C:\OrbitaRuntime\models',
+  '--node', 'C:\OrbitaRuntime\node-v24.20.0-win-x64\node.exe',
+  '--manifest', (Join-Path $Product 'SOURCE-MANIFEST.json')
+)
+& $Python -X utf8 -B $Checker --preflight @CheckerInputs
+if ($LASTEXITCODE -ne 0) { throw 'El preflight no se completó; conservar el error' }
+& $Python -X utf8 -B $Checker @CheckerInputs
+if ($LASTEXITCODE -ne 0) { throw 'La batería falló; conservar el laboratorio y los recibos' }
+```
+
+La ejecución completa provisiona ámbitos de pruebas y una instalación temporal
+con identidad propia. El perfil local aprobado `local-serial` ejecuta todos los
+archivos Node de uno en uno y conserva la suite Python completa. Mantiene las
+pruebas internas de concurrencia y sus plazos originales, con 900 segundos por
+archivo y dos horas de presupuesto total de ejecución; el cierre puede requerir
+tiempo adicional. El perfil `original` conserva la concurrencia de Node y los
+900 segundos por suite. Ambos verifican sus cierres. El ensayo de 22 arranques
+simultáneos con 60 segundos falló en este equipo y se conserva como fallo; el
+perfil serial no acredita esa capacidad. Los logs y `RESULT.json` quedan en el laboratorio indicado. Los
+fallos y volúmenes de prueba se conservan; el comprobador no retira los servicios
+existentes. La omisión heredada de Windows permanece explícita.
+
+La batería de la skill raíz conserva su preparación independiente descrita en
+`scripts/acceptance-support/README.md` del repositorio. La entrega requiere ambas
+baterías desde la copia remota, además de UI real, equivalencia, F36 y recuperación
+operativa sobre las fuentes finales exactas.
+
+## Fuentes y privacidad
+
+La exportación excluye corpus, bases, claves, perfiles privados, dependencias,
+modelos y laboratorios. `app/provenance.json` y los tres auxiliares privados de
+verificación quedan fuera. La biblioteca nueva permanece vacía por defecto;
+la entrada histórica de demostración utiliza una dirección reservada sin
+contenido. Los ejemplos y las excepciones sintéticas de las pruebas se revisan por ruta,
+contexto y hash; no contienen credenciales operativas.
+
+`SOURCE-MANIFEST.json` identifica los bytes exportados y las transformaciones.
+Git conserva el código; el respaldo recuperable conserva los datos. La retirada
+de copias locales depende de las comprobaciones y lotes enumerados del mandato.

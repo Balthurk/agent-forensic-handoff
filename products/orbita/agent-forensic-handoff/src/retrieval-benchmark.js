@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import os from "node:os";
+import {benchmarkLocations,logicalDirectoryBytes} from './common-benchmark.js';
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { auditSession } from "./audit.js";
@@ -9,19 +9,19 @@ import { readEvidence } from "./render.js";
 import { queryCase } from "./retrieval.js";
 import { buildSemanticIndex, verifySemanticProjection } from "./semantic.js";
 import { createTransformersProvider } from "./semantic-model.js";
-import { atomicWrite, ensureDir, readJson, walkFiles } from "./util.js";
+import { atomicWrite, ensureDir, readJson } from "./util.js";
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_FIXTURE = path.resolve(MODULE_DIR, "..", "benchmarks", "fixtures", "hybrid-gold.jsonl");
 const DEFAULT_TRUTH = path.resolve(MODULE_DIR, "..", "benchmarks", "fixtures", "hybrid-gold-truth.json");
 
 export async function runRetrievalBenchmark(options = {}) {
-  const root = path.resolve(options.output || fs.mkdtempSync(path.join(os.tmpdir(), "afh-retrieval-benchmark-")));
+  const {root,caseRoot}=benchmarkLocations(options,'retrieval');
   ensureDir(root);
   const fixture = path.resolve(options.fixture || DEFAULT_FIXTURE);
   const truth = readJson(path.resolve(options.truth || DEFAULT_TRUTH));
   if (!truth?.exact?.length || !truth?.semantic?.length) throw new Error("Retrieval benchmark truth set is missing exact or semantic queries");
-  const caseDir = path.join(root, "case");
+  const caseDir = path.join(caseRoot, "case");
   const auditStart = performance.now();
   const audit = await auditSession(fixture, { harness: "generic", caseDir, workspace: root, includeChildren: false, tokenBudget: 6000 });
   const auditMs = performance.now() - auditStart;
@@ -33,7 +33,7 @@ export async function runRetrievalBenchmark(options = {}) {
   const providerLoadMs = performance.now() - providerStart;
   try {
     const indexStart = performance.now();
-    const projection = await buildSemanticIndex(caseDir, { provider, out: path.join(root, "projections") });
+    const projection = await buildSemanticIndex(caseDir, { provider, out: path.join(caseRoot, "projections") });
     const indexMs = performance.now() - indexStart;
     const verificationStart = performance.now();
     const projectionVerification = await verifySemanticProjection(caseDir, projection.projectionDir, { deep: true });
@@ -45,7 +45,7 @@ export async function runRetrievalBenchmark(options = {}) {
     const semanticVector = await evaluateQueries(caseDir, truth.semantic, "semantic", truth.semanticLimit, { provider, projectionDir: projection.projectionDir });
     const semanticHybrid = await evaluateQueries(caseDir, truth.semantic, "hybrid", truth.semanticLimit, { provider, projectionDir: projection.projectionDir });
     const graph = evaluateGraph(caseDir, truth.graph);
-    const negative = await evaluateNegative(root, fixture, truth.negativeQuery);
+    const negative = await evaluateNegative(root, caseRoot, fixture, truth.negativeQuery);
     const evidenceResolution = verifySelectedEvidence(caseDir, [...exactLexical.rows, ...exactHybrid.rows, ...semanticVector.rows, ...semanticHybrid.rows]);
     const metrics = {
       exactRecallAtK: exactLexical.recall,
@@ -67,8 +67,9 @@ export async function runRetrievalBenchmark(options = {}) {
         hybridQueryP50: percentile([...exactHybrid.latencies, ...semanticHybrid.latencies], 0.5),
       },
       storageBytes: {
-        case: directoryBytes(caseDir),
-        semanticProjection: directoryBytes(projection.projectionDir),
+        measurement:'logical object bytes plus fresh typed row bytes; excludes physical indexes, WAL and server overhead',
+        case: logicalDirectoryBytes(caseDir),
+        semanticProjection: logicalDirectoryBytes(projection.projectionDir),
       },
     };
     const gates = {
@@ -117,7 +118,7 @@ async function evaluateQueries(caseDir, queries, mode, limit, shared) {
 }
 
 function evaluateGraph(caseDir, expected) {
-  const db = new CaseDatabase(path.join(caseDir, "case.sqlite"), { readOnly: true });
+  const db = new CaseDatabase(path.join(caseDir, "case.pgstore"), { readOnly: true });
   try {
     const from = db.get("SELECT id FROM event WHERE kind=$kind ORDER BY record_ordinal LIMIT 1", { kind: expected.fromKind });
     const to = db.get("SELECT id FROM event WHERE kind=$kind ORDER BY record_ordinal LIMIT 1", { kind: expected.toKind });
@@ -127,13 +128,13 @@ function evaluateGraph(caseDir, expected) {
   } finally { db.close(); }
 }
 
-async function evaluateNegative(root, fixture, query) {
+async function evaluateNegative(root, caseRoot, fixture, query) {
   const incompleteSource = path.join(root, "incomplete-control.jsonl");
   fs.copyFileSync(fixture, incompleteSource);
   fs.appendFileSync(incompleteSource, "{synthetic-incomplete-record\n");
-  const incompleteCase = path.join(root, "incomplete-case");
+  const incompleteCase = path.join(caseRoot, "incomplete-case");
   await auditSession(incompleteSource, { harness: "generic", caseDir: incompleteCase, workspace: root, includeChildren: false });
-  const complete = await queryCase(path.join(root, "case"), query, { mode: "lexical" });
+  const complete = await queryCase(path.join(caseRoot, "case"), query, { mode: "lexical" });
   const incomplete = await queryCase(incompleteCase, query, { mode: "lexical" });
   const falseAbsenceCount = [
     complete.assessment.status !== "NOT_OBSERVED_IN_CAPTURED_EVIDENCE",
@@ -150,7 +151,7 @@ function verifySelectedEvidence(caseDir, rows) {
   for (const row of rows) {
     if (!row.found) continue;
     const responseIds = row.resultIds || [];
-    const db = new CaseDatabase(path.join(caseDir, "case.sqlite"), { readOnly: true });
+    const db = new CaseDatabase(path.join(caseDir, "case.pgstore"), { readOnly: true });
     try {
       for (const id of responseIds) {
         selected += 1;
@@ -163,7 +164,6 @@ function verifySelectedEvidence(caseDir, rows) {
 }
 
 function eventText(event) { return `${event.input_preview || ""}\n${event.output_preview || ""}`; }
-function directoryBytes(root) { return walkFiles(root).reduce((sum, file) => sum + fs.statSync(file).size, 0); }
 function percentile(values, p) {
   if (!values.length) return null;
   const sorted = [...values].sort((a, b) => a - b);

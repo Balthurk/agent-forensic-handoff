@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
+import fs from '../agent-forensic-handoff/src/common-files.js';import {commonFixture} from './common-test-scope.mjs';
 import os from 'node:os';
 import path from 'node:path';
 import {conversation,original,draft} from './reevaluation-fixture.mjs';
 import {unicodeText,lateText,lateQuote,codepointLastIndex,locatedDraft} from './quote-locators-fixture.mjs';
 
-const root=fs.mkdtempSync(path.join(process.env.AFH_TEST_ROOT||os.tmpdir(),'orbita-a10-'));
+const root=commonFixture('orbita-a10-');
 process.env.AFH_COSMOS_DATA=root;process.env.AFH_COSMOS_EMPTY_LIBRARY='1';
 const {addSource,library}=await import('./corpus.mjs');
 const {extractKnowledge,extractionSchema,verifiedSources,knowledgeOperation:op}=await import('./knowledge.mjs');

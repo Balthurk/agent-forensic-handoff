@@ -1,8 +1,9 @@
-import fs from "node:fs";
+import fs from './common-files.js';
 import path from "node:path";
 import { AFH_VERSION } from "./constants.js";
 import { loopGroups } from "./reducers.js";
-import { atomicWrite, ensureDir, preview, readJson, safeJson, shortHash, stableStringify, tokenEstimate } from "./util.js";
+import { preview, safeJson, shortHash, stableStringify, tokenEstimate } from "./util.js";
+import {atomicWrite as defaultAtomicWrite,ensureDir as defaultEnsureDir,readJson} from './common-util.js';
 import { CaseDatabase } from "./database.js";
 import { resolveEvidenceRange } from "./evidence.js";
 
@@ -23,6 +24,7 @@ function lineForEvent(db, event, text) {
 }
 
 export async function renderCase(db, caseDir, manifest, options = {}) {
+  const {atomicWrite,ensureDir}=options.output??{atomicWrite:defaultAtomicWrite,ensureDir:defaultEnsureDir};
   const views = ensureDir(path.join(caseDir, "views"));
   const tokenBudget = Number(options.tokenBudget || 6000);
   if (!Number.isFinite(tokenBudget) || tokenBudget <= 0 || tokenBudget > 1_000_000) throw new Error("tokenBudget must be between 1 and 1,000,000");
@@ -184,7 +186,7 @@ export async function renderCase(db, caseDir, manifest, options = {}) {
   writeWarmViews(db, views, {
     sessions, tools, artifacts, decisions, tasks, failures, loops, external, validations, warnings,
     entities, temporalFacts, continuationOptions,
-  });
+  },atomicWrite);
   const receipt = humanReceipt(manifest, { failures, loops, artifacts, tasks, validations, warnings });
   atomicWrite(path.join(caseDir, "human-receipt.md"), `${receipt}\n`);
   const pack = {
@@ -194,6 +196,7 @@ export async function renderCase(db, caseDir, manifest, options = {}) {
     version: AFH_VERSION, events: stableStringify([...included].sort()),
   };
   db.insertHydrationPack(pack);
+  manifest.hydrationPackId=pack.id;
   return { hotContextPath: path.join(caseDir, "hot-context.md"), tokenEstimate: pack.estimate };
 }
 
@@ -204,7 +207,7 @@ function prioritizeArtifacts(artifacts) {
 
 function escapeTicks(value) { return String(value || "").replaceAll("`", "ˋ").replace(/\s+/g, " "); }
 
-function writeWarmViews(db, views, data) {
+function writeWarmViews(db, views, data, atomicWrite) {
   const timeline = db.all(`SELECT e.*,a.kind actor_kind,a.role actor_role FROM event e LEFT JOIN actor a ON a.id=e.actor_id
     WHERE e.canonical=1 ORDER BY COALESCE(e.observed_at,''),e.source_id,e.record_ordinal,e.subordinal`);
   const refsByEvent = new Map();
@@ -339,7 +342,7 @@ export function readHotContext(caseDir) {
 
 export function searchCase(caseDir, terms, limit = 25, {scope="active"}={}) {
   if(!["active","all"].includes(scope))throw new Error("Unsupported scope");
-  const db = new CaseDatabase(path.join(caseDir, "case.sqlite"), { readOnly: true });
+  const db = new CaseDatabase(path.join(caseDir, "case.pgstore"), { readOnly: true });
   try {
     const tokens = String(terms).trim().split(/\s+/).filter(Boolean).map((token) => `"${token.replaceAll('"', '""')}"`).join(" AND ");
     if (!tokens) return [];
@@ -351,7 +354,7 @@ export function searchCase(caseDir, terms, limit = 25, {scope="active"}={}) {
 }
 
 export function showEvent(caseDir, eventId) {
-  const db = new CaseDatabase(path.join(caseDir, "case.sqlite"), { readOnly: true });
+  const db = new CaseDatabase(path.join(caseDir, "case.pgstore"), { readOnly: true });
   try {
     const event = db.get("SELECT e.*,a.kind actor_kind,a.role actor_role FROM event e LEFT JOIN actor a ON a.id=e.actor_id WHERE e.id=$id", { id: eventId });
     if (!event) throw new Error(`Event not found: ${eventId}`);
@@ -365,16 +368,16 @@ export function showEvent(caseDir, eventId) {
   } finally { db.close(); }
 }
 
-export function readEvidence(caseDir, uri) {
-  const db = new CaseDatabase(path.join(caseDir, "case.sqlite"), { readOnly: true });
+export function readEvidence(caseDir, uri, {database=null,readRange=null}={}) {
+  const db = database??new CaseDatabase(path.join(caseDir, "case.pgstore"), { readOnly: true });
   try {
     const ref = db.get("SELECT * FROM evidence_ref WHERE uri=$uri", { uri });
     if (!ref) throw new Error("Evidence URI is not registered in this case");
-    const result = resolveEvidenceRange(caseDir, uri);
+    const result = resolveEvidenceRange(caseDir, uri, {readRange});
     const actual = shortHash(result.text, 64);
     if (actual !== ref.record_sha256) throw new Error("Evidence record hash mismatch; case may have been tampered with");
     return { ...result, jsonPointer: ref.json_pointer, recordSha256: ref.record_sha256 };
-  } finally { db.close(); }
+  } finally { if(!database)db.close(); }
 }
 
 export function loadManifest(caseDir) {

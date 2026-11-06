@@ -1,0 +1,31 @@
+import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import net from 'node:net';
+const root=fs.mkdtempSync(path.join(os.tmpdir(),'orbita-intake-'));
+process.env.AFH_COSMOS_DATA=root;process.env.AFH_COSMOS_EMPTY_LIBRARY='1';
+const probe=net.createServer();await new Promise(resolve=>probe.listen(0,'127.0.0.1',resolve));const port=probe.address().port;await new Promise(resolve=>probe.close(resolve));process.env.AFH_COSMOS_PORT=String(port);
+const {server}=await import('./server.mjs');const corpus=await import('./corpus.mjs');
+await new Promise(resolve=>server.listen(port,'127.0.0.1',resolve));
+const url='http://127.0.0.1:'+port;
+const raw={id:'app-conversation',title:'Prueba',current_node:'a',mapping:{u:{id:'u',parent:null,children:['a','b'],message:{id:'u',author:{role:'user'},content:{content_type:'text',parts:['Qué base usamos']} }},a:{id:'a',parent:'u',children:[],message:{id:'a',author:{role:'assistant'},channel:'final',content:{content_type:'text',parts:['SQLite es la base elegida']} }},b:{id:'b',parent:'u',children:[],message:{id:'b',author:{role:'assistant'},content:{content_type:'text',parts:['PostgreSQL rama alternativa']} }}}};
+test('HTTP binary import, unified retrieval, duplicate support and original recheck',async t=>{
+ t.after(async()=>{await new Promise(resolve=>server.close(resolve));fs.rmSync(root,{recursive:true,force:true});});
+ const post=body=>fetch(url+'/api/import',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+ raw.mapping.a.message.content.parts[0]+=' '+ '😀'.repeat(5000)+' final evidencia';
+ const response=await post({filename:'conversation.json',contentBase64:Buffer.from(JSON.stringify(raw)).toString('base64')});assert.equal(response.status,200);const first=await response.json();
+ assert.equal(first.library[0].verified,true);assert.equal(first.library[0].messages,2);
+ const taxonomy=await (await fetch(url+'/api/taxonomy')).json();assert.equal(taxonomy.types.length,18);assert.equal(taxonomy.catalog.nodes.length,55);
+ const coverage=await (await fetch(url+'/api/coverage')).json();assert.equal(coverage[0].extracted.status,'not_performed');assert.equal(coverage[0].revision,first.library[0].hash);
+ const preview=await fetch(url+'/api/retrieve',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({question:'nonexistent_unique_002739',conversationIds:[first.result.id],retrieval:{mode:'lexical',profile:'exact'}})});assert.equal(preview.status,200);const pkg=await preview.json();assert.equal(pkg.state,'no_match');assert.equal(Buffer.byteLength(JSON.stringify(pkg)),pkg.bytes);
+ const {answerQuestion}=await import('./server.mjs');const abstain=await answerQuestion({question:'nonexistent_unique_002739',conversationIds:[first.result.id],retrieval:{mode:'lexical',profile:'exact'},persist:false});assert.equal(abstain.model,'deterministic-abstention');assert.equal(abstain.result.claims[0].kind,'gap');
+ const again=await post({filename:'copy.json',content:JSON.stringify(raw,null,2)});assert.equal(again.status,200);const second=await again.json();
+ const retrieved=await corpus.retrieve('base SQLite',[first.result.id,second.result.id]);
+ assert.ok(!retrieved.some(r=>r.text.includes('PostgreSQL')));assert.equal(retrieved.filter(r=>r.text.includes('SQLite')).length,1);
+ for(const r of retrieved){const full=raw.mapping[r.native_id]?.message?.content?.parts?.[0];if(full){assert.equal([...full].slice(r.start,r.end).join(''),r.text);assert.equal(r.rangeUnit,'unicode_codepoints');}}
+ const evidence=retrieved.find(r=>r.text.includes('SQLite'));
+ const opened=await fetch(url+'/api/evidence?conversation='+evidence.conversationId+'&event='+evidence.id);assert.equal(opened.status,200);const verified=await opened.json();assert.equal(verified.identity.verified,true);
+ assert.equal((await post({filename:'unsafe.exe',content:'x'})).status,400);
+ assert.equal((await post({filename:'bad.zip',contentBase64:'%%%'})).status,400);
+ const item=corpus.library.find(x=>x.id===evidence.conversationId);fs.appendFileSync(path.join(item.path,'acquisition/original.bin'),' ');
+ assert.equal((await fetch(url+'/api/evidence?conversation='+evidence.conversationId+'&event='+evidence.id)).status,400);
+ const foreign=await fetch(url+'/api/import',{method:'POST',headers:{origin:'https://example.invalid','content-type':'application/json'},body:'{}'});assert.equal(foreign.status,403);
+ const html=await (await fetch(url)).text();assert.ok(html.includes('.zip,.html'));assert.ok(html.includes('HTML estructurado'));
+});

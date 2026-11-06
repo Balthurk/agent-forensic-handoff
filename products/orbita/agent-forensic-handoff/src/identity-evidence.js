@@ -1,7 +1,8 @@
-import fs from 'node:fs';
+import native from 'node:fs';
+import fs from './common-files.js';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { DatabaseSync } from './sqlite-compat.js';
+import { DatabaseSync } from './common-store.js';
 import { sha256, stableStringify } from './util.js';
 import { decodedLines } from './evidence.js';
 import { normalizeRecord } from './adapters.js';
@@ -14,30 +15,28 @@ const jsonFile=(root,relative)=>readJson(safeCasePath(root,relative));
 
 export function safeCasePath(root,relative) {
   if(typeof relative!=='string'||path.isAbsolute(relative)||relative.includes('\\')||relative.split('/').some(s=>!s||s==='.'||s==='..')||relative.includes(':'))throw new Error('Unsafe evidence path');
-  const base=fs.realpathSync(root),target=path.resolve(base,relative);
-  if(!target.startsWith(base+path.sep))throw new Error('Evidence path escapes case');
-  let current=base;
-  for(const part of relative.split('/')) {current=path.join(current,part);if(fs.lstatSync(current).isSymbolicLink())throw new Error('Evidence symlink is not allowed');}
-  return target;
+  // The explicit common-store client checks native reparse/hardlink boundaries
+  // and every logical ancestor in one fresh query. No path result is cached.
+  return fs.containedPathSync(root,relative);
 }
 
-export function archiveNativeSources(root,sources) {
+export function archiveNativeSources(root,sources,sourceIO=native) {
   const dir=path.join(root,'acquisition','native');fs.mkdirSync(dir,{recursive:true});
   const entries=[];
   for(const source of sources) {
     const suffix=/\.jsonl\.(gz|zst|zstd)$/i.exec(source.path)?.[1];
     const relative=`acquisition/native/${source.rawSha256}.jsonl${suffix?'.'+suffix:''}`;
-    const input=fs.openSync(source.path,'r'),output=fs.openSync(path.join(root,relative),'w');
+    const input=sourceIO.openSync(source.path,'r'),output=fs.openSync(path.join(root,relative),'w');
     const hash=createHash('sha256');let offset=0;
     try {
       const buffer=Buffer.alloc(Math.min(1024*1024,Math.max(1,source.byteLength)));
       while(offset<source.byteLength) {
-        const n=fs.readSync(input,buffer,0,Math.min(buffer.length,source.byteLength-offset),offset);
+        const n=sourceIO.readSync(input,buffer,0,Math.min(buffer.length,source.byteLength-offset),offset);
         if(!n)throw new Error('Source shrank during raw acquisition');
         fs.writeSync(output,buffer,0,n);hash.update(buffer.subarray(0,n));offset+=n;
       }
-      fs.fsyncSync(output);
-    }finally{fs.closeSync(input);fs.closeSync(output);}
+      // The common-store close below durably publishes the completed copy.
+    }finally{sourceIO.closeSync(input);fs.closeSync(output);}
     if(hash.digest('hex')!==source.rawSha256)throw new Error('Original bytes changed during archival');
     entries.push({rawSha256:source.rawSha256,path:relative,byteLength:offset,coverage:'EXACT_CAPTURED_PREFIX'});
   }
@@ -55,7 +54,7 @@ export async function verifyNativeSources(root,manifest) {
     for await(const chunk of fs.createReadStream(file)){hash.update(chunk);bytes+=chunk.length;}
     if(bytes!==source.byteLength||bytes!==entry.byteLength||hash.digest('hex')!==source.rawSha256)throw new Error('Native original hash or length mismatch');
     const canonical=createHash('sha256');
-    for await(const row of decodedLines(file,entry.byteLength))canonical.update(row.line+'\n');
+    for await(const row of decodedLines(file,entry.byteLength,fs))canonical.update(row.line+'\n');
     if(canonical.digest('hex')!==source.canonicalSha256)throw new Error('Native original/canonical binding mismatch');
   }
   return {originals:acquisition.entries.length};
@@ -68,7 +67,7 @@ function dateValue(value) {
 }
 
 function buildIdentity(root) {
-  const manifest=jsonFile(root,'case.json'),db=new DatabaseSync(safeCasePath(root,'case.sqlite'),{readOnly:true});
+  const manifest=jsonFile(root,'case.json'),db=new DatabaseSync(safeCasePath(root,'case.pgstore'),{family:'case',readOnly:true});
   try {
     const sources=db.prepare('SELECT * FROM source ORDER BY id').all();
     const sessions=new Map(db.prepare('SELECT * FROM session').all().map(s=>[s.id,s]));

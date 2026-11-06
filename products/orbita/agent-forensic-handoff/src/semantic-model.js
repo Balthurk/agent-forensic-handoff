@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { ensureDir, sha256, stableStringify, walkFiles } from "./util.js";
@@ -39,7 +38,7 @@ export class SemanticUnavailableError extends Error {
 
 export async function createTransformersProvider(options = {}) {
   const model = resolveModelConfig(options);
-  const modelHome = path.resolve(options.modelHome || process.env.AFH_MODEL_HOME || path.join(os.homedir(), ".afh", "models"));
+  const modelHome = explicitModelHome(options);
   const snapshotPath = semanticModelSnapshotPath(modelHome, model.modelId, model.revision);
   const allowDownload = options.allowDownload === true;
   if (!allowDownload && !modelSnapshotLooksComplete(snapshotPath)) {
@@ -120,7 +119,7 @@ export async function fetchSemanticModel(options = {}) {
 
 export function semanticModelStatus(options = {}) {
   const model = resolveModelConfig(options);
-  const modelHome = path.resolve(options.modelHome || process.env.AFH_MODEL_HOME || path.join(os.homedir(), ".afh", "models"));
+  const modelHome = explicitModelHome(options);
   const snapshotPath = semanticModelSnapshotPath(modelHome, model.modelId, model.revision);
   const available = modelSnapshotLooksComplete(snapshotPath);
   return {
@@ -139,6 +138,14 @@ export function semanticModelSnapshotPath(modelHome, modelId, revision) {
   const parts = String(modelId).split("/").filter(Boolean);
   if (parts.length < 2) throw new Error("modelId must include a namespace and name");
   return path.join(path.resolve(modelHome), ...parts, revision);
+}
+
+function explicitModelHome(options) {
+  const value = options.modelHome ?? process.env.AFH_MODEL_HOME;
+  if (typeof value !== 'string' || !value.trim() || !path.isAbsolute(value)) {
+    throw new SemanticUnavailableError('An explicit absolute local model runtime is required (AFH_MODEL_HOME or modelHome).');
+  }
+  return path.resolve(value);
 }
 
 export function validateProviderIdentity(identity) {

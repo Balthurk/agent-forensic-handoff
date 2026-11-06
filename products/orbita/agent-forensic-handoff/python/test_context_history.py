@@ -1,3 +1,5 @@
+from common_test_fixture import WorkspaceFixture, connect_semantic, corrupt_path, temporary_corruption
+from psycopg import IntegrityError
 import unittest
 import test_context_retrieval as fixtures
 from afh_semantic.knowledge_records import RecordError

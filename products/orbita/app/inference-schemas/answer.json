@@ -1,0 +1,112 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "title",
+    "claims",
+    "followups"
+  ],
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "claims": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "anyOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "text",
+              "kind",
+              "evidence"
+            ],
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "fact",
+                  "inference"
+                ]
+              },
+              "evidence": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "id",
+                    "quote"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "quote": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "text",
+              "kind",
+              "evidence"
+            ],
+            "properties": {
+              "text": {
+                "type": "string",
+                "enum": [
+                  "Los fragmentos recuperados no aportan evidencia suficiente para resolver con certeza esta parte de la consulta."
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "gap"
+                ]
+              },
+              "evidence": {
+                "type": "array",
+                "maxItems": 0,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "id",
+                    "quote"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "quote": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "followups": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

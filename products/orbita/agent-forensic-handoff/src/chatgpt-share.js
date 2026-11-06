@@ -1,4 +1,6 @@
-import fs from 'node:fs';
+import {commonOutputBase} from './common-root.js';
+import native from 'node:fs';
+import fs from './common-files.js';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -120,14 +122,14 @@ export async function importChatGPTShare(identifier,options={}) {
   const {url,shareId}=validateShareUrl(identifier);
   const maxBytes=Number(options.maxBytes??MAX_BYTES);
   if(!Number.isFinite(maxBytes)||maxBytes<=0||maxBytes>128*1024*1024)throw new Error('Invalid shared capture byte limit');
-  const base=path.resolve(options.out||process.env.AFH_HOME||path.join(os.homedir(),'.afh'));
+  const base=commonOutputBase(options);
   const caseDir=path.resolve(options.caseDir||path.join(base,'cases',`chatgpt-${shareId}`,new Date().toISOString().replace(/[:.]/g,'-')));
   if(fs.existsSync(caseDir))throw new Error(`Case directory already exists: ${caseDir}`);
   let fetched;
   if(options.htmlPath) {
     const {assertSafeSourcePath}=await import('./discovery.js');assertSafeSourcePath(options.htmlPath,{allowSymlink:options.allowSymlink??false});
-    if(fs.statSync(options.htmlPath).size>maxBytes)throw new Error('Shared page exceeds byte limit');
-    fetched={bytes:fs.readFileSync(options.htmlPath),finalUrl:url,httpStatus:null};
+    if(native.statSync(options.htmlPath).size>maxBytes)throw new Error('Shared page exceeds byte limit');
+    fetched={bytes:native.readFileSync(options.htmlPath),finalUrl:url,httpStatus:null};
   }else fetched=await fetchPage(url,{...options,maxBytes});
   const parsed=parseSharePage(fetched.bytes);
   if(parsed.conversation.conversation_id?.toLowerCase()!==shareId.toLowerCase())throw new Error('Shared page identity differs from requested URL');
@@ -139,7 +141,7 @@ export async function importChatGPTShare(identifier,options={}) {
     const input=path.join(work,shareId+'.jsonl');
     fs.writeFileSync(input,sharedRecords(parsed,capture).map(x=>JSON.stringify(x)).join('\n')+'\n');
     const {auditSession}=await import('./audit.js');
-    const result=await auditSession(input,{...options,caseDir:path.join(work,'case'),harness:'chatgpt-share',includeChildren:false,workspace:null,verificationLevel:'V0',_deferIdentity:true});
+    const result=await auditSession(input,{...options,inputStorage:'postgresql-common',caseDir:path.join(work,'case'),harness:'chatgpt-share',includeChildren:false,workspace:null,verificationLevel:'V0',_deferIdentity:true});
     const acquisition=path.join(result.caseDir,'acquisition');fs.mkdirSync(acquisition);
     fs.writeFileSync(path.join(acquisition,'chatgpt-share.html'),fetched.bytes);
     fs.writeFileSync(path.join(acquisition,'capture.json'),JSON.stringify(capture,null,2)+'\n');

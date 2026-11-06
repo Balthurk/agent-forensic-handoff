@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
+import native from 'node:fs';
+import fs from '../src/common-files.js';
+import {closeCommonStore} from '../src/common-store.js';
 import os from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
@@ -8,11 +10,11 @@ import {createRequire} from 'node:module';
 import {webcrypto} from 'node:crypto';
 import {auditSession,verifyCaseIntegrity,exportN01Packet,readUnifiedEvidence,searchCase,queryCase} from '../src/index.js';
 import {normalizeContainer,readZip,intakeLimits} from '../src/conversation-intake.js';
-import {DatabaseSync} from '../src/sqlite-compat.js';
+import {DatabaseSync} from '../src/common-store.js';
 import {decodedLines} from '../src/evidence.js';
 const require=createRequire(import.meta.url),AdmZip=require('../src/vendor/adm-zip/adm-zip.js');
 const context=vm.createContext({TextEncoder,TextDecoder,Uint8Array,DataView,Set,Map,URL,JSON,AbortSignal,crypto:webcrypto,btoa:s=>Buffer.from(s,'binary').toString('base64')});
-vm.runInContext(fs.readFileSync(new URL('../scripts/chatgpt-forensic-exporter.js',import.meta.url),'utf8'),context);
+vm.runInContext(native.readFileSync(new URL('../scripts/chatgpt-forensic-exporter.js',import.meta.url),'utf8'),context);
 const exporter=context.AFHExporter;
 function conversation(id='conv-1') {
   const message=(id,role,text)=>({id,author:{role},create_time:1700000000,content:{content_type:'text',parts:[text]},metadata:{custom:'preserved'},status:'in_progress'});
@@ -23,8 +25,14 @@ function conversation(id='conv-1') {
     b:{id:'b',parent:'u',children:[],message:message('m-b','assistant','Elijo PostgreSQL en Beta')},
   }};
 }
-function lab(t){const root=fs.mkdtempSync(path.join(os.tmpdir(),'afh-intake-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));return root;}
-async function acquire(root,name,value){const source=path.join(root,name);fs.writeFileSync(source,typeof value==='string'||Buffer.isBuffer(value)?value:JSON.stringify(value));return (await auditSession(source,{caseDir:path.join(root,name+'-case')})).caseDir;}
+
+const commonRoot=process.env.ORBITA_POSTGRES_TEST_ROOT;
+if(!commonRoot)throw new Error('PG_TEST_ROOT_REQUIRED');
+const inputRoot=path.join(path.dirname(commonRoot),'inputs');native.mkdirSync(inputRoot,{recursive:true});
+const caseOutput=(root,name='case')=>path.join(commonRoot,path.basename(root),name);
+test.after(()=>{assert.equal(native.existsSync(commonRoot),false);closeCommonStore();});
+function lab(t){return native.mkdtempSync(path.join(inputRoot,'afh-intake-'));}
+async function acquire(root,name,value){const source=path.join(root,name);native.writeFileSync(source,typeof value==='string'||Buffer.isBuffer(value)?value:JSON.stringify(value));return (await auditSession(source,{caseDir:caseOutput(root,name+'-case')})).caseDir;}
 const identity=root=>JSON.parse(fs.readFileSync(path.join(root,'identity.json'),'utf8'));
 
 test('mapping preserves header, null nodes, unknown fields and exact original bytes',async t=>{
@@ -38,7 +46,7 @@ test('mapping preserves header, null nodes, unknown fields and exact original by
 test('alternative branches stay visible but cannot create current operational facts',async t=>{
   const dest=await acquire(lab(t),'branches.json',conversation());
   const row=identity(dest).representations.find(r=>r.message_id==='m-b');assert.equal(row.scope,'alternative');
-  const db=new DatabaseSync(path.join(dest,'case.sqlite'),{readOnly:true});
+  const db=new DatabaseSync(path.join(dest,'case.pgstore'),{family:'case',readOnly:true});
   try{assert.equal(db.prepare('SELECT COUNT(*) n FROM temporal_fact WHERE source_event_id=?').get(row.legacy_event_id).n,0);}finally{db.close();}
   const packet=await exportN01Packet([dest]);assert.ok(!packet.records.some(r=>r.representations.some(x=>x.message_id==='m-b')));
   assert.ok((await exportN01Packet([dest],{scope:'all'})).records.some(r=>r.representations.some(x=>x.message_id==='m-b')));
@@ -78,7 +86,7 @@ test('opening evidence verifies original again, detects tampering and missing id
 });
 test('tool messages with in_progress remain observations, never completed executions',async t=>{
   const c=conversation();c.mapping.a.message.author={role:'tool',name:'web.run'};
-  const dest=await acquire(lab(t),'tool.json',c),db=new DatabaseSync(path.join(dest,'case.sqlite'),{readOnly:true});
+  const dest=await acquire(lab(t),'tool.json',c),db=new DatabaseSync(path.join(dest,'case.pgstore'),{family:'case',readOnly:true});
   try{assert.equal(db.prepare("SELECT COUNT(*) n FROM tool_execution WHERE status='COMPLETED'").get().n,0);assert.equal(db.prepare('SELECT status FROM tool_execution').get().status,'OBSERVED');}finally{db.close();}
 });
 test('safe exporter JSONL and HTML roundtrip full nodes and headers; malicious HTML is inert',async t=>{
@@ -129,8 +137,8 @@ test('legacy v7 JSONL stays explicitly lossy; visible-only HTML cannot masquerad
 });
 test('native JSONL keeps original CRLF and invalid records; byteLimit=0 yields nothing',async t=>{
   const root=lab(t),raw=JSON.stringify({type:'session_meta',payload:{id:'test-native',timestamp:'2020-01-01T00:00:00Z'}})+'\r\n'+JSON.stringify({type:'event_msg',payload:{type:'user_message',message:'native😀'}})+'\r\nnot json\r\n';
-  const file=path.join(root,'native.jsonl');fs.writeFileSync(file,raw);let count=0;for await(const line of decodedLines(file,0))count++;assert.equal(count,0);
-  const dest=(await auditSession(file,{harness:'codex',caseDir:path.join(root,'case')})).caseDir;
+  const file=path.join(root,'native.jsonl');native.writeFileSync(file,raw);let count=0;for await(const line of decodedLines(file,0))count++;assert.equal(count,0);
+  const dest=(await auditSession(file,{harness:'codex',caseDir:caseOutput(root)})).caseDir;
   const manifest=JSON.parse(fs.readFileSync(path.join(dest,'acquisition/native.json')));
   assert.equal(fs.readFileSync(path.join(dest,manifest.entries[0].path),'utf8'),raw);assert.equal((await verifyCaseIntegrity(dest)).passed,true);
 });
@@ -138,7 +146,7 @@ test('native JSONL keeps original CRLF and invalid records; byteLimit=0 yields n
 test('independent Python ZIPs with signed descriptors and ZIP64 local fields import',async t=>{
   const root=lab(t);
   for(const name of ['descriptor.zip','zip64.zip']) {
-    const data=fs.readFileSync(new URL('./fixtures/intake/'+name,import.meta.url));
+    const data=native.readFileSync(new URL('./fixtures/intake/'+name,import.meta.url));
     assert.equal(readZip(data).length,1);
     assert.equal((await verifyCaseIntegrity(await acquire(root,name,data))).passed,true);
   }

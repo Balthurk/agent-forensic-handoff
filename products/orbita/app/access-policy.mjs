@@ -21,7 +21,7 @@ const operations={
  '/api/routing':{read:['status','get'],write:['classify','correct']}
 };
 export function requestRole(method,pathname,body={}){
- if(pathname==='/api/volume')demand(body.backend!=='postgres'&&body.op!=='postgres','ACCESS_MANAGED_POSTGRES_NOT_ADMITTED',403);
+ if(pathname==='/api/volume')demand(body.op!=='postgres'&&(body.backend===undefined||['postgresql-common','postgresql-analytics'].includes(body.backend)),'ACCESS_VOLUME_BACKEND_NOT_ADMITTED',403);
  if(method==='GET'&&(reads.has(pathname)||/^\/api\/(answers|jobs)\/[a-f0-9-]{36}$/.test(pathname)))return 'reader';
  if(method==='POST'&&readerPosts.has(pathname))return 'reader';
  if(method==='POST'&&pathname==='/api/ask')return 'editor';

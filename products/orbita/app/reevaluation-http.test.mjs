@@ -1,6 +1,6 @@
-import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import path from 'node:path';import net from 'node:net';
+import test from 'node:test';import assert from 'node:assert/strict';import fs from '../agent-forensic-handoff/src/common-files.js';import {commonFixture} from './common-test-scope.mjs';import path from 'node:path';import net from 'node:net';
 import {conversation,original,late,draft} from './reevaluation-fixture.mjs';
-process.env.AFH_COSMOS_DATA=fs.mkdtempSync(path.join(process.env.AFH_TEST_ROOT||'C:/T','afh-reeval-http-'));process.env.AFH_COSMOS_EMPTY_LIBRARY='1';
+process.env.AFH_COSMOS_DATA=commonFixture('afh-reeval-http-');process.env.AFH_COSMOS_EMPTY_LIBRARY='1';
 const probe=net.createServer();await new Promise(r=>probe.listen(0,'127.0.0.1',r));const port=probe.address().port;await new Promise(r=>probe.close(r));process.env.AFH_COSMOS_PORT=String(port);
 const {server}=await import('./server.mjs');const {addSource}=await import('./corpus.mjs');const {knowledgeOperation,verifiedSources}=await import('./knowledge.mjs');
 test('F29 HTTP watch, automatic source discovery, bounds, origin rejection, UI and prior panels',async t=>{

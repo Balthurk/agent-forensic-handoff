@@ -1,4 +1,4 @@
-import fs from 'node:fs';
+import fs from './common-files.js';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {safeCasePath} from './identity-evidence.js';
@@ -7,7 +7,8 @@ export const DOCUMENT_VERSION='orbita-text-document-1';
 export const DOCUMENT_BLOCK_BYTES=24576;
 export const documentHash=b=>createHash('sha256').update(b).digest('hex');
 const demand=(ok,why)=>{if(!ok)throw new Error(why);};
-function persist(file,bytes,flag='wx'){const fd=fs.openSync(file,flag);try{fs.writeFileSync(fd,bytes);fs.fsyncSync(fd);}finally{fs.closeSync(fd);}}
+// A complete common-store write returns after atomic, synchronous publication.
+function persist(file,bytes,flag='wx'){fs.writeFileSync(file,bytes,{flag});}
 export function decodeDocument(bytes){
  demand(bytes.length<=40*1024*1024,'DOCUMENT_LIMIT_40_MIB');
  let text;try{text=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes);}catch{throw new Error('DOCUMENT_INVALID_UTF8: original must be decoded explicitly; no replacement characters inserted');}

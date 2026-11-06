@@ -1,5 +1,6 @@
-import fs from 'node:fs';import path from 'node:path';
-import {createHash,createHmac,randomBytes,timingSafeEqual} from 'node:crypto';
+import fs from '../agent-forensic-handoff/src/common-files.js';import path from 'node:path';
+import {createHash,createHmac,timingSafeEqual} from 'node:crypto';
+import {publishSnapshot} from './common-snapshots.mjs';
 import {DATA,refreshLibrary} from './corpus.mjs';
 import {knowledgeOperation,verifiedSources} from './knowledge.mjs';
 import {contextState} from './context.mjs';
@@ -33,8 +34,7 @@ export async function identityOperation(op,input={},options={}){
   let items=view==='mentions'?board.items:board[view];const term=normalize(question.trim());
   if(term)items=items.filter(x=>normalize([x.label,...(x.aliases??[]),x.namespace,x.judgment,names.get(x.left?.id),names.get(x.right?.id),...(x.members??[]).map(m=>names.get(m.id))].filter(Boolean).join(' ')).includes(term));
   const snapshot={schema:'afh.identity-snapshot.v1',state,conversationIds:[...new Set(conversationIds)].sort(),question,view,knownAt:board.knownAt,validAt:board.validAt??null,mode:board.mode??'historical',items,counts:view==='mentions'?{mentions:board.items.length}:Object.fromEntries(['entities','links','groups','candidates'].map(k=>[k,board[k].length])),outsideSelection:board.outsideSelection,entities:(board.entities??[]).map(e=>({reference:e.reference,label:e.label,namespace:e.namespace,entityType:e.entityType})),policy:{executionAuthority:false,humanAcceptance:false,truth:'not_established',independentCorroboration:'not_established'}};
-  const raw=JSON.stringify(snapshot);need(Buffer.byteLength(raw)<=32000000,'IDENTITY_SNAPSHOT_BUDGET');id=sha(raw);const dir=path.join(ROOT,id);fs.mkdirSync(ROOT,{recursive:true});
-  try{fs.mkdirSync(dir);fs.writeFileSync(path.join(dir,'snapshot.json'),raw,{flag:'wx'});fs.writeFileSync(path.join(dir,'cursor.key'),randomBytes(32),{flag:'wx'});}catch(e){if(e.code!=='EEXIST')throw e;read(id);}
+  const raw=JSON.stringify(snapshot);need(Buffer.byteLength(raw)<=32000000,'IDENTITY_SNAPSHOT_BUDGET');id=sha(raw);publishSnapshot(ROOT,id,raw);
   need((await contextState(conversationIds,options)).fingerprint===state.fingerprint,'IDENTITY_CHANGED_BEFORE_ADMISSION');
  }
  loaded=read(id);const {snapshot,key}=loaded;need(JSON.stringify([...new Set(conversationIds)].sort())===JSON.stringify(snapshot.conversationIds),'IDENTITY_SELECTION_MISMATCH');

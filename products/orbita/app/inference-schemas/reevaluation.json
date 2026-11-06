@@ -1,0 +1,135 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "disposition",
+    "reason",
+    "summary",
+    "clauses"
+  ],
+  "properties": {
+    "disposition": {
+      "type": "string",
+      "enum": [
+        "changed",
+        "no_change",
+        "insufficient_context"
+      ]
+    },
+    "reason": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "clauses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "clauseId",
+          "predicate",
+          "resolution",
+          "arguments",
+          "evidence"
+        ],
+        "properties": {
+          "clauseId": {
+            "type": "string"
+          },
+          "predicate": {
+            "type": "string"
+          },
+          "resolution": {
+            "type": "string",
+            "enum": [
+              "resolved",
+              "insufficient_context",
+              "ambiguous",
+              "conflicting_evidence",
+              "new_concept_candidate",
+              "not_applicable",
+              "not_stated",
+              "unrepresented"
+            ]
+          },
+          "arguments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "index",
+                "interpreted",
+                "evidence"
+              ],
+              "properties": {
+                "index": {
+                  "type": "integer"
+                },
+                "interpreted": {
+                  "type": "string"
+                },
+                "evidence": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "sourceId",
+                      "quote",
+                      "start"
+                    ],
+                    "properties": {
+                      "sourceId": {
+                        "type": "string"
+                      },
+                      "quote": {
+                        "type": "string"
+                      },
+                      "start": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "minimum": 0
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "sourceId",
+                "quote",
+                "start"
+              ],
+              "properties": {
+                "sourceId": {
+                  "type": "string"
+                },
+                "quote": {
+                  "type": "string"
+                },
+                "start": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

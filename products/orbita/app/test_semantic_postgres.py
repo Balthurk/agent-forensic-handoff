@@ -1,25 +1,54 @@
-"""Real PostgreSQL contract tests. A missing service/config is a failure, never SKIP."""
-import copy, hashlib, json, os, pathlib, shutil, sqlite3, subprocess, sys, tempfile, unittest, uuid
+"""Original 21 guarantees, independent I05 SQLite oracle -> common PG.
+
+Historical test names are retained for traceability. Portable restore now uses
+common content snapshots and explicit binding, never a live SQLite fallback.
+"""
+import copy,hashlib,json,os,pathlib,shutil,sqlite3,subprocess,sys,time,unittest,uuid
+from contextlib import closing
+from datetime import datetime,timedelta,timezone
+from unittest.mock import patch
 PYROOT=pathlib.Path(__file__).resolve().parent.parent/'agent-forensic-handoff/python';sys.path.insert(0,str(PYROOT))
-from afh_semantic.host import dispatch, digest
-from afh_semantic.postgres_backend import binding, Connection, atomic_json, read_config, state
-from afh_semantic.postgres_migration import migrate,export_held
+from afh_semantic.host import dispatch,digest
+from afh_semantic.common_backend import Connection
+from orbita_store.config import read_config,binding_for
+from orbita_store.legacy_import import import_bundle
+from orbita_store.objects import ObjectStore
+from orbita_store.session import Session
+from orbita_store.pool import close_idle
+from orbita_store import StoreError
+from common_test_fixture import WorkspaceFixture
+from test_legacy_import import oracle
 from test_semantic import source
 
+def state(root):
+    result=[]
+    for family,name in [('corpus','corpus.pgstore'),('semantic','records.pgstore')]:
+        with closing(Connection(root/'semantic'/name,family=family,read_only=True)) as db:result.append(db.logical_manifest())
+    return result
+
 class SemanticPostgresTest(unittest.TestCase):
+
     def setUp(self):
-        self.old=os.environ.pop('AFH_SEMANTIC_PG_CONFIG',None)
-        cfg=json.loads(pathlib.Path(os.environ['AFH_SEMANTIC_PG_TEST_CONFIG']).read_text(encoding='utf8'))
-        self.lab=pathlib.Path(tempfile.mkdtemp(prefix='semantic-',dir=cfg['testRoot']));self.root=self.lab/'data';self.sem=self.root/'semantic';self.sem.mkdir(parents=True)
-        self.config=self.lab/'connection.json';cfg['roots']={str(self.root):dict(namespace=uuid.uuid4().hex,active=False)};atomic_json(self.config,cfg)
-        self.sources=[source('rep-rule','Alfa permite staging sólo si pasa QA.'),source('rep-revoke','Alfa revoca staging hasta nueva revisión.','B')]
-        self.first=self.extract(0,'rule');self.cut=self.first['recorded_at'];self.second=self.extract(1,'revocation',self.first['payload']['semantic_unit']['clauses'][0]['clause_version_id'])
-        self.before=self.call('context_query',question='staging',knownAt='2099-01-01T00:00:00Z',validAt='2026-10-25T00:00:00Z')
-        self.beforeRestricted=dispatch(dict(root=str(self.sem),scope='scope',sources=self.sources[:1],op='context_query',question='staging',knownAt='2099-01-01T00:00:00Z',validAt='2026-10-25T00:00:00Z'))
-        os.environ['AFH_SEMANTIC_PG_CONFIG']=str(self.config);self.migration=migrate(self.root)
+        self.tmp=WorkspaceFixture(self._testMethodName);self.addCleanup(self.tmp.cleanup)
+        self.config=read_config();self.rawconfig=json.loads(os.environ['ORBITA_POSTGRES_BINDING'])
+        self.lab=pathlib.Path(self.tmp.name);self.root=self.lab/'data';self.sem=self.root/'semantic'
+        self.native=pathlib.Path(os.environ['ORBITA_POSTGRES_TEST_RECEIPTS'])/'native-semantic21'/self.tmp.id
+        original=oracle(self.native);self.plan=original['plan']
+        self.sources=original['sources'];self.first=original['first'];self.second=original['second'];self.cut=original['cut']
+        self.before=original['before'];self.beforeRestricted=original['beforeRestricted']
+        self.migration=self.import_to(self.root)
+    def import_to(self,destination,**options):
+        return import_bundle(self.plan,destination,destination.with_name(destination.name+'-staging'),config=self.config,**options)
+    def restore_to(self,destination):
+        binding,key=binding_for(self.root,self.config);other,newkey=binding_for(destination,self.config);self.assertEqual(other,binding)
+        from psycopg.types.json import Jsonb
+        with ObjectStore(self.config,binding) as files:
+            # A fresh explicit destination stays disabled; copied historical
+            # settings cannot activate work or external access.
+            files.raw.execute('SELECT orbita_common.prepare_restore(%s,%s)',(newkey,Jsonb(dict(schema='orbita-restore-2',id=str(uuid.uuid4())))))
+            return files.clone_tree(key,newkey)
     def tearDown(self):
-        if self.old is None:os.environ.pop('AFH_SEMANTIC_PG_CONFIG',None)
-        else:os.environ['AFH_SEMANTIC_PG_CONFIG']=self.old
+        close_idle()
     def call(self,op,**args):return dispatch(dict(root=str(self.sem),scope='scope',sources=self.sources,op=op,**args))
     def extract(self,index,name,relation=None):
         s=self.sources[index];e=[dict(sourceId=s['id'],quote=s['text'])]
@@ -29,7 +58,7 @@ class SemanticPostgresTest(unittest.TestCase):
         value=self.call('extract',draft=dict(acts=[act]),producer='synthetic-fixture',sourceCut='cut',requestId='request-'+name)
         self.assertEqual(value['errors'],[]);return value['records'][0]
     def test_full_migration_and_f22_identical_evidence(self):
-        self.assertEqual(self.migration['status'],'PASS');self.assertGreater(self.migration['tables'],5)
+        self.assertEqual(self.migration['status'],'PASS_EXPLICIT_IMPORT');self.assertGreater(sum(len(x['result']['manifest']['tables']) for x in self.migration['entries']),5)
         after=self.call('context_query',question='staging',knownAt='2099-01-01T00:00:00Z',validAt='2026-10-25T00:00:00Z');self.assertEqual(after,self.before)
         self.assertTrue(after['requiresAbstention']);self.assertEqual(len(after['items']),2)
     def test_bounded_store_keeps_pre_migration_outside_selection_diagnostics(self):
@@ -46,19 +75,20 @@ class SemanticPostgresTest(unittest.TestCase):
         a=self.call('put',payload=p,expectedVersion=1,requestId='retry');self.assertEqual(a,self.call('put',payload=p,expectedVersion=1,requestId='retry'))
         with self.assertRaisesRegex(Exception,'VERSION_CONFLICT'):self.call('put',payload=p,expectedVersion=1,requestId='stale')
     def test_json_support_index_and_fts_preserve_sqlite_tokenization(self):
-        conn=Connection(self.sem/'records.sqlite3',binding(self.sem/'records.sqlite3'))
+        conn=Connection(self.sem/'records.pgstore',family='semantic')
         try:
-            conn.execute("CREATE INDEX IF NOT EXISTS support_lookup_test ON record_versions(scope,json_extract(payload,'$.support.kind'))")
+            conn.execute("CREATE INDEX IF NOT EXISTS support_decision_lookup ON record_versions(scope,json_extract(payload,'$.support.kind'),json_extract(payload,'$.support.detail.decision.caseId'),json_extract(payload,'$.support.detail.alternativeId'),record_id,recorded_at)")
             self.assertEqual(conn.execute("SELECT json_extract(payload,'$.support.kind') AS kind FROM record_versions LIMIT 1").fetchone()['kind'],None)
             conn.execute('CREATE VIRTUAL TABLE IF NOT EXISTS afh_publication_fts USING fts5(outbox_id UNINDEXED,text)')
             conn.execute('INSERT INTO afh_publication_fts VALUES(?,?)',('accent','Éxito alfa_beta revisión'))
             conn.execute('INSERT INTO afh_publication_fts VALUES(?,?)',('other','different'))
+            conn.commit()
             for query in ('"exito"','"beta"','"revisión"','"missing" OR "éxito"'):
                 rows=conn.execute('SELECT f.outbox_id FROM afh_publication_fts f WHERE afh_publication_fts MATCH ?',(query,)).fetchall()
                 self.assertEqual([r['outbox_id'] for r in rows],['accent'])
         finally:conn.close()
     def test_append_only_and_failed_transaction_roll_back(self):
-        conn=Connection(self.sem/'records.sqlite3',binding(self.sem/'records.sqlite3'))
+        conn=Connection(self.sem/'records.pgstore',family='semantic')
         try:
             with self.assertRaisesRegex(Exception,'append only'):conn.execute("UPDATE record_versions SET version=99")
             conn.rollback();self.assertEqual(conn.execute('SELECT COUNT(*) FROM record_versions').fetchone()[0],2)
@@ -84,10 +114,7 @@ class SemanticPostgresTest(unittest.TestCase):
         clause=dict(key='context',quote=a['text'],predicate='staging',polarity='positive',resolution='resolved',arguments=[dict(role='context',literal=b['text'],interpreted='',evidence=e)],conditions=[],temporal=[],relations=[])
         act=dict(key='multi-source',targetSourceId=a['id'],type='policy',summary=a['text'],modality='directive',clauses=[clause])
         result=self.call('extract',draft=dict(acts=[act]),producer='synthetic-fixture',sourceCut='cut',requestId='multi-source');self.assertEqual(result['errors'],[]);record=result['records'][0]
-        guard,_=export_held(self.root)
-        try:dest=self.lab/'indexed-restored';shutil.copytree(self.root,dest)
-        finally:guard.close()
-        atomic_json(dest.parent/('.'+dest.name+'.orbita-restore.json'),dict(externalAccess=False,automaticWork=False))
+        dest=self.lab/'indexed-restored';self.restore_to(dest)
         for selected in ([a],[b]):
             output=dispatch(dict(root=str(dest/'semantic'),scope='scope',sources=selected,op='context_query',question='staging'))
             self.assertTrue(any(x.get('record')==record['id'] and x.get('reason')=='source_outside_selection' for x in output['limitations']),output['limitations'])
@@ -95,58 +122,82 @@ class SemanticPostgresTest(unittest.TestCase):
     def test_restore_exports_remote_correction_to_sqlite_in_fresh_process(self):
         p=copy.deepcopy(self.first['payload']);p['text']='Preservar la corrección remota'
         changed=self.call('put',payload=p,expectedVersion=1,requestId='before-backup')
-        guard,receipt=export_held(self.root)
-        try:
-            self.assertEqual(receipt['backend'],'postgres');dest=self.lab/'restored';shutil.copytree(self.root,dest)
-        finally:guard.close()
-        atomic_json(dest.parent/('.'+dest.name+'.orbita-restore.json'),dict(externalAccess=False,automaticWork=False))
+        dest=self.lab/'restored';self.restore_to(dest)
         request=dict(root=str(dest/'semantic'),scope='scope',sources=self.sources,op='get',id=self.first['id'])
-        env=dict(os.environ);env['AFH_SEMANTIC_PG_CONFIG']=str(self.lab/'connection-no-longer-exists.json')
-        output=subprocess.check_output([sys.executable,'-I','-B',str(PYROOT/'bridge.py')],input=json.dumps(request).encode(),env=env)
+        env=dict(os.environ,AFH_SEMANTIC_PG_CONFIG=str(self.native/'connection-no-longer-exists.json'))
+        output=subprocess.check_output([sys.executable,'-I','-X','utf8','-B',str(PYROOT/'bridge.py')],input=json.dumps(request).encode(),env=env,timeout=30,creationflags=subprocess.CREATE_NO_WINDOW)
         result=json.loads(output);self.assertTrue(result['ok'],result);self.assertEqual(result['result'],changed)
+        self.assertFalse(self.lab.exists())
     def test_copied_config_does_not_authorize_a_different_root(self):
-        dest=self.lab/'unauthorized-copy';shutil.copytree(self.root,dest)
-        with self.assertRaisesRegex(Exception,'CONNECTION_NOT_ADMITTED'):binding(dest/'semantic/records.sqlite3')
+        dest=self.native.parent/(self.native.name+'-unauthorized-copy');shutil.copytree(self.native,dest)
+        with self.assertRaisesRegex(StoreError,'PATH_NOT_BOUND'):binding_for(dest/'semantic/records.pgstore',self.config)
+        with self.assertRaisesRegex(StoreError,'PATH_NOT_BOUND'):dispatch(dict(root=str(dest/'semantic'),scope='scope',sources=self.sources,op='get',id=self.first['id']))
     def test_managed_worker_cannot_inherit_personal_connection(self):
-        os.environ['AFH_MANAGED']='1'
+        from orbita_store.connection import Connection as CommonConnection
+        from orbita_store.config import parse_config
+        control=CommonConnection(self.lab/'control/access.pgstore',family='access',config=self.config,create=True)
         try:
-            with self.assertRaisesRegex(Exception,'MANAGED_NOT_ADMITTED'):self.call('get',id=self.first['id'])
-        finally:os.environ.pop('AFH_MANAGED',None)
+            control.executescript((PYROOT/'orbita_store/schemas/access.sql').read_text())
+            control.execute("INSERT INTO users VALUES('owner','owner','salt','derived-only',1,1,1)")
+            now=datetime.now(timezone.utc);local='ws-'+str(uuid.uuid4())
+            date=lambda days:(now+timedelta(days=days)).isoformat(timespec='milliseconds').replace('+00:00','Z')
+            body=dict(id=local,owner='owner',revision=1,status='active',policy=dict(rightsUntil=date(1),retainUntil=date(2)),legalHold=False,externalCopies=[])
+            with control.raw.transaction():
+                control.execute('INSERT INTO workspaces VALUES(?,?,?)',(local,1,json.dumps(body)))
+                control.execute("INSERT INTO members VALUES(?,'owner','owner',1)",(local,))
+                control.execute("INSERT INTO audit(at,actor,action,workspace,detail) VALUES('now','owner','workspace_created',?,'{}')",(local,))
+                created=control.raw.execute("SELECT orbita_common.provision_managed(%s)",(local,)).fetchone()[0]
+            details=control.raw.execute("SELECT orbita_common.managed_binding(%s,'worker')",(local,)).fetchone()[0]
+            child=dict(self.rawconfig,bindings=[dict(root=str(self.lab/'control/spaces'/local),workspaceId=details['workspaceId'],capability=details['capability'])])
+            receipt=pathlib.Path(os.environ['ORBITA_POSTGRES_TEST_RECEIPTS'])/('fixtures-semantic21-managed-'+self.tmp.id+'.json')
+            receipt.write_text(json.dumps(dict(instanceId=self.config.instance_id,workspaceIds=[self.tmp.workspace_id,created['workspaceId']]),indent=2))
+            with patch.dict(os.environ,{'ORBITA_POSTGRES_BINDING':json.dumps(child),'AFH_MANAGED':'1','AFH_SEMANTIC_PG_CONFIG':str(self.native/'personal.json')}):
+                with self.assertRaisesRegex(StoreError,'PATH_NOT_BOUND'):self.call('get',id=self.first['id'])
+                parsed=parse_config(child)
+                with Session(parsed,parsed.bindings[0],read_only=True) as admitted:
+                    self.assertEqual(str(admitted.raw.execute('SELECT orbita_common.workspace_id()').fetchone()[0]),created['workspaceId'])
+        finally:control.close()
     def test_connection_failure_cannot_fall_back_to_stale_shadow(self):
-        cfg=read_config();cfg['port']=1;atomic_json(self.config,cfg)
-        with self.assertRaisesRegex(Exception,'SEMANTIC_PG_UNAVAILABLE'):self.call('get',id=self.first['id'])
-    def new_destination(self,name):
-        dest=self.lab/name;shutil.copytree(self.root,dest,ignore=shutil.ignore_patterns('postgres-storage.json'))
-        cfg=read_config();cfg['roots'][str(dest)]=dict(namespace=uuid.uuid4().hex,active=False);atomic_json(self.config,cfg);return dest
+        broken=dict(self.rawconfig,port=1)
+        with patch.dict(os.environ,{'ORBITA_POSTGRES_BINDING':json.dumps(broken)}):
+            with self.assertRaisesRegex(StoreError,'CONNECT_OR_AUTHORIZE_FAILED'):self.call('get',id=self.first['id'])
+        self.assertTrue((self.native/'semantic/records.sqlite3').is_file());self.assertFalse(self.lab.exists())
+    def new_destination(self,name):return self.lab/name
     def test_migration_rejects_a_live_local_owner(self):
-        from afh_semantic.postgres_migration import exclusive
-        dest=self.new_destination('busy');release=exclusive(dest)
-        try:
-            with self.assertRaisesRegex(Exception,'MIGRATION_STORE_BUSY'):migrate(dest)
-        finally:release()
+        guard=self.native.parent/('.'+self.native.name+'.orbita-access.sqlite')
+        with closing(sqlite3.connect(guard)) as db:
+            db.execute('CREATE TABLE owners(token TEXT PRIMARY KEY,pid INTEGER NOT NULL,mode TEXT NOT NULL)');db.execute('INSERT INTO owners VALUES(?,?,?)',('live',os.getpid(),'shared'));db.commit()
+        before=guard.read_bytes()
+        with self.assertRaisesRegex(StoreError,'LEGACY_STORE_BUSY'):self.import_to(self.new_destination('busy'))
+        self.assertEqual(guard.read_bytes(),before)
     def test_real_process_crash_resumes_verified_prefix_without_early_promotion(self):
-        dest=self.new_destination('crash');env=dict(os.environ,AFH_SEMANTIC_CRASH_AT='after-copy-batch')
-        result=subprocess.run([sys.executable,'-I','-B',str(PYROOT/'semantic-storage-cli.py')],input=(json.dumps(dict(op='migrate',root=str(dest)))+'\n').encode(),env=env,stdout=subprocess.PIPE)
-        self.assertEqual(result.returncode,86);self.assertFalse(read_config()['roots'][str(dest)]['active']);self.assertFalse((dest/'semantic/postgres-storage.json').exists())
-        self.assertEqual(migrate(dest)['status'],'PASS')
-        result=dispatch(dict(root=str(dest/'semantic'),scope='scope',sources=self.sources,op='context_query',question='staging',knownAt='2099-01-01T00:00:00Z',validAt='2026-10-25T00:00:00Z'))
-        self.assertEqual(result,self.before)
-
+        dest=self.new_destination('crash')
+        request=dict(plan=self.plan,destination=str(dest),stage=str(dest.with_name(dest.name+'-staging')),crashAt='durable-prefix')
+        env={k:v for k,v in os.environ.items() if k.lower() in ('systemroot','windir','path','pathext','comspec','temp','tmp')};env['ORBITA_POSTGRES_BINDING']=json.dumps(self.rawconfig)
+        child=subprocess.run([sys.executable,'-I','-X','utf8','-B',str(PYROOT/'legacy_import_fixture.py')],input=json.dumps(request).encode(),env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=30,creationflags=subprocess.CREATE_NO_WINDOW)
+        self.assertEqual(child.returncode,86,child.stderr.decode('utf8'))
+        binding,key=binding_for(dest,self.config)
+        with ObjectStore(self.config,binding,read_only=True) as files:self.assertFalse(files.exists(key))
+        self.assertFalse((self.native/'semantic/postgres-storage.json').exists())
+        deadline=time.monotonic()+5
+        while True:
+            try:result=self.import_to(dest);break
+            except StoreError as error:
+                if 'RECOVERY_STORE_BUSY' not in str(error) or time.monotonic()>=deadline:raise
+                time.sleep(.02)
+        self.assertEqual(result['status'],'PASS_EXPLICIT_IMPORT')
+        actual=dispatch(dict(root=str(dest/'semantic'),scope='scope',sources=self.sources,op='context_query',question='staging',knownAt='2099-01-01T00:00:00Z',validAt='2026-10-25T00:00:00Z'))
+        self.assertEqual(actual,self.before)
     def corrupt_owned_table(self,table,assignment,parameters=()):
-        # Negative evidence in this test's isolated, synthetic namespace only.
         self.assertIn(table,('record_envelopes','semantic_clause_versions'))
-        conn=Connection(self.sem/'records.sqlite3',binding(self.sem/'records.sqlite3'))
-        try:
-            with conn.raw.transaction():
-                conn.raw.execute('ALTER TABLE '+table+' DISABLE TRIGGER USER')
-                conn.raw.execute('UPDATE '+table+' SET '+assignment,parameters)
-                conn.raw.execute('ALTER TABLE '+table+' ENABLE TRIGGER USER')
-        finally:conn.close()
+        self.assertIn(assignment,('digest=%s','clause_sha256=%s'));self.assertEqual(len(parameters),1)
+        with closing(Connection(self.sem/'records.pgstore',family='semantic')) as conn:
+            self.tmp.corrupt(conn,table,{assignment.split('=')[0]:parameters[0]})
     def open_batched_read(self):
         from afh_semantic.host import AFHMemory
         from afh_semantic.knowledge_records import KnowledgeRecords
         memory=AFHMemory(self.sem,copy.deepcopy(self.sources),'scope')
-        records=KnowledgeRecords(memory,self.sem/'records.sqlite3',read_only=True)
+        records=KnowledgeRecords(memory,self.sem/'records.pgstore',read_only=True)
         records.db.execute('BEGIN')
         rows=records.db.execute('SELECT rowid AS _rowid,* FROM record_versions WHERE scope=? ORDER BY record_id,version',('scope',)).fetchall()
         records.db.prefetch_integrity(rows);self.assertIsNotNone(records.db.integrity_batch)
@@ -172,10 +223,13 @@ class SemanticPostgresTest(unittest.TestCase):
             with self.assertRaisesRegex(Exception,'SOURCE_SCOPE_MISMATCH'):records._envelope(rows[0])
         finally:records.close();memory.close()
     def test_batch_never_treats_an_existing_invalid_admission_as_absent(self):
-        conn=Connection(self.sem/'records.sqlite3',binding(self.sem/'records.sqlite3'))
+        conn=Connection(self.sem/'records.pgstore',family='semantic')
         try:
             conn.execute('INSERT INTO semantic_support_admissions VALUES(?,?,?,?,?,?,?,?,?,?)',(self.first['id'],1,digest(self.first['payload']),'{}','{}','0'*64,'synthetic-reviewer','synthetic-producer','{}','0'*64))
+            conn.commit()
         finally:conn.close()
+        with closing(Connection(self.sem/'records.pgstore',family='semantic',read_only=True)) as fresh:
+            self.assertEqual(fresh.execute('SELECT COUNT(*) FROM semantic_support_admissions WHERE record_id=?',(self.first['id'],)).fetchone()[0],1)
         with self.assertRaises(KeyError):self.call('context_query',question='staging')
 
 

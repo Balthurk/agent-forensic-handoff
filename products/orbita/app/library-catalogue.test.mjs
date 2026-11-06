@@ -1,5 +1,5 @@
-import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import path from 'node:path';
-const root=fs.mkdtempSync('C:/T/orbita-library-catalogue-');process.env.AFH_COSMOS_DATA=root;
+import test from 'node:test';import assert from 'node:assert/strict';import fs from '../agent-forensic-handoff/src/common-files.js';import {commonFixture} from './common-test-scope.mjs';import path from 'node:path';
+const root=commonFixture('orbita-library-catalogue-');process.env.AFH_COSMOS_DATA=root;
 const {bootstrapLibrary}=await import('./library-catalogue.mjs');
 const {addSource,getLibrary}=await import('./corpus.mjs');const {verifiedSources}=await import('./knowledge.mjs');
 let real;

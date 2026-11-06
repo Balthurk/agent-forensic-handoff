@@ -1,13 +1,16 @@
+from common_test_fixture import WorkspaceFixture, connect_semantic, corrupt_path, temporary_corruption
+from psycopg import IntegrityError
 import copy,tempfile,unittest,sqlite3
 from contextlib import closing
-from pathlib import Path
+from orbita_store.paths import Path
+from pathlib import Path as NativePath
 from afh_semantic.host import dispatch
 from afh_semantic.knowledge_records import RecordError
 from test_decisions import source
 
 class RetrospectiveTest(unittest.TestCase):
     def setUp(self):
-        self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup);self.root=Path(self.tmp.name)
+        self.tmp=WorkspaceFixture(self._testMethodName);self.addCleanup(self.tmp.cleanup);self.root=Path(self.tmp.name)
         self.sources=[dict(source('old','Política antigua: revisión requerida. Alice recibió el aviso el 2020-01-01. Alice negó recibirlo el 2020-01-01.'),known_at='2026-01-01T00:00:00Z',emitted_at='2020-01-01T00:00:00Z')]
     def call(self,op,**kw):return dispatch(dict(root=str(self.root),scope='s',sources=self.sources,op='retrospective_'+op,**kw))
     def detail(self):return dict(title='Política retrospectiva',subjectAt='2020-01-01T00:00:00Z',sourceCut='2026-02-01T00:00:00Z',actor='editor',reason='Composición atribuida',state='active',claims=[dict(key='rule',text='La política requería revisión',position='supports',evidence=[dict(sourceId='old',quote='Política antigua: revisión requerida.')])],gaps=['No se acredita vigencia actual'],personalReports=[])
@@ -53,8 +56,7 @@ class RetrospectiveTest(unittest.TestCase):
     def test_envelope_tamper_fails_and_inputs_are_bounded(self):
         self.put();d=self.detail();d['claims']=d['claims']*21
         with self.assertRaisesRegex(RecordError,'CLAIMS'):self.put('large',d)
-        with closing(sqlite3.connect(self.root/'retrospectives/records.sqlite3')) as db,db:
-            db.execute('DROP TRIGGER records_no_update');db.execute("UPDATE record_versions SET payload_sha256='bad'")
+        corrupt_path(self.root/'retrospectives/records.pgstore','record_versions',{'payload_sha256':'bad'})
         with self.assertRaises(RecordError):self.call('query')
 
 if __name__=='__main__':unittest.main()

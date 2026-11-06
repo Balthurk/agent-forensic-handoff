@@ -1,4 +1,5 @@
-import fs from 'node:fs';
+import {commonOutputBase} from './common-root.js';
+import fs from './common-files.js';
 import path from 'node:path';
 import os from 'node:os';
 import { createRequire } from 'node:module';
@@ -6,6 +7,7 @@ import { sha256, stableStringify } from './util.js';
 import { assertSafeSourcePath } from './discovery.js';
 import { parseSharePage } from './chatgpt-share.js';
 import { FORMAT, conversationRecords, isConversation, digestObject, attachmentReferences } from './conversation-format.js';
+import {inputStorage} from './input-storage.js';
 
 const require=createRequire(import.meta.url);
 const AdmZip=require('./vendor/adm-zip/adm-zip.js');
@@ -138,30 +140,32 @@ export function normalizeContainer(bytes, filename, options={}) {
   return {records,members,summary:{version:INTAKE_VERSION,sourceHash,filename:path.basename(filename),limits,documents,attachments,attachmentReferences:refs,limitations:['Snapshot coverage only; unknown original branches cannot be reconstructed.','Archived ancillary files are not bound to references without an explicit verified mapping.','Source claims and published tool statuses are observations, not execution receipts.']}};
 }
 
-export function isConversationInput(filename) {
-  if(!fs.existsSync(filename)||!fs.statSync(filename).isFile())return false;
+export function isConversationInput(filename,options={}) {
+  const sourceIO=inputStorage(options.inputStorage).files;
+  if(!sourceIO.existsSync(filename)||!sourceIO.statSync(filename).isFile())return false;
   if(/\.(json|zip|html?)$/i.test(filename))return true;
   if(!/\.(jsonl|ndjson)$/i.test(filename))return false;
-  const fd=fs.openSync(filename,'r'),buffer=Buffer.alloc(8192);let length;
-  try{length=fs.readSync(fd,buffer);}finally{fs.closeSync(fd);}
+  const fd=sourceIO.openSync(filename,'r'),buffer=Buffer.alloc(8192);let length;
+  try{length=sourceIO.readSync(fd,buffer);}finally{sourceIO.closeSync(fd);}
   return /"type"\s*:\s*"(?:afh\.export\.header|chatgpt_session_meta)"/.test(buffer.subarray(0,length).toString('utf8'));
 }
 
 export async function importConversation(filename, options={}) {
-  assertSafeSourcePath(filename,{allowSymlink:options.allowSymlink??false});
-  const limits=intakeLimits(options),stat=fs.statSync(filename);
+  const input=inputStorage(options.inputStorage),sourceIO=input.files;
+  if(!input.common)assertSafeSourcePath(filename,{allowSymlink:options.allowSymlink??false});
+  const limits=intakeLimits(options),stat=sourceIO.statSync(filename);
   if(stat.size>limits.maxBytes)throw new Error('Source byte limit');
-  const bytes=fs.readFileSync(filename);
+  const bytes=sourceIO.readFileSync(filename);
   if(bytes.length!==stat.size)throw new Error('Source changed during acquisition');
   const normalized=normalizeContainer(bytes,filename,options),capturedAt=new Date().toISOString();
-  const root=path.resolve(options.caseDir||path.join(options.out||process.env.AFH_HOME||path.join(os.homedir(),'.afh'),'cases',`import-${normalized.summary.sourceHash.slice(0,16)}-${Date.now()}`));
+  const root=path.resolve(options.caseDir||path.join(commonOutputBase(options),'cases',`import-${normalized.summary.sourceHash.slice(0,16)}-${Date.now()}`));
   if(fs.existsSync(root))throw new Error('Case directory already exists');
   fs.mkdirSync(path.dirname(root),{recursive:true});const work=fs.mkdtempSync(root+'.intake-');
   try {
     const input=path.join(work,'normalized.jsonl');
     fs.writeFileSync(input,normalized.records.map(r=>JSON.stringify(r)).join('\n')+'\n');
     const {auditSession}=await import('./audit.js');
-    const result=await auditSession(input,{...options,caseDir:path.join(work,'case'),harness:'chatgpt-import',includeChildren:false,workspace:null,_deferIdentity:true});
+    const result=await auditSession(input,{...options,inputStorage:'postgresql-common',caseDir:path.join(work,'case'),harness:'chatgpt-import',includeChildren:false,workspace:null,_deferIdentity:true});
     const acquisition=path.join(result.caseDir,'acquisition');fs.mkdirSync(acquisition,{recursive:true});
     fs.writeFileSync(path.join(acquisition,'original.bin'),bytes);
     const capture={...normalized.summary,capturedAt,registeredAt:result.manifest.completedAt,originalPath:'acquisition/original.bin',originalBytes:bytes.length};

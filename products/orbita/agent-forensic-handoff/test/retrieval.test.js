@@ -1,3 +1,4 @@
+import {nativeTemporary,caseRoot} from "./common-case-fixtures.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -8,9 +9,7 @@ import {
 } from "../src/index.js";
 
 function temporary(t, prefix) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  return root;
+  return nativeTemporary(t,prefix);
 }
 
 function provider() {
@@ -51,7 +50,7 @@ async function makeCase(t, { incomplete = false } = {}) {
   const content = `${records.map(JSON.stringify).join("\n")}\n${incomplete ? "{broken-json\n" : ""}`;
   fs.writeFileSync(source, content);
   const audit = await auditSession(source, {
-    harness: "generic", caseDir: path.join(root, "case"), workspace: root, includeChildren: false,
+    harness: "generic", caseDir: caseRoot(root), workspace: root, includeChildren: false,
   });
   return { root, audit };
 }

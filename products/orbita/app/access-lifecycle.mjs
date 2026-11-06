@@ -1,4 +1,5 @@
-import fs from 'node:fs';
+import fs from '../agent-forensic-handoff/src/common-files.js';
+import {restoreControl} from '../agent-forensic-handoff/src/common-store.js';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {inventory,createBackup,restoreBackup,hashFile,validateStore} from './recovery.mjs';
@@ -14,25 +15,34 @@ export class Lifecycle{
  async backup(user,id,password){return this.exclusive(id,async()=>{
   let w=this.store.authorizeUser(user,id,'owner').workspace;w=this.store.save({...w,status:'maintenance'},'backup_started',user);await this.stop(id);
   try{const backupId=randomUUID(),archive=path.join(this.store.workspaceRoot(id),'backups',backupId+'.orbita');
-   const receipt=await createBackup({source:path.join(this.store.workspaceRoot(id),'data'),archive,password,scratchRoot:path.join(this.store.workspaceRoot(id),'scratch')});
+   const receipt=await createBackup({source:path.join(this.store.workspaceRoot(id),'data'),archive,password,archiveStorage:'postgresql-common',scratchRoot:path.join(this.store.workspaceRoot(id),'scratch')});
    const value={id:backupId,workspace:id,archive,sha256:receipt.archiveSha256,files:receipt.files,bytes:receipt.bytes,createdAt:receipt.createdAt};
    this.store.db.prepare('INSERT INTO archives VALUES(?,?,?)').run(backupId,id,JSON.stringify(value));this.store.audit(user,'backup_completed',id,{id:backupId,sha256:value.sha256});return {...value,archive:undefined};
   }finally{const current=this.store.workspace(id);if(current.status==='maintenance')this.store.save({...current,status:'active'},'maintenance_finished',user);}
  });}
  archives(user,id){this.store.authorizeUser(user,id,'owner',{maintenance:true});return this.store.db.prepare('SELECT payload FROM archives WHERE workspace=?').all(id).map(r=>({...JSON.parse(r.payload),archive:undefined}));}
- async archive(user,id,backupId){this.store.authorizeUser(user,id,'owner');const row=this.store.db.prepare('SELECT payload FROM archives WHERE id=? AND workspace=?').get(backupId,id);demand(row,'ACCESS_BACKUP_NOT_FOUND',404);const b=JSON.parse(row.payload),expected=path.join(this.store.workspaceRoot(id),'backups',backupId+'.orbita');demand(b.archive===expected,'ACCESS_BACKUP_BINDING');plainPath(expected);demand(await hashFile(expected)===b.sha256,'ACCESS_BACKUP_CHANGED',409);return b;}
+ async archive(user,id,backupId){
+  this.store.authorizeUser(user,id,'owner');
+  demand(typeof backupId==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(backupId),'ACCESS_BACKUP_BINDING');
+  const row=this.store.db.prepare('SELECT payload FROM archives WHERE id=? AND workspace=?').get(backupId,id);demand(row,'ACCESS_BACKUP_NOT_FOUND',404);
+  const b=JSON.parse(row.payload),expected=path.join(this.store.workspaceRoot(id),'backups',backupId+'.orbita');
+  if(b.archive!==expected){
+   const binding=this.store.db.managedLegacyArchive(id,backupId);
+   demand(binding.logicalKey==='backups/'+backupId+'.orbita'&&binding.sha256===b.sha256,'ACCESS_BACKUP_BINDING');
+  }
+  plainPath(expected);demand(await hashFile(expected,{storage:'postgresql-common'})===b.sha256,'ACCESS_BACKUP_CHANGED',409);
+  return {...b,archive:expected};
+ }
  async restore(user,id,backupId,password){return this.exclusive(id,async()=>{
   const b=await this.archive(user,id,backupId);let w=this.store.authorizeUser(user,id,'owner').workspace;
   w=this.store.save({...w,status:'maintenance'},'restore_started',user);await this.stop(id);
   const root=this.store.workspaceRoot(id),stage=path.join(root,'restore-'+randomUUID()),data=path.join(root,'data'),prior=path.join(root,'retired-'+randomUUID());let swapped=false;
   w=this.store.save({...w,restoreTransition:{stage:path.basename(stage),prior:path.basename(prior),backupId}},'restore_transition_prepared',user);
   try{
-   const receipt=await restoreBackup({archive:b.archive,destination:stage,password,scratchRoot:path.join(root,'scratch')});
-   demand((await hashFile(b.archive))===b.sha256,'ACCESS_BACKUP_CHANGED',409);
+   const receipt=await restoreBackup({archive:b.archive,destination:stage,password,archiveStorage:'postgresql-common',scratchRoot:path.join(root,'scratch')});
+   demand((await hashFile(b.archive,{storage:'postgresql-common'}))===b.sha256,'ACCESS_BACKUP_CHANGED',409);
+   restoreControl('prepare',data,{state:{...receipt,destination:data,automaticWork:false,externalAccess:false}});
    fs.renameSync(data,prior);fs.renameSync(stage,data);swapped=true;
-   // These markers are part of the same workspace inventory/purge scope.
-   const marker=path.join(root,'.'+path.basename(stage)+'.orbita-restore.json');
-   if(fs.existsSync(marker))fs.renameSync(marker,path.join(root,'.data.orbita-restore.json'));
    this.store.audit(user,'restore_completed',id,{backupId,files:receipt.files,revocationsPreserved:true});
    return {files:receipt.files,validation:receipt.validation,revocationsPreserved:true,automaticWork:false,externalAccess:false,retiredDataRetained:true};
   }catch(e){if(!fs.existsSync(data)&&fs.existsSync(prior))fs.renameSync(prior,data);throw e;}
@@ -66,7 +76,7 @@ export class Lifecycle{
   demand(path.dirname(root)===path.join(this.store.root,'spaces')&&path.basename(root)===id,'ACCESS_PURGE_PATH');
   w=this.store.save({...w,status:'purge_failed',purgeAttempt:w.purgeAttempt||{planId,snapshot:current}},'purge_started',user,{planId,files:current.files,treeHash:current.treeHash});
   try{
-   if(fs.existsSync(root))fs.rmSync(root,{recursive:true,force:false,maxRetries:0});demand(!fs.existsSync(root),'ACCESS_PURGE_RESIDUAL',409);
+   this.store.purgeContent(id);demand(!fs.existsSync(root),'ACCESS_PURGE_RESIDUAL',409);
    const receipt={id:randomUUID(),workspace:id,at:this.store.now(),files:w.purgeAttempt.snapshot.files,bytes:w.purgeAttempt.snapshot.bytes,treeHash:w.purgeAttempt.snapshot.treeHash,managedFilesAbsent:true,physicalErasure:false,externalCopies:plan.externalCopies,scope:'managed_workspace_only'};
    this.store.tx(()=>{this.store.db.prepare('DELETE FROM sessions WHERE workspace=?').run(id);this.store.db.prepare('DELETE FROM archives WHERE workspace=?').run(id);this.store.db.prepare('DELETE FROM plans WHERE workspace=?').run(id);});
    this.store.save({...w,status:'purged',name:'Espacio eliminado',policy:{},externalCopies:[],purge:receipt},'purge_verified',user,{receiptId:receipt.id});return receipt;

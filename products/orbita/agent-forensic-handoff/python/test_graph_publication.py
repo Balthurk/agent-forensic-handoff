@@ -68,5 +68,30 @@ class GraphTest(unittest.TestCase):
         self.error('FENCE_OR_STATE_STALE',lambda:self.r.advance_g1_projection(first,expected_state='upserting',state='counts_verified',generation_id=p1['generation'],fence_token=e1['fence_token']))
     def test_different_cut_requires_history(self):
         r1=self.publish(self.put());q1=self.query(r1);p=self.f.payload(1);p['semantic_unit']['context_cut']['source_cut']='cut-2';self.r.put(p,expected_version=0,request_id='other-cut');r2=self.publish(latest(self.r,'scope')['outbox_id']);self.error('CURRENT_CUT',lambda:self.query(r1));self.assertEqual(len(self.query(r2)['items']),1);self.assertEqual(self.query(r1,mode='system_history',knownAt=q1['selectedAt'])['items'],q1['items'])
+    def test_legacy_plan_and_receipt_bytes_keep_the_frozen_i05_contract(self):
+        from legacy_fixtures import g1_plan_v1 as old
+        from afh_semantic.knowledge_records import _json
+        oid=self.put();expected=old.plan(self.r,oid)
+        self.r.begin_g1_projection(oid,expected['generation'])
+        self.assertEqual(_json(plan(self.r,oid)),_json(expected))
+        result=self.publish(oid);entry=self.r.g1_outbox_entry(oid)
+        expected_receipt=old.receipt(expected,entry,result['readbackHash'])
+        root=self.r.path.parent/'graph-publications'
+        self.assertEqual((root/(result['generation']+'.plan.json')).read_bytes(),_json(expected).encode())
+        self.assertEqual((root/(result['generation']+'.receipt.json')).read_bytes(),_json(expected_receipt).encode())
+        self.assertEqual(result['generation'],expected['generation'])
+        self.assertTrue(self.publish(oid)['replayed'])
+        self.assertEqual(self.query(result)['items'][0]['record']['id'],expected['members'][0]['recordId'])
+    def test_new_graph_uses_common_store_and_repeatable_read_only_snapshot(self):
+        result=self.publish(self.put());self.assertTrue(result['generation'].startswith('g1pg-'))
+        self.assertEqual(result['policy']['backend'],'postgres-common-g1')
+        original=Projection.verify_rows;observed=[]
+        def inspect(graph,plan_):
+            observed.append((self.r.db.raw.execute('SHOW transaction_isolation').fetchone()[0],self.r.db.raw.execute('SHOW transaction_read_only').fetchone()[0]))
+            return original(graph,plan_)
+        with patch.object(Projection,'verify_rows',inspect):self.query(result)
+        self.assertEqual(observed,[('repeatable read','on'),('repeatable read','on')])
+        self.assertEqual(self.op('capabilities')['default'],'postgresql')
+        with patch('sqlite3.connect',side_effect=AssertionError('no legacy operational store')):self.query(result)
 
 if __name__=='__main__':unittest.main()

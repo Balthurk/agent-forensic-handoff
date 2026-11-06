@@ -1,5 +1,5 @@
-import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import path from 'node:path';import net from 'node:net';import {spawn} from 'node:child_process';import {createHash} from 'node:crypto';import {fileURLToPath} from 'node:url';
-const here=path.dirname(fileURLToPath(import.meta.url)),root=fs.mkdtempSync('C:/T/orbita-documents-http-');
+import test from 'node:test';import assert from 'node:assert/strict';import fs from '../agent-forensic-handoff/src/common-files.js';import {commonFixture} from './common-test-scope.mjs';import path from 'node:path';import net from 'node:net';import {spawn} from 'node:child_process';import {createHash} from 'node:crypto';import {fileURLToPath} from 'node:url';
+const here=path.dirname(fileURLToPath(import.meta.url)),root=commonFixture('orbita-documents-http-');
 let child,url;
 async function request(route,body){const response=await fetch(url+route,body?{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}:{});return {status:response.status,value:await response.json()};}
 async function finished(id){for(let i=0;i<400;i++){const value=(await request('/api/jobs/'+id)).value;if(value.status!=='running')return value;await new Promise(r=>setTimeout(r,25));}throw new Error('HTTP_JOB_TIMEOUT');}

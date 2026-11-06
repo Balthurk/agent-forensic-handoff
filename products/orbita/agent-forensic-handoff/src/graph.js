@@ -12,7 +12,7 @@ export function graphNeighbors(caseDir, nodeId, options = {}) {
   const hops = boundedInteger(options.hops ?? DEFAULTS.graphHops, "hops", 1, HARD_MAX_HOPS);
   const maxNodes = boundedInteger(options.maxNodes ?? DEFAULTS.maxGraphNodes, "maxNodes", 1, HARD_MAX_NODES);
   const edgeTypes = normalizeTypes(options.edgeTypes);
-  const db = new CaseDatabase(path.join(path.resolve(caseDir), "case.sqlite"), { readOnly: true });
+  const db = new CaseDatabase(path.join(path.resolve(caseDir), "case.pgstore"), { readOnly: true });
   try {
     const start = describeNode(db, nodeId);
     if (!start) throw new Error(`Graph node not found: ${nodeId}`);
@@ -50,7 +50,7 @@ export function graphPath(caseDir, fromNodeId, toNodeId, options = {}) {
   const direction = String(options.direction || "out").toLowerCase();
   if (!["in", "out", "both"].includes(direction)) throw new Error("direction must be in, out, or both");
   const edgeTypes = normalizeTypes(options.edgeTypes);
-  const db = new CaseDatabase(path.join(path.resolve(caseDir), "case.sqlite"), { readOnly: true });
+  const db = new CaseDatabase(path.join(path.resolve(caseDir), "case.pgstore"), { readOnly: true });
   try {
     if (!describeNode(db, fromNodeId)) throw new Error(`Graph node not found: ${fromNodeId}`);
     if (!describeNode(db, toNodeId)) throw new Error(`Graph node not found: ${toNodeId}`);
@@ -274,11 +274,12 @@ function tableForNodeKind(kind) {
 }
 
 function tableExists(db, name) {
+  if(typeof db.tableExists==='function')return db.tableExists(name);
   return Boolean(db.get("SELECT 1 ok FROM sqlite_master WHERE type IN ('table','view') AND name=$name", { name }));
 }
 
 function tableColumns(db, name) {
-  return new Set(db.all(`PRAGMA table_info(${name})`).map((row) => row.name));
+  return new Set(db.tableColumns(name));
 }
 
 function boundedInteger(value, label, minimum, maximum) {

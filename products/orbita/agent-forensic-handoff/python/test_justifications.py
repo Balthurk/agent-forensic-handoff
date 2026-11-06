@@ -1,5 +1,8 @@
+from common_test_fixture import WorkspaceFixture, connect_semantic, corrupt_path, temporary_corruption
+from psycopg import IntegrityError
 import copy, tempfile, unittest, sqlite3
-from pathlib import Path
+from orbita_store.paths import Path
+from pathlib import Path as NativePath
 from contextlib import closing
 from afh_semantic.host import dispatch
 from afh_semantic.justifications import STATES,logic,digest
@@ -9,7 +12,7 @@ from test_collectives import detail as collective_detail
 
 class SupportTest(unittest.TestCase):
     def setUp(self):
-        self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup);self.root=Path(self.tmp.name)
+        self.tmp=WorkspaceFixture(self._testMethodName);self.addCleanup(self.tmp.cleanup);self.root=Path(self.tmp.name)
         self.sources=[source('u','Conservar originales. Copia local y copia remota. Vigente desde el 1 de enero de 2020 sin fecha final declarada.'),source('e1','La prueba uno conserva originales.','tool'),source('e2','La prueba dos conserva originales.','tool')]
         claim=lambda t:dict(text=t,evidence=self.ev('u'))
         self.case=dict(title='Conservación',objective=claim('Conservar originales'),constraints=[dict(id='originals',**claim('Conservar originales'))],criteria=[],alternatives=[dict(id=x,title=x,mechanism=claim(x),assessments={'originals':dict(status='pass',reason=claim('Prueba declarada'))}) for x in ['local','remote']],assumptions=[],information_gaps=[],expected_result=claim('Originales intactos'),review_condition=claim('Revisar si cambia evidencia'))

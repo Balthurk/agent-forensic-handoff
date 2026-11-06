@@ -1,3 +1,5 @@
+from common_test_fixture import WorkspaceFixture, connect_semantic, corrupt_path, temporary_corruption
+from psycopg import IntegrityError
 import copy,unittest,sqlite3
 from contextlib import closing
 from datetime import datetime,timezone
@@ -97,8 +99,7 @@ class IntelligenceTest(unittest.TestCase):
         units=[u for u in q['contextUnits'] if u['kind']=='decision_intelligence'];self.assertEqual(len(units),3);self.assertTrue(all(u['data']['authorityScore'] is None for u in units))
     def test_tampered_n04_envelope_rejected(self):
         self.put('r','review',self.review_detail())
-        with closing(sqlite3.connect(self.root/'intelligence/records.sqlite3')) as db,db:
-            db.execute('DROP TRIGGER records_no_update');db.execute("UPDATE record_versions SET payload_sha256='bad'")
+        corrupt_path(self.root/'intelligence/records.pgstore','record_versions',{'payload_sha256':'bad'})
         with self.assertRaises(RecordError):self.call('query')
     def test_withdrawn_outcome_abstains_without_erasing_the_old_score(self):
         f=self.forecast();o=self.outcome(f);d=copy.deepcopy(o['record']['payload']['intelligence']['detail']);d['state']='withdrawn'

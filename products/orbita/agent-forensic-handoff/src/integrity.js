@@ -1,8 +1,9 @@
 import {verifyDocumentEvidence} from './document-evidence.js';
-import fs from "node:fs";
+import fs from './common-files.js';
 import path from "node:path";
-import { DatabaseSync } from "./sqlite-compat.js";
-import { hashFile, sha256, stableStringify, walkFiles } from "./util.js";
+import { DatabaseSync } from './common-store.js';
+import { sha256, stableStringify } from "./util.js";
+import {hashFile,walkFiles} from './common-util.js';
 import { computeFactAssertionHash, computeFactInvalidationHash, computeGraphIdentity, computeTemporalIdentity } from "./graph.js";
 import { verifySharedSnapshot } from './chatgpt-share.js';
 import {verifyIntake} from './conversation-intake.js';
@@ -17,16 +18,21 @@ export async function verifyCaseIntegrity(caseDir, { deep = true, verifyProjecti
   catch (error) { return { caseDir: root, passed: false, deep, findings: [{ check: "manifest", ok: false, detail: String(error.message || error) }] }; }
   add("manifest.complete", manifest.status === "COMPLETE", `status=${manifest.status ?? "missing"}`);
 
-  const dbPath = path.join(root, "case.sqlite");
+  const dbPath = path.join(root, "case.pgstore");
   let db;
-  try { db = new DatabaseSync(dbPath, { readOnly: true }); }
+  try { db = new DatabaseSync(dbPath, { family:'case',readOnly: true }); }
   catch (error) {
-    add("sqlite.open", false, String(error.message || error));
+    add("postgresql.open", false, String(error.message || error));
     return { caseDir: root, caseHash: manifest.caseHash ?? null, passed: false, deep, findings };
   }
   try {
-    const integrity = db.prepare("PRAGMA integrity_check").all().map((row) => row.integrity_check);
-    add("sqlite.integrity", integrity.length === 1 && integrity[0] === "ok", integrity.join("; "));
+    db.exec('BEGIN');
+    // One fresh logical catalogue in this verification's repeatable snapshot.
+    // It never survives the call or replaces the actual schema/row manifest.
+    const tables=new Set(db.prepare("SELECT name FROM sqlite_master WHERE type IN ('table','view')").all().map(row=>row.name));
+    const actual=db.logicalManifest(),expected=manifest.storage?.manifest;
+    add('postgresql.rows_integrity',manifest.storage?.engine==='postgresql-common'&&manifest.storage?.path==='case.pgstore'&&expected?.format===actual.format&&expected.sha256===actual.sha256,
+      `actual=${actual.sha256}; expected=${expected?.sha256??'missing'}; ${actual.rows} typed rows, actual constraints and schema`);
     const run = db.prepare("SELECT * FROM ingest_run ORDER BY started_at DESC LIMIT 1").get();
     add("schema.version", Number(run?.schema_version) === Number(manifest.schemaVersion), `db=${run?.schema_version ?? "missing"}; manifest=${manifest.schemaVersion ?? "missing"}`);
 
@@ -64,11 +70,13 @@ export async function verifyCaseIntegrity(caseDir, { deep = true, verifyProjecti
       (SELECT 1 FROM evidence_ref er WHERE er.source_id=sr.source_id AND er.record_ordinal=sr.ordinal)`).get().n);
     add("records.evidence_coverage", uncovered === 0, `${uncovered} source record(s) without an evidence reference`);
 
-    verifyContentBlobs(db, root, deep, add);
-    verifyGraph(db, manifest, add);
-    verifyTemporalLayer(db, manifest, add);
+    verifyContentBlobs(db, root, deep, add, tables);
+    verifyGraph(db, manifest, add, tables);
+    verifyTemporalLayer(db, manifest, add, tables);
     verifyMetrics(db, manifest, add);
-    const pack = db.prepare("SELECT * FROM hydration_pack ORDER BY created_at DESC,id DESC LIMIT 1").get();
+    const pack = manifest.hydrationPackId
+      ? db.prepare('SELECT * FROM hydration_pack WHERE id=?').get(manifest.hydrationPackId)
+      : db.prepare("SELECT * FROM hydration_pack ORDER BY created_at DESC,id DESC LIMIT 1").get();
     const hotPath = path.join(root, "hot-context.md");
     if (pack && fs.existsSync(hotPath)) {
       const hotBytes = fs.readFileSync(hotPath);
@@ -125,10 +133,12 @@ function failedProjectionChecks(result) {
   return result.findings.filter((finding) => !finding.ok).map((finding) => `${finding.check}: ${finding.detail}`).join("; ") || "unknown semantic projection failure";
 }
 
-function verifyTemporalLayer(db, manifest, add) {
-  const hasTemporalFact = db.prepare("SELECT 1 ok FROM sqlite_master WHERE type='table' AND name='temporal_fact'").get();
+function verifyTemporalLayer(db, manifest, add, tables) {
+  const hasTemporalFact = tables.has('temporal_fact');
   if (!hasTemporalFact) return;
   const adapter = {
+    tableExists:name=>tables.has(name),
+    tableColumns:name=>db.tableColumns(name),
     all: (sql, params = {}) => db.prepare(sql).all(params),
     get: (sql, params = {}) => db.prepare(sql).get(params),
   };
@@ -198,8 +208,8 @@ function verifyTemporalLayer(db, manifest, add) {
   add("temporal.fact_provenance", provenanceFailures === 0, `${facts.length} fact(s) checked; ${provenanceFailures} provenance violation(s)`);
 }
 
-function verifyGraph(db, manifest, add) {
-  const hasEntityEdge = db.prepare("SELECT 1 ok FROM sqlite_master WHERE type='table' AND name='entity_edge'").get();
+function verifyGraph(db, manifest, add, tables) {
+  const hasEntityEdge = tables.has('entity_edge');
   if (!hasEntityEdge && Number(manifest.schemaVersion) < 3) return;
   const orphanEventEdges = Number(db.prepare(`SELECT COUNT(*) n FROM event_edge ee
     LEFT JOIN event f ON f.id=ee.from_event_id LEFT JOIN event t ON t.id=ee.to_event_id
@@ -210,9 +220,9 @@ function verifyGraph(db, manifest, add) {
     WHERE p.id IS NULL OR c.id IS NULL`).get().n);
   add("graph.session_edge_endpoints", orphanSessionEdges === 0, `${orphanSessionEdges} orphan session edge(s)`);
   if (hasEntityEdge) {
-    const hasEntityNode = db.prepare("SELECT 1 ok FROM sqlite_master WHERE type='table' AND name='entity_node'").get();
-    const hasTemporalFact = db.prepare("SELECT 1 ok FROM sqlite_master WHERE type='table' AND name='temporal_fact'").get();
-    const hasContinuationOption = db.prepare("SELECT 1 ok FROM sqlite_master WHERE type='table' AND name='continuation_option'").get();
+    const hasEntityNode = tables.has('entity_node');
+    const hasTemporalFact = tables.has('temporal_fact');
+    const hasContinuationOption = tables.has('continuation_option');
     const nodeParts = [
       "SELECT id FROM event",
       "SELECT id FROM session",
@@ -235,6 +245,8 @@ function verifyGraph(db, manifest, add) {
     add("graph.edge_evidence", missingEvidence === 0, `${missingEvidence} edge evidence reference(s) unresolved`);
   }
   const adapter = {
+    tableExists:name=>tables.has(name),
+    tableColumns:name=>db.tableColumns(name),
     all: (sql, params = {}) => db.prepare(sql).all(params),
     get: (sql, params = {}) => db.prepare(sql).get(params),
   };
@@ -260,8 +272,8 @@ function verifySourceRecords(db, source, sourcePath, add) {
   add(`source.${source.id}.records`, failures === 0, `${records.length} checked; ${failures} mismatch(es)`);
 }
 
-function verifyContentBlobs(db, root, deep, add) {
-  const hasTable = db.prepare("SELECT 1 ok FROM sqlite_master WHERE type='table' AND name='content_blob'").get();
+function verifyContentBlobs(db, root, deep, add, tables) {
+  const hasTable = tables.has('content_blob');
   if (!hasTable) {
     const files = walkFiles(path.join(root, "evidence", "blobs"));
     let failures = 0;
@@ -312,8 +324,10 @@ function verifyMetrics(db, manifest, add) {
     ...(manifest.metrics?.graphEdges == null ? {} : { graphEdges: "SELECT (SELECT COUNT(*) FROM event_edge)+(SELECT COUNT(*) FROM session_edge)+(SELECT COUNT(*) FROM entity_edge) n" }),
   };
   const mismatches = [];
-  for (const [key, sql] of Object.entries(queries)) {
-    const actual = Number(db.prepare(sql).get().n);
+  const entries=Object.entries(queries);
+  const counts=db.prepare('SELECT '+entries.map(([,sql],index)=>`(${sql}) AS metric${index}`).join(',')).get();
+  for (const [index,[key]] of entries.entries()) {
+    const actual = Number(counts['metric'+index]);
     if (actual !== Number(manifest.metrics?.[key])) mismatches.push(`${key}:${actual}!=${manifest.metrics?.[key]}`);
   }
   add("manifest.metrics", mismatches.length === 0, mismatches.length ? mismatches.join("; ") : "selected metrics match database");

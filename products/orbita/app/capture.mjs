@@ -1,12 +1,26 @@
 import {requireExternalAccess} from './recovery.mjs';
 import fs from 'node:fs';
+import files from '../agent-forensic-handoff/src/common-files.js';
+import {openObject} from '../agent-forensic-handoff/src/common-store.js';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {DATA,importCapturedRevision} from './corpus.mjs';
-import {sha,now,openDB,transaction,checkpoint} from './durable.mjs';
-import {keepCaptureLease} from './capture-lease.mjs';
+import {sha,now,openDB,transaction,checkpoint} from './common-durable.mjs';
+import {prepareCaptureLease} from './capture-lease.mjs';
 const root=path.join(DATA,'capture');
-function dbOpen(){const db=openDB(path.join(root,'jobs.sqlite'));db.exec(`CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,source TEXT UNIQUE NOT NULL,offset INTEGER NOT NULL DEFAULT 0,valid_offset INTEGER NOT NULL DEFAULT 0,prefix TEXT NOT NULL,status TEXT NOT NULL,owner TEXT,lease_until INTEGER NOT NULL DEFAULT 0,current_case TEXT,error TEXT);
+function spoolSnapshot(file){
+ const handle=openObject(file,{mode:'r',readOnly:true});
+ try{const stat=handle.stat();if(stat.size>40*1024*1024)throw new Error('CAPTURE_SPOOL_EXCEEDS_40_MIB');
+  const parts=[];let size=0;for(;;){const bytes=handle.read(1024*1024);if(!bytes.length)break;parts.push(bytes);size+=bytes.length;}
+  if(size!==stat.size)throw new Error('CAPTURE_CHECKPOINT_CORRUPT');return {bytes:Buffer.concat(parts,size),revision:stat.revision};
+ }finally{handle.close();}
+}
+function replaceSpool(file,bytes,revision){
+ const handle=openObject(file,{mode:'w',expectedRevision:revision});
+ try{for(let at=0;at<bytes.length;at+=1024*1024)handle.write(bytes.subarray(at,at+1024*1024));return handle.close().revision;}
+ catch(error){try{handle.abort();}catch{}throw error;}
+}
+function dbOpen(){const db=openDB(path.join(root,'jobs.pgstore'),'capture');db.exec(`CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,source TEXT UNIQUE NOT NULL,offset INTEGER NOT NULL DEFAULT 0,valid_offset INTEGER NOT NULL DEFAULT 0,prefix TEXT NOT NULL,status TEXT NOT NULL,owner TEXT,lease_until INTEGER NOT NULL DEFAULT 0,current_case TEXT,error TEXT);
  CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY,job TEXT,at TEXT,status TEXT,detail TEXT);
  CREATE TABLE IF NOT EXISTS revisions(job TEXT,hash TEXT,bytes INTEGER,case_id TEXT,status TEXT,PRIMARY KEY(job,hash));`);return db;}
 function canonical(file){return fs.realpathSync.native(path.resolve(file));}
@@ -22,14 +36,22 @@ export async function captureOnce(id,allowPaths,{maxBytes=1048576,retry=false,le
  const owns=()=>{keeper?.assert();const r=db.prepare('SELECT owner,lease_until FROM jobs WHERE id=?').get(id);if(r?.owner!==owner||r.lease_until<Date.now())throw new Error('CAPTURE_STALE_OWNER');};
  try{
   let job=db.prepare('SELECT * FROM jobs WHERE id=?').get(id);if(!job)throw new Error('CAPTURE_UNKNOWN_JOB');authorize(job.source,allowPaths);
+  keeper=await prepareCaptureLease(path.join(root,'jobs.pgstore'),id,owner,leaseMs);
   transaction(db,()=>{job=db.prepare('SELECT * FROM jobs WHERE id=?').get(id);if(job.owner&&job.lease_until>Date.now())throw new Error('CAPTURE_LEASE_HELD');if(job.status==='failed'&&!retry)throw new Error('CAPTURE_EXPLICIT_RETRY_REQUIRED');db.prepare('UPDATE jobs SET owner=?,lease_until=?,status=?,error=NULL WHERE id=?').run(owner,Date.now()+leaseMs,'capturing',id);event(db,id,'claimed',{owner,previousOffset:job.offset});});claimed=true;
-  const spool=path.join(root,id+'.bytes');if(!fs.existsSync(spool))fs.writeFileSync(spool,Buffer.alloc(0));
-  const previous=fs.readFileSync(spool);if(previous.length<job.offset||sha(previous.subarray(0,job.offset))!==job.prefix)throw new Error('CAPTURE_CHECKPOINT_CORRUPT');
-  if(previous.length>job.offset){fs.writeFileSync(path.join(root,id+'.uncommitted-'+randomUUID()),previous.subarray(job.offset),{flag:'wx'});fs.truncateSync(spool,job.offset);event(db,id,'recovered_uncommitted_bytes',{bytes:previous.length-job.offset});}
+  keeper.start();
+  const spool=path.join(root,id+'.bytes');
+  // The job transaction fences replacement owners while an immutable spool
+  // version is published. Expired-but-unreplaced owners may preserve raw bytes;
+  // publishing a case still requires the original unexpired lease checks.
+  const ownedSpool=fn=>transaction(db,()=>{if(db.prepare('SELECT owner FROM jobs WHERE id=?').get(id)?.owner!==owner)throw new Error('CAPTURE_STALE_OWNER');return fn();});
+  ownedSpool(()=>{if(!files.existsSync(spool))files.writeFileSync(spool,Buffer.alloc(0),{flag:'wx'});});
+  const snapshot=spoolSnapshot(spool),previous=snapshot.bytes;let spoolRevision=snapshot.revision;
+  if(previous.length<job.offset||sha(previous.subarray(0,job.offset))!==job.prefix)throw new Error('CAPTURE_CHECKPOINT_CORRUPT');
+  if(previous.length>job.offset)ownedSpool(()=>{files.writeFileSync(path.join(root,id+'.uncommitted-'+randomUUID()),previous.subarray(job.offset),{flag:'wx'});spoolRevision=replaceSpool(spool,previous.subarray(0,job.offset),spoolRevision);event(db,id,'recovered_uncommitted_bytes',{bytes:previous.length-job.offset});});
   const fd=fs.openSync(job.source,'r');let bytes;
   try{const st=fs.fstatSync(fd);if(st.size<job.offset)throw new Error('CAPTURE_SOURCE_TRUNCATED');if(st.size>40*1024*1024)throw new Error('CAPTURE_SOURCE_EXCEEDS_40_MIB');const prefix=Buffer.alloc(job.offset);fs.readSync(fd,prefix,0,prefix.length,0);if(sha(prefix)!==job.prefix)throw new Error('CAPTURE_SOURCE_REWRITTEN');const count=Math.min(maxBytes,st.size-job.offset),delta=Buffer.alloc(count);const read=fs.readSync(fd,delta,0,count,job.offset);bytes=Buffer.concat([prefix,delta.subarray(0,read)]);}finally{fs.closeSync(fd);}
-  const output=fs.openSync(spool,'r+');try{fs.writeSync(output,bytes.subarray(job.offset),0,bytes.length-job.offset,job.offset);fs.fsyncSync(output);}finally{fs.closeSync(output);}checkpoint('capture-after-fsync');
-  keeper=await keepCaptureLease(path.join(root,'jobs.sqlite'),id,owner,leaseMs);
+  ownedSpool(()=>{spoolRevision=replaceSpool(spool,bytes,spoolRevision);});checkpoint('capture-after-fsync');
+  await keeper.waitReady();
   const valid=bytes.lastIndexOf(10)+1;const completed=new TextDecoder('utf-8',{fatal:true}).decode(bytes.subarray(0,valid));for(const line of completed.split('\n'))if(line.trim())JSON.parse(line);
   authorize(job.source,allowPaths);owns();const revisionHash=valid?sha(bytes.subarray(0,valid)):null,caseId=revisionHash?'capture-'+id+'-'+revisionHash.slice(0,20):null;
   transaction(db,()=>{owns();db.prepare('UPDATE jobs SET offset=?,valid_offset=?,prefix=? WHERE id=?').run(bytes.length,valid,sha(bytes),id);if(valid)db.prepare('INSERT OR IGNORE INTO revisions VALUES(?,?,?,?,?)').run(id,revisionHash,valid,caseId,'pending');event(db,id,'checkpoint',{offset:bytes.length,validOffset:valid,partialTail:bytes.length-valid});});checkpoint('capture-after-checkpoint');
@@ -37,5 +59,5 @@ export async function captureOnce(id,allowPaths,{maxBytes=1048576,retry=false,le
   if(valid){item=await importCapturedRevision({id:caseId,bytes:bytes.subarray(0,valid),title:path.basename(job.source),captureJob:id,revisionHash,beforePublish:()=>{owns();authorize(job.source,allowPaths);}});checkpoint('capture-after-import');owns();authorize(job.source,allowPaths);transaction(db,()=>{owns();db.prepare('UPDATE revisions SET status=? WHERE job=? AND hash=?').run('published',id,revisionHash);db.prepare('UPDATE jobs SET current_case=? WHERE id=?').run(caseId,id);});}
   transaction(db,()=>{owns();db.prepare('UPDATE jobs SET owner=NULL,lease_until=0,status=? WHERE id=?').run('idle',id);event(db,id,'complete',{caseId,offset:bytes.length,validOffset:valid,partialTail:bytes.length-valid});});
   return {id,caseId,offset:bytes.length,validOffset:valid,partialTail:bytes.length-valid,item};
- }catch(e){if(claimed){transaction(db,()=>{if(db.prepare('SELECT owner FROM jobs WHERE id=?').get(id)?.owner===owner){db.prepare('UPDATE jobs SET status=?,error=?,owner=NULL,lease_until=0 WHERE id=?').run('failed',e.message,id);event(db,id,'failed',{error:e.message});}});}throw e;}finally{await keeper?.stop();db.close();}
+ }catch(e){if(claimed){transaction(db,()=>{if(db.prepare('SELECT owner FROM jobs WHERE id=?').get(id)?.owner===owner){db.prepare('UPDATE jobs SET status=?,error=?,owner=NULL,lease_until=0 WHERE id=?').run('failed',e.message,id);event(db,id,'failed',{error:e.message});}});}throw e;}finally{try{await keeper?.stop();}finally{db.close();}}
 }

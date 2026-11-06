@@ -20,7 +20,7 @@ if(process.env.AFH_MANAGED==='1'&&process.env.ORBITA_ACTIVITY_FIXTURE_DIR){
   const source=typeof result.source==='string'?result.source:Buffer.from(result.source).toString('utf8');
   const needle='try{const p=await provider(),result=[];for(const id of [...new Set(ids)])';
   if(source.split(needle).length!==2)throw new Error('ACTIVITY_FIXTURE_INDEX_ANCHOR_CHANGED');
-  const barrier=`fs.writeFileSync(${JSON.stringify(path.join(dir,'index-entered'))},'real indexConversations promise entered');await new Promise(resolve=>{const timer=setInterval(()=>{if(fs.existsSync(${JSON.stringify(path.join(dir,'index-release'))})){clearInterval(timer);resolve();}},10);});`;
-  return {...result,source:source.replace(needle,'try{'+barrier+'const p=await provider(),result=[];for(const id of [...new Set(ids)])')};
+  const barrier=`orbitaFixtureNative.writeFileSync(${JSON.stringify(path.join(dir,'index-entered'))},'real indexConversations promise entered');await new Promise(resolve=>{const timer=setInterval(()=>{if(orbitaFixtureNative.existsSync(${JSON.stringify(path.join(dir,'index-release'))})){clearInterval(timer);resolve();}},10);});`;
+  return {...result,source:"import orbitaFixtureNative from 'node:fs';\n"+source.replace(needle,'try{'+barrier+'const p=await provider(),result=[];for(const id of [...new Set(ids)])')};
  }});
 }

@@ -1,6 +1,6 @@
-import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import path from 'node:path';import {spawnSync} from 'node:child_process';import {fileURLToPath} from 'node:url';
+import test from 'node:test';import assert from 'node:assert/strict';import fs from '../agent-forensic-handoff/src/common-files.js';import {commonFixture} from './common-test-scope.mjs';import path from 'node:path';import {spawnSync} from 'node:child_process';import {fileURLToPath} from 'node:url';
 import {conversation,original,late,draft,reviewOutput} from './reevaluation-fixture.mjs';
-const root=fs.mkdtempSync(path.join(process.env.AFH_TEST_ROOT||'C:/T','afh-reevaluation-'));process.env.AFH_COSMOS_DATA=root;process.env.AFH_COSMOS_EMPTY_LIBRARY='1';
+const root=commonFixture('afh-reevaluation-');process.env.AFH_COSMOS_DATA=root;process.env.AFH_COSMOS_EMPTY_LIBRARY='1';
 const {addSource,library}=await import('./corpus.mjs');const {knowledgeOperation:op,verifiedSources}=await import('./knowledge.mjs');const {registerWatch,scanReevaluations,reevaluationStatus,runReevaluation,drainReevaluations}=await import('./reevaluation.mjs');const {publishPending}=await import('./publication.mjs');
 let calls=0;const inferReview=async prompt=>{calls++;const packet=JSON.parse(prompt.split('\nPACKET\n')[1]);return {value:reviewOutput(packet,packet.target.payload.semantic_unit.clauses[0].arguments[0].interpreted?'no_change':'changed'),modelObserved:'deterministic-test-fixture',receipt:'synthetic-only'};};
 test('F29 late antecedent, irrelevant source, duplicate occurrence, cycles, replay, selective retrieval and full restore',async()=>{
@@ -29,7 +29,7 @@ test('F29 late antecedent, irrelevant source, duplicate occurrence, cycles, repl
  const rest=await drainReevaluations({automaticOnly:false},{inferReview});assert.equal(rest.results.length,1);assert.equal(rest.remaining,0);for(const result of [...batch.results,...rest.results]){assert.equal(result.disposition,'no_change');assert.equal(result.record.version,2);}
  assert.equal(calls,4);assert.equal((await op('history',ids,{id:first.id})).length,2);
  const here=path.dirname(fileURLToPath(import.meta.url));function fresh(data){const p=spawnSync(process.execPath,[path.join(here,'incremental-cli.mjs')],{env:{...process.env,AFH_COSMOS_DATA:data},input:JSON.stringify({op:'reevaluation.status'}),encoding:'utf8',timeout:30000,windowsHide:true});assert.equal(p.status,0,p.stdout+p.stderr);return JSON.parse(p.stdout).result;}
- const status=fresh(root),restored=root+'-restored';fs.cpSync(root,restored,{recursive:true});assert.deepEqual(fresh(restored),status);assert.equal(status.jobs.filter(j=>j.status==='complete').length,4);
+ const status=fresh(root),restored=root+'-restored';fs.cloneTreeSync(root,restored);assert.deepEqual(fresh(restored),status);assert.equal(status.jobs.filter(j=>j.status==='complete').length,4);
  const controller=new AbortController();controller.abort(new Error('TEST_CANCEL'));await assert.rejects(scanReevaluations({signal:controller.signal}),/TEST_CANCEL/);
  fs.appendFileSync(path.join(library.find(i=>i.id===a.id).path,'acquisition/original.bin'),'drift');await assert.rejects(runReevaluation({id:jobs[0].id},{inferReview}),/Integridad/);assert.equal(calls,4);
 });

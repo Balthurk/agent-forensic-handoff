@@ -1,0 +1,362 @@
+{
+  "schema": 1,
+  "architecture": "one database, shared family tables, no per-case schemas",
+  "sourceHashes": {
+    "agent-forensic-handoff/src/schema.sql": "67e94dc6a13be24dff54c362262cde2375d2b49773553579bf7869b60fc0c34f",
+    "app/access-store.mjs": "e4f91162dc59a6d785dae11519dc683fe4bdada771567f4e4bc487a268242418",
+    "app/capture.mjs": "4682fee4017177c3d70a236d4c3e5af74ccd3133f058ca716bb827f71220a8e7",
+    "app/corpus-plan.mjs": "0bfd741f356c11e58682faeecf52929b81ee99a7dc95e5c8c3aaf4a7b780d6c3",
+    "app/documents.mjs": "e330d6b07cdb5a91003b075a867ff51ddf8e3e44fd5f226c0b41a2cb9e571b3d",
+    "app/embedding-cache.mjs": "cc42776947dbae91566d726141d83262870b3263e7ad275220d2278b69cc0110",
+    "app/federation.mjs": "e962ce224fb57019441e323e7cd8127e51ea97a4a8b5d77d8716a5be4b374258",
+    "app/reevaluation.mjs": "ad9a3e1a724c4184631076734fbc0ceedd901784558f40ca144ec918db2923e7",
+    "app/retained-generation.mjs": "d86dfec7b07b6e4cd2d9b03b90b157833ad1f60437d23cdcc0418ee7d26bf690",
+    "app/pipeline.mjs": "64b49da0a5527a15a52d5b0f4b72eb817e2777ad880f6c3014600a34488b2879",
+    "app/store-access.mjs": "dea4d31f7144aa64e9ef981f02020bdcf5c3f93eac1a7d168665b2763e621e13",
+    "app/turns.mjs": "225bb7cca46f847f899b3096f34a1d6950c8475354aebafe4365b3f0943f3bfa",
+    "app/volume_store.py": "cf9c01fe5fcff56b8094e9f09d393ec89d3b78a855109758a956a5b60e3f0bc6",
+    "agent-forensic-handoff/src/semantic.js": "747ccfcf109745a62f2d00e69f7e8974bd299435dca4b85ddd1431874fd1ae94",
+    "agent-forensic-handoff/python/afh_semantic/host.py": "2933331cae8dbdf968537469a73556d75d75034bcfdb5240e431309ae7aa97de",
+    "agent-forensic-handoff/python/afh_semantic/knowledge_records.py": "f1c219d88f7ec934aef8d10c3faef1a447bc4661ffffa8ec0fc78b98dfa541f2",
+    "agent-forensic-handoff/python/afh_semantic/publication.py": "fa1409b23298a775c2a12ebe170e9b685f1675ec2ab8b4228b49c4b76f6f5c4c",
+    "agent-forensic-handoff/python/afh_semantic/reevaluation.py": "40b4898ce39cdf1e78f86c9bdb5094e4036bc9df8ce1b91c92e02c6b59437422",
+    "agent-forensic-handoff/python/afh_semantic/graph_publication.py": "160c8cf821a01bb96f327caae9f8561ab18f16d49939bb8918e1bda0669de34a",
+    "agent-forensic-handoff/python/afh_semantic/janus_publication.py": "b1e195d9fb278970df2ed712bdaad18d5a4e1b8994ea4e69198015ebaacd3148",
+    "agent-forensic-handoff/python/afh_semantic/justifications.py": "1479a23215b363d59d767b044c716cef4665f0ab16bb6f5d7d45bb3069ce98cf"
+  },
+  "families": {
+    "case": {
+      "file": "case.sql",
+      "sha256": "9b6ef6622e509d556896281b5598d4644f58e5f1fa9a607abff92c3e698ba173",
+      "definitions": 51,
+      "tables": 30,
+      "members": {
+        "ingest_run": "ed6d9032784c9959554376162ddebf3bee3d08fda2d3d5fdc31ae56564f90754",
+        "source": "d284de83ee784cd85f80ea224fc8271f3dcba3612b37c60e5c5c88975cdaf7a8",
+        "source_record": "a3713ac09efa29bfc34311443e326c55a4081dfee6bedb634a0b447590c79b7c",
+        "session": "4e599359a4a888e9c093f083980f9fc79979e44cfbe49615195f3afb38ce4d98",
+        "session_edge": "0edbbdf991f75ec0e8bfb59ee42a96eef21864a64e4888914dcf222df62d6070",
+        "actor": "1756339059b490454ce9c03cd8fb7fba7d70506b39111e24e4c6ae1db6a7d23b",
+        "event": "a7ffb3f43361bc21cf28b141c710acd00907e3b6a65301b160d55f793eaae1aa",
+        "event_time_idx": "2f68027c8b06efeaeca4bc7b288d285b44fb009d736c83b28d5c9581afe33e1c",
+        "event_kind_idx": "20e52d68ee95e49df7676a69e27245050898038e9bba8fa6b0bbcb932af61d53",
+        "event_call_idx": "48436df010dc3d6388bacf852cbf812753408fb2879cc231ab89ccc98a5173e4",
+        "event_session_idx": "fbcd18b55f03da8842ffdb0b110b36c663022e618160d26a3d72ba3518f8d934",
+        "event_turn_idx": "4babab0feb415badf3447ae0a54c24165308e5d4c32390170fa3d1f9e604a14b",
+        "event_fts": "d57451f807db2410031d260f05f958f42c2e348baada314e57de2115018a9ceb",
+        "event_edge": "a8d3502c0de8434362e5264e1e2bbda5b8974f8d1aa65ad8e3c28f04f8b582e1",
+        "entity_edge": "ddec32957f5a50aadb552fe7723fd9f480b2aab8fb1c57971d26b6eca43ddf39",
+        "entity_edge_from_idx": "4f4a0636fdd92aaf57c1db06ab8784253077b7f9aac1c251a1329abb48cab2fb",
+        "entity_edge_to_idx": "a59526ed04461092ceeddf8a971e59cc4d536c4f7dbd541bbc2b62add9fdf1ce",
+        "entity_node": "3a55c60c87cc8d14d1338d82ee097d3a5672d41f5a4c88c1c0ffccf4538fae4c",
+        "entity_node_kind_idx": "cd0a0db8ee8f4b138d36f741f67010c37d649713be514a194edf7a5292af80be",
+        "entity_node_name_idx": "8c58edc3e7271c9bdc265c97df13ee9b9ea1c0ce53fe5d4332723c431d4a16d9",
+        "entity_mention": "c03fefe73b6a2b774d3da474c50cfd7113778dbe1f80d589ee13127b23324f70",
+        "entity_mention_event_idx": "a6ec44508c890ff7a462f18ee2b4b10fe923428c42f5eb88c8d7dfb6504aae67",
+        "entity_mention_entity_idx": "488acc57fcb2cc98da2294b60a8835e2ff83fa4910d8aa1bfde5335f1e252179",
+        "entity_fts": "db0e74f82444440e10eafaa1498dfdfb50e3a926384a9f8926420daec5008f09",
+        "temporal_fact": "654efc27be65ba49984d14b64cee6c4c307b966df4cbe981b2f14dec7beab857",
+        "temporal_fact_validity_idx": "47e1191e8ae8a858489b4522dd46e7918b622eed9684bee4570c881001c3ff1e",
+        "temporal_fact_subject_idx": "8760bf0927849d4a7b881daebb59ba516d654764fe5ef6bc6682528df7a3725f",
+        "temporal_fact_event_idx": "6581f6bf4626cddefd18f7d17bd42b5d5fce546bdff8646f0465c181a5701207",
+        "fact_fts": "b41a5fc4d38802043507d5eaa14de8af7256dc9cb12c8904541897fbf5c2bfac",
+        "evidence_ref": "45c2e63daad8e28474e7122fd7f9e8abf46ddca27b99052125b13a063c3ae20f",
+        "evidence_event_idx": "fcd79299421b2e5e0c5aafeb44474635efa93cbede11b92fca64606377f26c9a",
+        "evidence_source_record_idx": "f5b0ac26b585b869046de67f1ea5e276a6897c731adb6bf9cd965c9208dbf54c",
+        "tool_execution": "cd0e7972752052fe87a1ed19caa43eee7d7506eae1a4acb83294dea1f33d7b1b",
+        "tool_fingerprint_idx": "e4fa47d1e9b36bb21a81213c3f83c527bec85b668b23a120fab3e512c8e1d71e",
+        "artifact": "fcf73f15d423cae8388609fa47fb9102f85194b538d5b76c78faf9aad5a443cd",
+        "artifact_revision": "0286d7b3fecdf4660e18e7b967113ad97c5434fd2c157b13d315b1667300650d",
+        "artifact_revision_artifact_idx": "0c7c466895d1487d5da1c3171e9f7dc6ef0930f10e29a9673fc30084d5b57569",
+        "claim": "d5eee1ac76039bc736351ec53f4e7c1fa1cb4d92f06a30ae9a601eed5346547e",
+        "claim_predicate_idx": "01caf419e6443571800a2a4b5386e18c1212059b24e1a66c3958f07a86c391c6",
+        "decision_record": "9deceb9fbc766d9c42c026e70046c44ed514a70198d1698df5bd81c2330314bc",
+        "decision_validity_idx": "9f153f886d84df2b9e59ccc3176f751e8a829a38f60e588e1cdd6a72d0ea9803",
+        "continuation_option": "fa2731402300984ce2805d7dfefafa6c2835574fa41c52c504b5f003cba07771",
+        "continuation_option_rank_idx": "b196ea94e86039a32dd7e86273bae5adb9d7eaa7affbd38b7d294fd7997d5eaf",
+        "task": "0bc4e8df5b006e8b8a565a4aecd112ffd10c7b6fb6bd04cb5811ac8f4109e7f9",
+        "validation": "6497d9d5462c31951f1bd4cd6dc45ef1c7fe7d26d455e1ebb0994368a44affda",
+        "state_snapshot": "ef80522de400cd16015ec03e6d17b719a11cd60f2e229796cc019bb3dbbbd718",
+        "secret_finding": "f376520b8902d9cc9b37d204818bdca75c43596ff0f8ffc6717c1408ad8ec572",
+        "content_blob": "a96fa8b7706f12f6aa2ac625f2da008fe52a5b5e5490bb532b86e1abb8cfe576",
+        "hydration_pack": "15c083de9865a0891807e0f3d2edf0bfff96ccd71a180ff2069078286715ab88",
+        "parse_warning": "6db72d7507aff3a78b97a9f615093d2f9d5350a332963f85ba3b05051e728399",
+        "temporal_seal_log": "4a67a92c2a5583d2cd8c9d5583f2c083db733bf6e829d0af29434d4cc08d789c"
+      }
+    },
+    "access": {
+      "file": "access.sql",
+      "sha256": "19c2f5532605a9c27fbd432a5bf0dc91896894af67a60d526bf1df346416fe88",
+      "definitions": 8,
+      "tables": 8,
+      "members": {
+        "users": "8261dee41273ff9d2bff01b43778a0476f967407bbf782b172aa292ee05403c3",
+        "sessions": "dec7c66d26ed79bfd3a0a9ba5f621dfef3f750246734751d643357ff1ba9c69d",
+        "workspaces": "2147074c2b497c2d7688b23d57a48fac96174f5babd80959da6ceb42fdb0beee",
+        "members": "7c31d8538b4c20fa4dfacd501adc4d6b685a8062415b51775be8a5d2bbf4a09a",
+        "audit": "44d57fc678fdb2be7cb2e133fba6b5a4593b9b7e88fab1a5491b62bc37951d3d",
+        "attempts": "86c768b5c3df91206e2b66343a25ec44d4b07fda1a0e12e9d798d981ad9cdcc6",
+        "archives": "0eb56d49a97e56701063940c99e57722d50dc04551e2c143e317c32880c355a3",
+        "plans": "dd07ed14e54023af924725a577975ea342ec2088e1baa1926ce594ba5d0483b0"
+      }
+    },
+    "capture": {
+      "file": "capture.sql",
+      "sha256": "9d9d67889e0583a0e07be8fc9392e64abfc66c7a1c1ba056a3bd37fb1bcd8cad",
+      "definitions": 3,
+      "tables": 3,
+      "members": {
+        "jobs": "5257caf9e03afacfd1c80a303b62939944b2f8b7d6b059dcbf2b725adedadc9a",
+        "events": "e1810528489eeda776094e6e4250b3b198434aa849585dce760725598b99a26c",
+        "revisions": "b07c33a34a36b71866cbd9f99a84c66af0003281222f194c9a2e0f5e52ffacf7"
+      }
+    },
+    "library": {
+      "file": "library.sql",
+      "sha256": "0cc0b256655a14fadd0ed219051b8e16735d5399321c333cdbd68b8084459aef",
+      "definitions": 6,
+      "tables": 4,
+      "members": {
+        "corpus_plans": "0229a262603d40b0c66669f1fdc7e901828d268be4cd59b0eddc95a3c832e317",
+        "corpus_targets": "d771d8076812b020f7ad1eee0de56c0447f9d21822620a90f26c28c870adaab7",
+        "corpus_members": "91b0fc7a7a75255b2a88362d7e7d899d71b7d13a6cb5d8af801c7b6c200bab52",
+        "corpus_member_page": "bdda3162254bb878e26d10084582fd7a851bd2c944a63fd37c94396b1544da7e",
+        "corpus_target_pending": "064c051690b54dfbfb1e2d0b564f1da2ec045f339e09243200e866ff0853c2ac",
+        "corpus_events": "0f837a6319d832dc6831950d64f1b060c9edb98e2a400d4edddaab9327f7eb9c"
+      }
+    },
+    "documents": {
+      "file": "documents.sql",
+      "sha256": "602bc895da43406690f1e06c519eb533b7bd4799f2ee853eb76585674f8f4c2e",
+      "definitions": 3,
+      "tables": 3,
+      "members": {
+        "documents": "9d8cfb9b877b0e9552f424d3ec44dd282211608ea83e958d2887805bc0ebedf8",
+        "document_versions": "113810ae87e9fd3cb85849a6db1529063d6fd97e914784c6658ae43edc565a70",
+        "document_writers": "de8e5d38a2eeb1a45f0be0c060924130a05b9ae75947bc30696ec13eebfc9f67"
+      }
+    },
+    "embedding": {
+      "file": "embedding.sql",
+      "sha256": "5dd0b0990400a300cb9a63e7052d0c0032ff8c4a176313610e6f5d700cfe2a09",
+      "definitions": 2,
+      "tables": 2,
+      "members": {
+        "vectors": "ee426dd41195bcf7f0d80e0d3342d2fcd2b45bc92a50d1621d1720801967b28b",
+        "runs": "b96a6591349be6cdb2c212e6f43d21bf998da849932bec4bc9038f081b5e3366"
+      }
+    },
+    "federation": {
+      "file": "federation.sql",
+      "sha256": "ed71c23b2a1236607ed1711b77cadd60d7b543237723e1ed49d09760750c7abe",
+      "definitions": 1,
+      "tables": 1,
+      "members": {
+        "stores": "9db85f1c4bf2ec10f6d72a0f6940e882f0acef189830dd5fb2d47754e9c8b59e"
+      }
+    },
+    "reevaluation": {
+      "file": "reevaluation.sql",
+      "sha256": "eb05c3e8b7abb718d88768b086fab118da937ed14a771383f06248e5a887b301",
+      "definitions": 5,
+      "tables": 5,
+      "members": {
+        "watches": "f9c8017142c1831beb76179380b9be278e0997e33b377769c19b83d2ca944bb3",
+        "seen": "e4e718827fcc383bafe1a47e3b483c4c076354ee5f74c999d2acc1d5b1f4fbc5",
+        "scanned": "f4114b6836f4715000bbea794761ff8f959004f015ca686e2004552e5a1b878b",
+        "jobs": "6d3ddb25dc3c5ec236bbd4d8cd1b73fa59b4113b87e1eb8a870ed230bc41155b",
+        "events": "68ae893c0a7ca8b01b958449f6526fad03427a9e2fd7a42a04e5dbcaaef0b2b4"
+      }
+    },
+    "generation": {
+      "file": "generation.sql",
+      "sha256": "fb1f3ac5e29782ed2bd2987bea3df9a3a4c8dc3e3fa77da51fab0e589f39fe6a",
+      "definitions": 2,
+      "tables": 2,
+      "members": {
+        "jobs": "3a86a8ee780e4b6a8c16936771475f6cfd0dee842cd341b07c6a33f1321f575f",
+        "events": "3455cf9ee333c84ba4c7562ba267a8377e48577810bb921d99a8d4a83846cd26"
+      }
+    },
+    "pipeline": {
+      "file": "pipeline.sql",
+      "sha256": "ac48c8752d56d7d69d54b96ec8a9121a49ce52f1fc448db8c0ff4807e53b092c",
+      "definitions": 4,
+      "tables": 4,
+      "members": {
+        "pipelines": "1e3bc46f9ee84d3d8db3dbaed602fbe78fdf535a75b8182eb8ccd26c14b959a5",
+        "targets": "2a1f8262e7a56e53ae916a4ca0051f96899775cbc46bd19c1dedc65563ebb0e7",
+        "members": "35e824b436063d4b078448727c4cb9189aac4d871a950a273aa8b05866ca37d5",
+        "events": "8836c85f392fcf265d4e75d05afc448ccf8bce301601e4a57ebc6381501bab54"
+      }
+    },
+    "lease": {
+      "file": "lease.sql",
+      "sha256": "3c0159f76b633f916fd181fad501e2eefd82c810e552dbac9f90e95a449d5a8d",
+      "definitions": 1,
+      "tables": 1,
+      "members": {
+        "owners": "ab7c0a3d461347dbdf6244f47a2e844cfa8cc3a99c1b27678fc7c0538a6a7320"
+      }
+    },
+    "turns": {
+      "file": "turns.sql",
+      "sha256": "832c26816065c92d69cc4e53686c14137e6f03894385eb437640d93f3be37df7",
+      "definitions": 3,
+      "tables": 1,
+      "members": {
+        "turns": "4475c7c73a367233214cc1e81e9b0d4a31fd6640b80c9b79aa66923475036fb2",
+        "turns_no_update": "4beae0a0f1d8cdb31871f38e2e4bec4e029a4ee30460ff4e4d31d143739fe339",
+        "turns_no_delete": "7b64842c1e5290d10f2e9fe175ef714ae96ecf99b646857fa716710987c075df"
+      }
+    },
+    "volume": {
+      "file": "volume.sql",
+      "sha256": "75c83109ec1dfd5b379702c751157697b4649a457acb589b6f9aa49e7e47f41c",
+      "definitions": 7,
+      "tables": 5,
+      "members": {
+        "meta": "bd5c5e37b9666eb2fe85d319f302665fb64729c9a383064546cf085839bb17c3",
+        "sources": "c8ab2935bc4bdcf345656098fb3bae0717b12ed04bbdca43590819d35b4031a3",
+        "records": "a0546a02cb2ffa608318f5ee6153c026a00bf16132c4256456e0eddb02755364",
+        "volume_source_sequence": "67a4ac8d42d11832af85d0cd3640e95eb2cf722664e53472a27ee9b3217e730d",
+        "volume_kind_sequence": "09e647f66d5d9797f5640c88ffe70b535ba219afba1a792353edef56dbb49a73",
+        "parts": "877a9dc3bb102420877ced7b9c77b9ba2c1610f986b4b41fdf2ef648c1b8131d",
+        "heads": "1f07e62a36f301ec89e459ef73cac7bff8a713d301e651b2ed87de0658a5b37d"
+      }
+    },
+    "vector": {
+      "file": "vector.sql",
+      "sha256": "bd20a3a7caa8835cac2da83de38dac41a00c2ecb14569d77f80d9b5c8bc3526f",
+      "definitions": 8,
+      "tables": 5,
+      "members": {
+        "semantic_projection": "d4955e5a2d3416e2e329b6ef09413b142422598368c5dc0b728588d86bfd4c3d",
+        "semantic_embedding": "0c063d68b6176293ff22e06a369cbb49dfed7c11a3f0d58735cf5149d1095d52",
+        "semantic_chunk": "ca18f81fc4e39034dad20b4cd3d659705d5cd747f98e005504d8b156467ac501",
+        "semantic_fts": "565c13050d6071f53726a064b5f2d1b9656319ff3cfbfb9cde89190f80a6ad59",
+        "semantic_chunk_event_idx": "5f28e5608f291e7d56eef5104a0934b5ad8249be71034e372ab3eeaf35a49700",
+        "semantic_chunk_embedding_idx": "fbdf054f2c51916323d920e02a7ed3b677955ee5d20b98f6bc472c9837b91fa9",
+        "semantic_chunk_filter_idx": "d75ea452bc1fafc48e8adff8f50d932c3f243444ca16ef80e7a76d4971539acf",
+        "vector_index": "c4ce7e78fd12f36fb00ca736c901863470505ad6a53b8534ce0e63fc4a111283"
+      }
+    },
+    "corpus": {
+      "file": "corpus.sql",
+      "sha256": "5d35ee2f5311571d59c932c13c5107d5b4f11ce298f1fecaace80546c74b8e07",
+      "definitions": 3,
+      "tables": 1,
+      "members": {
+        "source_bindings": "74b98d88dfea80618d77eba2d07d78668f19cb49a8737156c3a9461475c68a66",
+        "source_no_update": "c2b76396dc06816cc60f11f55887bab4c144730a0971bd92da7fe5c451500ba6",
+        "source_no_delete": "a0b2295bffb377e8d1f85e573956e2fd23ae1c549314f85522aa3acf92e2a24a"
+      }
+    },
+    "semantic": {
+      "file": "semantic.sql",
+      "sha256": "8eb84f668eadb53382fca482df6bd1206e1fab9582bafec9fb02bb5a0227f1d3",
+      "definitions": 35,
+      "tables": 15,
+      "members": {
+        "afh_generation_fences": "6ec2f8faa446bb6d9951f3316824cdaf738f6d1afd965038f40487ff4120485f",
+        "record_versions": "ec782626d8140e447f8664828e4df9e27c5c901135391c540758a40b25c0608e",
+        "records_no_update": "3578b043502a793650e218b53c1fa5e0daa3074dc6c567fb1882f0691787c679",
+        "records_no_delete": "6aada5246d0822fdd099a658700b7895c314c91769c18194e04b4066e7155470",
+        "semantic_support_admissions": "4ada6389f5823dac2a362164de4d8909e7548549132dc004c24bd39deb838c64",
+        "support_no_update": "21c2f892a969ffa7649724f76baecde9b4e1139704d1f26cbd62e40c05b92fe4",
+        "support_no_delete": "bc0f20881fe89fd4ffd2f04c053cb1240fa07a3f1aaba1138c88729c1ce0d2de",
+        "semantic_act_identity": "2352cc09ea7496680240d2ee9b927f734e05d4b3ad3e32491688c0037250569e",
+        "semantic_act_no_update": "93efb3396bf3f604f10e20684a09d8875bde40cd5aae2fa05bab5f72dc54a716",
+        "semantic_clause_identity": "5f4a771fe55070446f0f425aafc75b5f7033e788370668b0ce46417458081a97",
+        "semantic_clause_versions": "c7d5e8e8d586a43bfd322603979b080a5efbb7211d90675e164fecdfb294900f",
+        "semantic_identity_no_update": "968da639855bc8f25ec2ab9408d4ff62640ece1e5f86518439b9d418c12ca4c6",
+        "semantic_versions_no_update": "7e9d0bd8690dcfc5069425f2d6e9278ab6ca23614353d8f1dbce7ab147c17a2a",
+        "semantic_act_no_delete": "e092a9fae78b46f27ec73aff9f757697fb239b785f1ff9c2fcc0cf80dd279db6",
+        "semantic_identity_no_delete": "0496c20c59690807b9ddebe68c516447a052e276f5d734dbbb97c4658f608c3a",
+        "semantic_versions_no_delete": "9002d76ec3642c42885e1254305a75ac43b650f8e4e2dd4360a07ce858b7480f",
+        "records_scope_time": "e57b822794ae11c267a3a74b4be64a2b9d05614cabd96411069278a089bfc7f9",
+        "record_integrity_policy": "67c678087be28e95ab0606c90c446c866850e808ca272d37a5b70c05eddab36c",
+        "record_envelopes": "cb07bfa4eef839299e021b568b0276551f164e4c3c09caf4e9a33296128c8183",
+        "envelopes_no_update": "18cc0bb8c9bb6867387b3ab3321dca2a59b1ada86d142d47f69bb36a95f66222",
+        "envelopes_no_delete": "f44294fbd385084abff84c935c042f4d58aba47facba8fcfcca29f1e347cd269",
+        "g1_projection_outbox": "ed9441ad1fb05a06cced2a8bd9b96e295143d9bd4ceb6345389d68883678c8bb",
+        "g1_outbox_no_update": "d2eb29ba173aa5f7ed9e9990d87653b3c21c0557979b7805f0e20dc7746a1bc3",
+        "g1_outbox_no_delete": "4ef1b91a8313afe30c26940c348e352c9a1d78fcc98800d8ace0d5ab7326e23b",
+        "g1_projection_events": "4aec111fb2ef11b797920006bafae8cd1e136d0ca74fbb14d81d0b8efb63816f",
+        "g1_events_no_update": "183383acd0786bcbb9436c2c0658571167d5f1e4702dee00229417d15fed0305",
+        "g1_events_no_delete": "8ebe1cd3a356c4f0a9a7b767d8abb90fbc62ec70d0c491874cfdff13329d7a47",
+        "afh_publication_jobs": "bdad222eb4b272cfbcd23872cd2c9975cf1f27b2cfb25f9bfbba36252edab1bf",
+        "afh_publication_events": "ebbb031acf96b2f5618a82ea92a6581cf1b2de8ebb08f7f60880b97cfad67a1c",
+        "afh_publications": "07e9fe7677a34ae9606ca1bae1774a06fca9074514b3d801cf3995ed0bdd6c95",
+        "afh_publication_fts": "a28c88c7adddd304f33c60c75d008475a62e20fefc35ba88f9f234b0f6cd4395",
+        "afh_reevaluation_receipts": "2aebde6cf9b6a88823ea09e349b92a7c44dfc23ef6812de246ffc58a5018b157",
+        "reevaluation_no_update": "d3b25fc82f2c1911837fe0c40689ff7a5cc50c680c3b7c45f76e72a7e51bee32",
+        "reevaluation_no_delete": "fba2712d9dfc329d62fabee2f7d09025ba7ca5cc71e07d36c5c5d0ffd11d81bc",
+        "support_decision_lookup": "026d4f0184c6f2de15d82d9156a233a3f18667a492f3aff4934e4709fbd6c540"
+      }
+    },
+    "graph": {
+      "file": "graph.sql",
+      "sha256": "b0277a2831d0fa26692fa942f5bf19d5d098093a4dc965cb487ae9db5511066e",
+      "definitions": 3,
+      "tables": 3,
+      "members": {
+        "objects": "67b21b2beb0f8cae56c8724ec5dea7e1dd42ba4508289111740c041e722229dd",
+        "markers": "daf6c210d7b0e8118a7b429105c12d2b6eabfba9da7fe81f01d87ab605e1bded",
+        "selectors": "19042918bf0a4e40cf7694cd2bfb51872ef7103c0ad3270fff082e4d34acffb5"
+      }
+    },
+    "graph_ledger": {
+      "file": "graph_ledger.sql",
+      "sha256": "7d75e1e949f08ccdabf555e5d8ecb238744aae56c660e1944dc0e4010327f87d",
+      "definitions": 3,
+      "tables": 3,
+      "members": {
+        "claims": "a2b64a918a712d458ba1b4e0e91a5940e41ca8b9fc03a2b28e3b216b798bfee0",
+        "receipts": "59adb0fb9af730bf87d3bb57f67383d28987ad5ca935ecd65e58380aa8e99321",
+        "selectors": "c5bab55877f3ab49dd3959924ff45fb5302b510ced3920ef3c01d279adea7d04"
+      }
+    },
+    "graph_mirror": {
+      "file": "graph_mirror.sql",
+      "sha256": "fb7d34b57bb4826920a710fcd1db8bda479b83b4b852a1f118475cc7838f7cdc",
+      "definitions": 4,
+      "tables": 2,
+      "members": {
+        "objects": "1ef4a23403951800ac030448f118e77955febe6bd78e8fb8026508fd0841533c",
+        "mirror_group_uid": "cba5022cf5b5a71fc0ebdef6c5eb2e1affc6d03d82d59c41bf20db4d6ab54004",
+        "links": "826dd2dfd70635f5ed8ef64d105b20dc10c32778c77101fda3ea282cc11cce60",
+        "mirror_incoming": "f4b1ae49b50247f991cf8257f6f6228e1e22dadf80cd26d89f53d6dc881321e6"
+      }
+    }
+  },
+  "adaptations": [
+    {
+      "source": "app/volume_store.py",
+      "reason": "legacy optional PostgreSQL projection is not an additional destination; its consumers still need to be replaced",
+      "excludedDefinition": "CREATE TABLE IF NOT EXISTS orbita_volume_instances(id TEXT PRIMARY KEY,cursor BIGINT NOT NULL,token TEXT NOT NULL)"
+    },
+    {
+      "source": "app/volume_store.py",
+      "reason": "legacy optional PostgreSQL projection is not an additional destination; its consumers still need to be replaced",
+      "excludedDefinition": "CREATE TABLE IF NOT EXISTS orbita_volume_rows(instance TEXT NOT NULL,seq BIGINT NOT NULL,source_id TEXT NOT NULL,raw TEXT NOT NULL,payload TEXT NOT NULL,row_hash TEXT NOT NULL,PRIMARY KEY(instance,seq))"
+    },
+    {
+      "source": "agent-forensic-handoff/src/semantic.js",
+      "reason": "float32 bytes become a common PostgreSQL relation; dimension and cosine query qualification remain pending",
+      "old": "CREATE VIRTUAL TABLE vector_index USING vec0(embedding float[${dimensions}] distance_metric=cosine)",
+      "new": "CREATE TABLE vector_index(rowid INTEGER PRIMARY KEY,embedding BLOB NOT NULL)"
+    },
+    {
+      "source": "app/volume_store.py",
+      "reason": "index belongs to the replaced optional mirror, not the common volume family",
+      "excludedDefinition": "CREATE INDEX IF NOT EXISTS orbita_volume_source ON orbita_volume_rows(instance,source_id,seq)"
+    },
+    {
+      "source": "agent-forensic-handoff/python/afh_semantic/justifications.py",
+      "reason": "Original support lookup omitted from initial extraction; install in the shared semantic family. Read-only dispatch verifies installed catalogue.",
+      "addedDefinition": "support_decision_lookup"
+    }
+  ],
+  "consumerMigrationComplete": false
+}

@@ -89,9 +89,9 @@ def resolve_target(records,target,stack=()):
         r=next((r for r in chain if r['version']==target['version']),None)
     else:
         root=records.memory.path.parent.parent
-        require((root/'records.sqlite3').is_file(),'TARGET_NOT_FOUND')
-        memory=AFHMemory(root,list(records.memory.sources.values()),records.memory.scope)
-        foreign=KnowledgeRecords(memory,root/'records.sqlite3')
+        require((root/'records.pgstore').is_file(),'TARGET_NOT_FOUND')
+        memory=AFHMemory(root,list(records.memory.sources.values()),records.memory.scope,read_only=True)
+        foreign=KnowledgeRecords(memory,root/'records.pgstore')
         try:
             row=foreign.db.execute('SELECT rowid AS _rowid,* FROM record_versions WHERE scope=? AND record_id=? AND version=?',
                 (records.memory.scope,target['id'],target['version'])).fetchone()

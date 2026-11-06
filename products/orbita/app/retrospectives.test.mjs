@@ -1,6 +1,10 @@
-import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import path from 'node:path';import {execFileSync} from 'node:child_process';import {fileURLToPath} from 'node:url';
-const app=path.dirname(fileURLToPath(import.meta.url)),root=fs.mkdtempSync('C:/T/orbita-retro-test-');process.env.AFH_COSMOS_DATA=root;process.env.AFH_COSMOS_EMPTY_LIBRARY='1';
+import test from 'node:test';import assert from 'node:assert/strict';import fs from '../agent-forensic-handoff/src/common-files.js';import native from 'node:fs';
+import {closeCommonStore} from '../agent-forensic-handoff/src/common-store.js';
+import {nativeFixture,runtimeEnv} from './common-test-fixtures.mjs';
+fs.mkdirSync(process.env.ORBITA_POSTGRES_TEST_ROOT,{recursive:true});import path from 'node:path';import {execFileSync} from 'node:child_process';import {fileURLToPath} from 'node:url';
+const app=path.dirname(fileURLToPath(import.meta.url)),root=fs.mkdtempSync(path.join(process.env.ORBITA_POSTGRES_TEST_ROOT,'orbita-retro-test-'));process.env.AFH_COSMOS_DATA=root;process.env.AFH_COSMOS_EMPTY_LIBRARY='1';
 const {retrospectiveOperation:op}=await import('./retrospectives.mjs'),{importDocument}=await import('./documents.mjs'),{requestRole}=await import('./access-policy.mjs');let ids,source,first,page;
+test.after(async()=>{const {closeMemory}=await import('./memory.mjs');try{await closeMemory();}finally{closeCommonStore();assert.equal(native.existsSync(root),false);}});
 const body=()=>({title:'Política y memoria retrospectiva',subjectAt:'2020-01-01T00:00:00Z',sourceCut:new Date(Date.now()+60000).toISOString(),actor:'tester',reason:'Interpretación local explícita',state:'active',claims:[{key:'rule',text:'La política requiere revisión.',position:'supports',evidence:[{sourceId:source.id,quote:'La política exige revisión.'}]}],gaps:['No se demuestra vigencia actual.'],personalReports:[]});
 test.before(async()=>{const doc=await importDocument({documentId:'retro-fixture',filename:'regla.md',content:'La política exige revisión. Alice recibió el aviso el 2020-01-01.',metadata:{title:'Documento retrospectivo'}});ids=[doc.id];source=(await op('sources',{conversationIds:ids,question:'La política'})).items[0];});
 test('F33 durable composition, source clocks and exact historical exclusion through facade',async()=>{
@@ -24,10 +28,10 @@ test('F33 changes preserve old snapshot and label its freshness without silently
  assert.deepEqual((await op('get',{conversationIds:ids,id:'one',version:1})).reference,first.reference);
 });
 test('F33 complete encrypted restore resumes snapshot and original in a separate process',async()=>{
- const {createBackup,restoreBackup}=await import('./recovery.mjs');const lab=fs.mkdtempSync('C:/T/orbita-retro-restore-'),archive=path.join(lab,'snapshot.orbita'),destination=path.join(lab,'restored'),password='fixture-retro-restore-password';
- await createBackup({source:root,archive,password,ownSession:true});await restoreBackup({archive,destination,password});const request=path.join(lab,'request.json');fs.writeFileSync(request,JSON.stringify({op:'page',conversationIds:ids,snapshotId:page.snapshotId,cursor:page.nextCursor,limit:1}));
- const restored=JSON.parse(execFileSync(process.execPath,[path.join(app,'memory-cli.mjs'),'retrospectives',request],{env:{...process.env,AFH_COSMOS_DATA:destination},encoding:'utf8',windowsHide:true,timeout:60000}));
- assert.deepEqual(restored,await op('page',JSON.parse(fs.readFileSync(request))));
+ const {createBackup,restoreBackup}=await import('./recovery.mjs');const lab=fs.mkdtempSync(path.join(process.env.ORBITA_POSTGRES_TEST_ROOT,'orbita-retro-restore-')),exports=nativeFixture('retro-restore'),archive=path.join(exports,'snapshot.orbita'),destination=path.join(lab,'restored'),password='fixture-retro-restore-password';
+ await createBackup({source:root,archive,password,ownSession:true});await restoreBackup({archive,destination,password});const request=path.join(exports,'request.json');native.writeFileSync(request,JSON.stringify({op:'page',conversationIds:ids,snapshotId:page.snapshotId,cursor:page.nextCursor,limit:1}));
+ const restored=JSON.parse(execFileSync(process.execPath,[path.join(app,'memory-cli.mjs'),'retrospectives',request],{env:runtimeEnv({data:destination}),encoding:'utf8',windowsHide:true,timeout:60000}));
+ assert.deepEqual(restored,await op('page',JSON.parse(native.readFileSync(request))));
 });
 test('F33 authenticated operation allowlist separates writes and defaults closed',()=>{
  assert.equal(requestRole('POST','/api/retrospectives',{op:'query'}),'reader');assert.equal(requestRole('POST','/api/retrospectives',{op:'put'}),'editor');assert.throws(()=>requestRole('POST','/api/retrospectives',{op:'purge'}),/ACCESS_/);
@@ -38,7 +42,7 @@ test('F33 unrelated compositions do not invalidate a selected source context fin
  assert.deepEqual(await contextState(unrelated),before);
 });
 test('F33 two real managed workers keep scope and revocation outside restored content',async()=>{
- const {AccessStore}=await import('./access-store.mjs'),{createAccessServer}=await import('./access-server.mjs');const managed=fs.mkdtempSync('C:/T/orbita-retro-managed-'),store=new AccessStore(managed,{create:true});
+ const {AccessStore}=await import('./access-store.mjs'),{createAccessServer}=await import('./access-server.mjs');const managed=fs.mkdtempSync(path.join(process.env.ORBITA_POSTGRES_TEST_ROOT,'orbita-retro-managed-')),store=new AccessStore(managed,{create:true});
  const password='synthetic-retro-managed-password',owner=store.createAccount('owner',password,{admin:true}),reader=store.createAccount('reader',password),other=store.createAccount('other',password);
  const policy={basis:'Synthetic F33 tests',purpose:'Verify retrospective scope',rightsUntil:new Date(Date.now()+86400000).toISOString(),retainUntil:new Date(Date.now()+86400000).toISOString()};
  const a=store.createWorkspace(owner.id,{name:'Retro Alpha',policy}),b=store.createWorkspace(other.id,{name:'Retro Beta',policy});store.grant(owner.id,a.id,'reader','reader');const at=store.issue(owner.id,{workspace:a.id}).token,rt=store.issue(reader.id,{workspace:a.id}).token,bt=store.issue(other.id,{workspace:b.id}).token;store.close();

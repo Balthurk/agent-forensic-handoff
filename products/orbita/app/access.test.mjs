@@ -1,16 +1,20 @@
 import test,{before,after} from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
+import native from 'node:fs';
+import fs from '../agent-forensic-handoff/src/common-files.js';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {DatabaseSync} from 'node:sqlite';
+import {DatabaseSync,closeCommonStore,exportCommonStore} from '../agent-forensic-handoff/src/common-store.js';
+import {restoreState} from './recovery.mjs';
+import {randomUUID} from 'node:crypto';
 import {AccessStore,hash} from './access-store.mjs';
 import {Lifecycle} from './access-lifecycle.mjs';
 import {requestRole} from './access-policy.mjs';
 import {createAccessServer} from './access-server.mjs';
 
-const root=fs.mkdtempSync(path.join(process.env.AFH_TEST_ROOT||'C:/T','orbita-access-'));
+fs.mkdirSync(process.env.ORBITA_POSTGRES_TEST_ROOT,{recursive:true});
+const root=fs.mkdtempSync(path.join(process.env.ORBITA_POSTGRES_TEST_ROOT,'orbita-access-'));
 const password='synthetic-F35-passphrase-only';let now=Date.now(),app,base,owner,other,reader,a,b,ownerCookie,ownerCsrf,readerToken,otherToken,ownerToken;
 const policy=()=>({basis:'Synthetic fixture source permission',purpose:'Isolated acceptance fixture only',rightsUntil:new Date(now+86400000).toISOString(),retainUntil:new Date(now+172800000).toISOString()});
 async function call(route,{token,body,headers={},cookie}={}){headers={connection:'close',...headers};const r=await fetch(base+route,{...(body?{method:'POST',body:JSON.stringify(body),headers:{'content-type':'application/json',...headers,...(token?{authorization:'Bearer '+token}:{}),...(cookie?{cookie}:{})}}:{headers:{...headers,...(token?{authorization:'Bearer '+token}:{}),...(cookie?{cookie}:{})}}),redirect:'manual'});let value;try{value=await r.json();}catch{value=null;}return {status:r.status,value,headers:r.headers};}
@@ -21,20 +25,24 @@ before(async()=>{
  app=createAccessServer({root,port:0,clock:()=>now});await new Promise(r=>app.server.listen(0,'127.0.0.1',r));base='http://127.0.0.1:'+app.server.address().port;
  const login=await call('/access/api/login',{body:{username:'owner',password},headers:{origin:base,'x-orbita-login':'1'}});assert.equal(login.status,200);ownerCookie=login.headers.get('set-cookie').split(';')[0];ownerCsrf=(await call('/access/api/session',{cookie:ownerCookie})).value.csrf;
 });
-after(async()=>{await app.close();});
+after(async()=>{try{await app?.close();}finally{const closed=closeCommonStore();assert.equal(closed.drained,true);assert.equal(native.existsSync(root),false);}});
 
 test('F35 no credential exposes no library, answer, original, history or job',async()=>{for(const route of ['/api/bootstrap','/api/history','/api/evidence?conversation=x&event=y','/api/documents/original?id=x','/api/answers/00000000-0000-0000-0000-000000000000','/api/jobs/00000000-0000-0000-0000-000000000000'])assert.equal((await call(route)).status,401);assert.equal((await call('/')).status,302);});
-test('F35 password hashes and opaque sessions are not stored in clear text',()=>{const u=app.store.db.prepare('SELECT * FROM users WHERE id=?').get(owner.id);assert.notEqual(u.password,password);assert.equal(u.password.length,64);const sessions=app.store.db.prepare('SELECT * FROM sessions').all();assert.ok(sessions.every(s=>s.hash!==ownerToken&&s.hash!==readerToken));assert.ok(!fs.readFileSync(path.join(root,'access.sqlite')).includes(Buffer.from(password)));});
+test('F35 password hashes and opaque sessions are not stored in clear text',()=>{const u=app.store.db.prepare('SELECT * FROM users WHERE id=?').get(owner.id);assert.notEqual(u.password,password);assert.equal(u.password.length,64);const sessions=app.store.db.prepare('SELECT * FROM sessions').all();assert.ok(sessions.every(s=>s.hash!==ownerToken&&s.hash!==readerToken));const stream=exportCommonStore(path.join(root,'access.pgstore')),blocks=[];try{for(;;){const chunk=stream.read(65536);if(!chunk.length)break;blocks.push(chunk);}}finally{stream.close();}assert.ok(!Buffer.concat(blocks).includes(Buffer.from(password)));});
 test('F35 login rejects cross origin and binds HttpOnly SameSite cookies',async()=>{assert.equal((await call('/access/api/login',{body:{username:'owner',password},headers:{origin:'http://evil.invalid','x-orbita-login':'1'}})).status,403);const r=await call('/access/api/login',{body:{username:'owner',password},headers:{origin:base,'x-orbita-login':'1'}});assert.match(r.headers.get('set-cookie'),/HttpOnly; SameSite=Strict/);assert.ok(!JSON.stringify(r.value).includes('token'));});
 test('F35 a wrong password is refused and repeated guesses are throttled',()=>{for(let i=0;i<5;i++)assert.throws(()=>app.store.login('missing','wrong'),/ACCESS_LOGIN_FAILED/);assert.throws(()=>app.store.login('missing','wrong'),/ACCESS_LOGIN_RATE_LIMIT/);});
+test('common control lease refuses a second service and preserves the first service',async()=>{
+ assert.throws(()=>createAccessServer({root,port:0}),/ACCESS_SERVICE_ALREADY_RUNNING/);
+ assert.equal((await call('/access/api/session',{token:ownerToken})).status,200);assert.equal(app.server.listening,true);
+});
 test('F35 browser mutations require exact CSRF and origin; duplicate credentials fail closed',async()=>{assert.equal((await call('/access/api/select',{cookie:ownerCookie,body:{id:a.id},headers:{origin:base}})).status,403);assert.equal((await call('/access/api/select',{cookie:ownerCookie,body:{id:a.id},headers:{origin:base,'x-orbita-csrf':ownerCsrf}})).status,200);assert.equal((await call('/access/api/session',{cookie:ownerCookie,token:ownerToken})).status,401);});
 test('F35 every tab binds its workspace instead of inheriting another tab selection',async()=>{assert.equal((await call('/api/bootstrap',{cookie:ownerCookie,headers:{'x-orbita-workspace':b.id}})).status,409);assert.equal((await call('/api/bootstrap',{cookie:ownerCookie,headers:{'x-orbita-workspace':a.id}})).status,200);});
 test('F35 API credentials cannot enumerate or administer a different workspace',async()=>{const s=await call('/access/api/session',{token:ownerToken});assert.deepEqual(s.value.spaces.map(w=>w.id),[a.id]);for(const route of ['members','backups'])assert.equal((await call('/access/api/'+route+'?id='+b.id,{token:ownerToken})).status,403);assert.equal((await own('workspaces',{name:'escape',policy:policy()})).status,403);});
 test('F35 workspace paths reject traversal and arbitrary roots',()=>{for(const id of ['..','ws-../../escape','C:\\other',b.id+'/../'+a.id])assert.throws(()=>app.store.workspaceRoot(id),/ACCESS_WORKSPACE_ID/);});
 test('F35 document import supports nested Windows workspace paths with spaces and journal suffixes',()=>{
- const nested=path.join(root,'nested managed workspace with spaces','s'.repeat(43),'data');fs.mkdirSync(nested,{recursive:true});
- const src=`process.env.AFH_COSMOS_DATA=${JSON.stringify(nested)};const {importDocument}=await import(${JSON.stringify(new URL('./documents.mjs',import.meta.url).href)});const {getLibrary}=await import(${JSON.stringify(new URL('./corpus.mjs',import.meta.url).href)});await importDocument({filename:'nested.md',content:'Synthetic nested path source with a verified original.'});console.log(JSON.stringify(await getLibrary()));`;
- const r=spawnSync(process.execPath,['--input-type=module','-e',src],{encoding:'utf8',windowsHide:true,timeout:20000});assert.equal(r.status,0,r.stderr);assert.equal(JSON.parse(r.stdout)[0].verified,true);
+ const nested=path.join(app.store.workspaceRoot(a.id),'nested managed workspace with spaces','s'.repeat(43),'data');fs.mkdirSync(nested,{recursive:true});
+ const src=`process.env.AFH_COSMOS_DATA=${JSON.stringify(nested)};const {importDocument}=await import(${JSON.stringify(new URL('./documents.mjs',import.meta.url).href)});const {getLibrary}=await import(${JSON.stringify(new URL('./corpus.mjs',import.meta.url).href)});await importDocument({filename:'nested.md',content:'Synthetic nested path source with a verified original.'});console.log(JSON.stringify(await getLibrary()));const {closeCommonStore}=await import(${JSON.stringify(new URL('../agent-forensic-handoff/src/common-store.js',import.meta.url).href)});closeCommonStore();`;
+ const r=spawnSync(process.execPath,['--input-type=module','-e',src],{encoding:'utf8',windowsHide:true,timeout:20000,env:{PATH:process.env.PATH,SystemRoot:process.env.SystemRoot,PYTHONDONTWRITEBYTECODE:'1',ORBITA_POSTGRES_PYTHON:process.env.ORBITA_POSTGRES_PYTHON,ORBITA_POSTGRES_BINDING:JSON.stringify(app.store.workerConfiguration(a.id).configuration)}});assert.equal(r.status,0,r.stderr);assert.equal(JSON.parse(r.stdout)[0].verified,true);
 });
 test('F35 two real workers have independent originals, caches and indexes',async()=>{
  for(const [credential,label] of [[ownerToken,'ALPHA-ONLY-871'],[otherToken,'BETA-ONLY-934']]){const r=await call('/api/documents',{token:credential,body:{filename:'secret.md',content:`# ${label}\n${label} permite ensayo sólo si QA aprueba. La vigencia no está certificada.`,metadata:{title:label}}});assert.equal(r.status,200,JSON.stringify(r.value));}
@@ -45,6 +53,11 @@ test('F35 two real workers have independent originals, caches and indexes',async
 test('F35 readers retrieve original-backed evidence but cannot mutate documents or semantic records',async()=>{
  const r=await call('/api/retrieve',{token:readerToken,body:{question:'ALPHA-ONLY-871',conversationIds:[a.caseId],retrieval:{mode:'lexical'}}});assert.equal(r.status,200,JSON.stringify(r.value));assert.ok(r.value.evidence.some(e=>e.text.includes('ALPHA-ONLY-871')));assert.equal(r.value.context.executionAuthority,false);
  for(const [route,body] of [['/api/documents',{filename:'x.md',content:'bad'}],['/api/learning',{op:'record'}],['/api/decisions',{op:'frame'}],['/api/supports',{op:'review'}],['/api/semantic',{op:'correct'}]])assert.equal((await call(route,{token:readerToken,body})).status,403);
+});
+test('common managed worker reuse observes membership epoch and drains the previous process',async()=>{
+ const prior=await app.workers.get(a.id);app.store.grant(owner.id,a.id,'reader','reader');
+ const current=await app.workers.get(a.id);assert.notEqual(current.epoch,prior.epoch);assert.notEqual(current.child.pid,prior.child.pid);assert.equal(prior.closedSeen,true);assert.equal(prior.exited,true);
+ assert.equal((await call('/api/bootstrap',{token:ownerToken})).value.library[0].id,a.caseId);
 });
 test('F35 guessed cross-workspace original and context IDs cannot return other data',async()=>{
  for(const [route,body] of [['/api/documents/original?id='+b.caseId,null],['/api/retrieve',{question:'BETA-ONLY-934',conversationIds:[b.caseId],retrieval:{mode:'lexical'}}],['/api/context/page',{snapshot:'other-snapshot',conversationIds:[b.caseId]}]]){const r=await call(route,{token:readerToken,body});assert.ok(r.status>=400);assert.ok(!JSON.stringify(r.value).includes('BETA-ONLY-934'));}
@@ -71,17 +84,17 @@ test('F35 backup restore keeps current membership revocation and all source hash
  assert.equal((await call('/api/bootstrap',{token:readerToken})).status,401);const after=(await call('/api/bootstrap',{token:ownerToken})).value.library;assert.deepEqual(after.map(x=>[x.id,x.hash]),before.map(x=>[x.id,x.hash]));
 });
 test('F35 backup verification scratch files remain inside the managed lifecycle root',async()=>{
- const paths=[],original=fs.mkdtempSync;fs.mkdtempSync=(prefix,...args)=>{paths.push(String(prefix));return original(prefix,...args);};
- try{const r=await own('backup',{id:a.id,password});assert.equal(r.status,200,JSON.stringify(r.value));}finally{fs.mkdtempSync=original;}
+ const paths=[],original=fs.cloneTreeSync;fs.cloneTreeSync=(source,target,...args)=>{paths.push(String(target));return original(source,target,...args);};
+ try{const r=await own('backup',{id:a.id,password});assert.equal(r.status,200,JSON.stringify(r.value));}finally{fs.cloneTreeSync=original;}
  assert.ok(paths.length);assert.ok(paths.every(p=>p.startsWith(path.join(app.store.workspaceRoot(a.id),'scratch')+path.sep)));
 });
-test('F35 integral backup validates deep SQLite leftovers without omitting a long path',async()=>{
- const dir=path.join(app.store.workspaceRoot(a.id),'data','abandoned-'+'x'.repeat(100),'nested-'+'y'.repeat(100));fs.mkdirSync(dir,{recursive:true});const file=path.join(dir,'store.sqlite');
- const db=new DatabaseSync(path.toNamespacedPath(file));db.exec('CREATE TABLE retained(value TEXT);INSERT INTO retained VALUES(\'synthetic abandoned store\')');db.close();
+test('F35 integral backup validates deep typed relational leftovers without omitting a long path',async()=>{
+ const dir=path.join(app.store.workspaceRoot(a.id),'data','abandoned-'+'x'.repeat(100),'nested-'+'y'.repeat(100));fs.mkdirSync(dir,{recursive:true});const file=path.join(dir,'store.pgstore');
+ const db=new DatabaseSync(file,{family:'f35_fixture',create:true});db.exec('CREATE TABLE retained(value TEXT);INSERT INTO retained VALUES(\'synthetic abandoned store\')');db.close();
  const r=await own('backup',{id:a.id,password});assert.equal(r.status,200,JSON.stringify(r.value));assert.ok(r.value.files>0);
 });
 test('F35 wrong password and cross-workspace archive reuse never replace live data',async()=>{const r=await own('restore',{id:a.id,backupId:a.backupId,password:'wrong-password-synthetic'});assert.ok(r.status>=400);assert.equal((await call('/access/api/restore',{token:otherToken,body:{id:b.id,backupId:a.backupId,password}})).status,404);assert.equal((await call('/api/bootstrap',{token:ownerToken})).value.library[0].id,a.caseId);});
-test('F35 retained state survives a fresh process and source rights are still checked',async()=>{await app.workers.stop(a.id);const src=`import {AccessStore} from ${JSON.stringify(new URL('./access-store.mjs',import.meta.url).href)};const s=new AccessStore(${JSON.stringify(root)});console.log(JSON.stringify({spaces:s.list(${JSON.stringify(owner.id)}).map(w=>w.id),members:s.members(${JSON.stringify(owner.id)},${JSON.stringify(a.id)}).map(m=>m.id)}));s.close();`;const r=spawnSync(process.execPath,['--input-type=module','-e',src],{encoding:'utf8',windowsHide:true});assert.equal(r.status,0,r.stderr);const v=JSON.parse(r.stdout);assert.ok(v.spaces.includes(a.id));assert.ok(!v.members.includes(reader.id));});
+test('F35 retained state survives a fresh process and source rights are still checked',async()=>{await app.workers.stop(a.id);const src=`import {AccessStore} from ${JSON.stringify(new URL('./access-store.mjs',import.meta.url).href)};const s=new AccessStore(${JSON.stringify(root)});console.log(JSON.stringify({spaces:s.list(${JSON.stringify(owner.id)}).map(w=>w.id),members:s.members(${JSON.stringify(owner.id)},${JSON.stringify(a.id)}).map(m=>m.id)}));s.close();const {closeCommonStore}=await import(${JSON.stringify(new URL('../agent-forensic-handoff/src/common-store.js',import.meta.url).href)});closeCommonStore();`;const r=spawnSync(process.execPath,['--input-type=module','-e',src],{encoding:'utf8',windowsHide:true});assert.equal(r.status,0,r.stderr);const v=JSON.parse(r.stdout);assert.ok(v.spaces.includes(a.id));assert.ok(!v.members.includes(reader.id));});
 test('F35 interrupted maintenance restores its prior data and requires explicit resume',async()=>{
  await app.workers.stop(a.id);const w=app.store.workspace(a.id),dir=app.store.workspaceRoot(a.id),prior='retired-11111111-1111-1111-1111-111111111111';
  app.store.save({...w,status:'maintenance',restoreTransition:{prior}},'synthetic_crash_boundary',owner.id);fs.renameSync(path.join(dir,'data'),path.join(dir,prior));
@@ -91,7 +104,7 @@ test('F35 interrupted maintenance restores its prior data and requires explicit 
 test('F35 interrupted purge can finalize a tombstone when all managed files are already absent',async()=>{
  const w=app.store.createWorkspace(owner.id,{name:'Disposable crash recovery',policy:policy()}),l=new Lifecycle(app.store,id=>app.workers.stop(id)),plan=await l.plan(owner.id,w.id);
  app.store.save({...app.store.workspace(w.id),status:'purge_failed',purgeAttempt:{planId:plan.id,snapshot:plan.snapshot}},'synthetic_crash_after_delete',owner.id);
- const dir=app.store.workspaceRoot(w.id);assert.equal(path.dirname(dir),path.join(root,'spaces'));fs.rmSync(dir,{recursive:true});
+ const dir=app.store.workspaceRoot(w.id);assert.equal(path.dirname(dir),path.join(root,'spaces'));const actual=app.store.purgeContent(w.id);assert.equal(actual.purged,true);assert.equal(fs.existsSync(dir),false);
  const retry=await l.plan(owner.id,w.id);assert.equal(retry.rootAbsent,true);const receipt=await l.purge(owner.id,w.id,retry.id,retry.confirmation);assert.equal(receipt.files,plan.snapshot.files);assert.equal(app.store.workspace(w.id).status,'purged');
 });
 test('F35 expired purge confirmation cannot delete bytes',async()=>{
@@ -100,8 +113,22 @@ test('F35 expired purge confirmation cannot delete bytes',async()=>{
  const fresh=await l.plan(owner.id,w.id);await l.purge(owner.id,w.id,fresh.id,fresh.confirmation);
 });
 test('F35 an outstanding external copy or legal hold blocks purge before deletion',async()=>{let w=app.store.externalCopy(owner.id,a.id,'synthetic external copy');assert.equal((await own('purge-plan',{id:a.id})).status,409);app.store.acknowledgeCopy(owner.id,a.id,w.externalCopies[0].id,'synthetic copy already destroyed');app.store.policy(owner.id,a.id,{legalHold:true,reason:'synthetic hold requirement'});assert.equal((await own('purge-plan',{id:a.id})).status,409);assert.ok(fs.existsSync(app.store.workspaceRoot(a.id)));app.store.policy(owner.id,a.id,{legalHold:false,reason:'synthetic hold released'});});
-test('F35 inventory includes unmanaged future stores, prompts, backups and access sidecars',async()=>{await app.workers.stop(a.id);const dir=app.store.workspaceRoot(a.id);fs.mkdirSync(path.join(dir,'future-store'),{recursive:true});fs.writeFileSync(path.join(dir,'future-store','payload.txt'),'SYNTHETIC-FUTURE-STORE');const r=await own('preview',{id:a.id});assert.equal(r.status,200);assert.ok(r.value.inventory.files>10);assert.ok(fs.existsSync(path.join(dir,'backups',a.backupId+'.orbita')));assert.ok(fs.existsSync(path.join(dir,'.data.orbita-access.sqlite')));});
-test('F35 aliases and hardlinks prevent inventory and purge, preserving the external target',async()=>{const dir=app.store.workspaceRoot(a.id),outside=path.join(root,'outside.txt');fs.writeFileSync(outside,'MUST-SURVIVE');const link=path.join(dir,'hard-link.txt');fs.linkSync(outside,link);assert.ok((await own('preview',{id:a.id})).status>=400);fs.unlinkSync(link);const target=path.join(root,'external-dir');fs.mkdirSync(target);const junction=path.join(dir,'junction');fs.symlinkSync(target,junction,'junction');assert.ok((await own('preview',{id:a.id})).status>=400);fs.unlinkSync(junction);assert.equal(fs.readFileSync(outside,'utf8'),'MUST-SURVIVE');});
+test('F35 inventory includes unmanaged future stores, prompts, backups and access sidecars',async()=>{await app.workers.stop(a.id);const dir=app.store.workspaceRoot(a.id);fs.mkdirSync(path.join(dir,'future-store'),{recursive:true});fs.writeFileSync(path.join(dir,'future-store','payload.txt'),'SYNTHETIC-FUTURE-STORE');const r=await own('preview',{id:a.id});assert.equal(r.status,200);assert.ok(r.value.inventory.files>10);assert.ok(fs.existsSync(path.join(dir,'backups',a.backupId+'.orbita')));const control=restoreState(path.join(dir,'data'));assert.equal(control.schema,'orbita-restore-2');assert.equal(control.automaticWork,false);assert.equal(control.externalAccess,false);});
+test('F35 aliases and hardlinks prevent inventory and purge, preserving the external target',async()=>{
+ const attack=path.join(process.env.ORBITA_POSTGRES_TEST_NATIVE_ROOT,'f35-'+randomUUID());native.mkdirSync(attack,{recursive:true});
+ const store=new AccessStore(path.join(attack,'control'),{create:true}),user=store.createAccount('owner',password,{admin:true}),w=store.createWorkspace(user.id,{name:'Native path attack fixture',policy:policy()}),life=new Lifecycle(store,async()=>{}),dir=store.workspaceRoot(w.id);
+ try{
+  const outside=path.join(attack,'outside.txt'),link=path.join(dir,'hard-link.txt');native.writeFileSync(outside,'MUST-SURVIVE');fs.writeFileSync(link,'logical member retained');native.mkdirSync(dir,{recursive:true});native.linkSync(outside,link);
+  await assert.rejects(life.preview(user.id,w.id),/HARDLINK/);await assert.rejects(life.plan(user.id,w.id),/HARDLINK/);native.unlinkSync(link);
+  const target=path.join(attack,'external-dir'),junction=path.join(dir,'junction');native.mkdirSync(target);fs.mkdirSync(junction);native.symlinkSync(target,junction,'junction');
+  await assert.rejects(life.preview(user.id,w.id),/LINK|REPARSE/);await assert.rejects(life.plan(user.id,w.id),/LINK|REPARSE/);native.unlinkSync(junction);assert.equal(native.readFileSync(outside,'utf8'),'MUST-SURVIVE');assert.equal(native.readdirSync(target).length,0);
+ }finally{store.close();}
+});
 test('F35 a changed file invalidates the frozen deletion plan; access stays closed',async()=>{const p=await own('purge-plan',{id:a.id});assert.equal(p.status,200,JSON.stringify(p.value));fs.writeFileSync(path.join(app.store.workspaceRoot(a.id),'changed.txt'),'AFTER-PLAN');const r=await own('purge',{id:a.id,planId:p.value.id,confirmation:p.value.confirmation});assert.equal(r.status,409);assert.equal((await call('/api/bootstrap',{token:ownerToken})).status,403);assert.equal(app.store.workspace(a.id).status,'purge_prepared');await own('purge-cancel',{id:a.id});assert.equal(app.store.workspace(a.id).status,'suspended');app.store.policy(owner.id,a.id,{suspended:false,reason:'synthetic resume after changed plan'});});
-test('F35 failed deletion is never reported as purged and can be replanned',async()=>{const p=(await own('purge-plan',{id:a.id})).value,original=fs.rmSync;fs.rmSync=(target,opts)=>{if(target===app.store.workspaceRoot(a.id)){const e=new Error('synthetic OS denied deletion');e.code='EACCES';throw e;}return original(target,opts);};try{assert.equal((await own('purge',{id:a.id,planId:p.id,confirmation:p.confirmation})).status,503);}finally{fs.rmSync=original;}assert.equal(app.store.workspace(a.id).status,'purge_failed');assert.ok(fs.existsSync(app.store.workspaceRoot(a.id)));});
+test('F35 failed deletion is never reported as purged and can be replanned',async()=>{
+ const p=(await own('purge-plan',{id:a.id})).value,original=app.store.purgeContent;let held;
+ app.store.purgeContent=function(id){held=fs.openSync(path.join(this.workspaceRoot(id),'data/library.json'),'r');return original.call(this,id);};
+ try{assert.equal((await own('purge',{id:a.id,planId:p.id,confirmation:p.confirmation})).status,503);assert.ok(held,'real PostgreSQL object reader entered after the frozen inventory');}finally{app.store.purgeContent=original;if(held)fs.closeSync(held);}
+ assert.equal(app.store.workspace(a.id).status,'purge_failed');assert.ok(fs.existsSync(app.store.workspaceRoot(a.id)));assert.equal(app.store.managedState(a.id).purged,false);
+});
 test('F35 complete synthetic purge deletes all managed data/backups and leaves other workspace intact',async()=>{const p=await own('purge-plan',{id:a.id});assert.equal(p.status,200);const r=await own('purge',{id:a.id,planId:p.value.id,confirmation:p.value.confirmation});assert.equal(r.status,200,JSON.stringify(r.value));assert.equal(r.value.managedFilesAbsent,true);assert.equal(r.value.physicalErasure,false);assert.ok(!fs.existsSync(app.store.workspaceRoot(a.id)));assert.ok(fs.existsSync(app.store.workspaceRoot(b.id)));assert.equal(app.store.workspace(a.id).status,'purged');assert.equal((await call('/api/bootstrap',{token:ownerToken})).status,401);assert.throws(()=>app.store.authorizeUser(owner.id,a.id,'owner',{maintenance:true}),/DENIED/);assert.equal((await call('/api/bootstrap',{token:otherToken})).value.library[0].id,b.caseId);});

@@ -4,6 +4,7 @@ from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 from afh_semantic.host import dispatch
 from store_access import use_store
+from orbita_store.pool import close_idle
 def unique(pairs):
     result={}
     for k,v in pairs:
@@ -16,6 +17,8 @@ try:
     if len(data)>32000000:raise ValueError('BRIDGE_INPUT_BUDGET')
     request=json.loads(data,object_pairs_hook=unique,parse_constant=lambda x:(_ for _ in ()).throw(ValueError('NONFINITE_JSON')))
     use_store(Path(request['root']).resolve().parent)
-    print(json.dumps({'ok':True,'result':dispatch(request)},ensure_ascii=False,allow_nan=False))
+    try:result=dispatch(request)
+    finally:close_idle()
+    print(json.dumps({'ok':True,'result':result},ensure_ascii=False,allow_nan=False))
 except Exception as error:
     print(json.dumps({'ok':False,'error':str(error),'type':type(error).__name__},ensure_ascii=False));sys.exit(1)

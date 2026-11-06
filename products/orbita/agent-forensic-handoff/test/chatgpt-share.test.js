@@ -1,11 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
+import native from 'node:fs';
+import fs from '../src/common-files.js';
+import {closeCommonStore} from '../src/common-store.js';
 import os from 'node:os';
 import path from 'node:path';
 import { parseSharePage, validateShareUrl, importChatGPTShare } from '../src/chatgpt-share.js';
 import { verifyCaseIntegrity, queryCase, showEvent, readEvidence } from '../src/index.js';
 import { normalizeRecord } from '../src/adapters.js';
+
+
+const commonRoot=process.env.ORBITA_POSTGRES_TEST_ROOT;
+if(!commonRoot)throw new Error('PG_TEST_ROOT_REQUIRED');
+const inputRoot=path.join(path.dirname(commonRoot),'inputs');native.mkdirSync(inputRoot,{recursive:true});
+const caseOutput=(root,name='case')=>path.join(commonRoot,path.basename(root),name);
+test.after(()=>{assert.equal(native.existsSync(commonRoot),false);closeCommonStore();});
 
 const url='https://chatgpt.com/share/11111111-2222-4333-8444-555555555555';
 function fixture(nodes, extra={}) {
@@ -31,12 +40,12 @@ test('public URL allowlist and malformed/ambiguous snapshot rejection',()=>{
   assert.equal(parseSharePage(fixture(nodes)).nodes.length,3);
 });
 test('full snapshot import, middle-text retrieval, exact evidence and raw tamper detection',async()=>{
-  const root=fs.mkdtempSync(path.join(os.tmpdir(),'afh-share-test-'));
+  const root=native.mkdtempSync(path.join(inputRoot,'afh-share-test-'));
   try {
-    const wrong=path.join(root,'wrong.html');fs.writeFileSync(wrong,fixture(nodes,{conversation_id:'different-id'}));
-    await assert.rejects(importChatGPTShare(url,{htmlPath:wrong,caseDir:path.join(root,'wrong-case')}),/identity/);
-    const html=path.join(root,'input.html');fs.writeFileSync(html,fixture(nodes));
-    const dest=path.join(root,'case');const result=await importChatGPTShare(url,{htmlPath:html,caseDir:dest});
+    const wrong=path.join(root,'wrong.html');native.writeFileSync(wrong,fixture(nodes,{conversation_id:'different-id'}));
+    await assert.rejects(importChatGPTShare(url,{htmlPath:wrong,caseDir:caseOutput(root,'wrong-case')}),/identity/);
+    const html=path.join(root,'input.html');native.writeFileSync(html,fixture(nodes));
+    const dest=caseOutput(root);const result=await importChatGPTShare(url,{htmlPath:html,caseDir:dest});
     assert.equal(result.capture.messageCount,2);assert.equal(result.capture.nodeCount,3);
     assert.equal((await verifyCaseIntegrity(dest)).passed,true);
     const q=await queryCase(dest,'MARCADORCENTRAL',{mode:'lexical',limit:10});assert.equal(q.results.length,1);
@@ -46,17 +55,17 @@ test('full snapshot import, middle-text retrieval, exact evidence and raw tamper
     const rawPath=path.join(dest,'acquisition/chatgpt-share.html');fs.appendFileSync(rawPath,'tampered');
     assert.equal((await verifyCaseIntegrity(dest)).passed,false);
     fs.unlinkSync(rawPath);assert.equal((await verifyCaseIntegrity(dest)).passed,false);
-  } finally {fs.rmSync(root,{recursive:true,force:true});}
+  } finally {assert.equal(native.existsSync(caseOutput(root)),false);}
 });
 test('fetch refuses login redirects and HTTP errors and enforces size bound',async()=>{
-  const root=fs.mkdtempSync(path.join(os.tmpdir(),'afh-share-network-'));
+  const root=native.mkdtempSync(path.join(inputRoot,'afh-share-network-'));
   try {
     for(const [name,fetchImpl] of [
       ['login',async()=>new Response('',{status:302,headers:{location:'https://auth.openai.com/login'}})],
       ['denied',async()=>new Response('Forbidden',{status:403})],
       ['large',async()=>new Response('x'.repeat(2000),{status:200,headers:{'content-type':'text/html'}})]
-    ])await assert.rejects(importChatGPTShare(url,{caseDir:path.join(root,name),fetchImpl,maxBytes:1000}));
-  }finally{fs.rmSync(root,{recursive:true,force:true});}
+    ])await assert.rejects(importChatGPTShare(url,{caseDir:caseOutput(root,name),fetchImpl,maxBytes:1000}));
+  }finally{assert.equal(native.existsSync(caseOutput(root)),false);}
 });
 
 test('published rationale, system context and tool outcome retain distinct meanings',()=>{

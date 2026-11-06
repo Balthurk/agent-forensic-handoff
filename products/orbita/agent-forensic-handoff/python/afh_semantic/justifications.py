@@ -5,7 +5,7 @@ Withdrawn/missing evidence is unknown, including under NOT. All/any/not share
 the N04 condition AST operator/operands vocabulary; unknown operators persist.
 """
 import copy, re
-from pathlib import Path
+from orbita_store.paths import Path
 from .knowledge_records import KnowledgeRecords, RecordError, _identifier, _json, _text
 from .collectives import digest, now, sql_cut, temporal, validity, require, resolve_target
 from .relational_memory import instant
@@ -32,10 +32,10 @@ def exact(records,kind,key,version=None,known=None):
 def external(records,folder,callback):
     from .host import AFHMemory
     root=records.memory.path.parent.parent/folder
-    require((root/'records.sqlite3').is_file(),'TARGET_NOT_FOUND')
+    require((root/'records.pgstore').is_file(),'TARGET_NOT_FOUND')
     # Cross-store resolution only reads existing versions. Opening a writer
     # here can deadlock a caller holding the decision's read snapshot (F22).
-    m=AFHMemory(root,list(records.memory.sources.values()),records.memory.scope);r=KnowledgeRecords(m,root/'records.sqlite3',read_only=True)
+    m=AFHMemory(root,list(records.memory.sources.values()),records.memory.scope,read_only=True);r=KnowledgeRecords(m,root/'records.pgstore',read_only=True)
     try:return callback(r)
     finally:r.close();m.close()
 
@@ -228,9 +228,14 @@ def evaluate(records,request):
         coverage='All admitted justifications for this exact decision version and alternative within bounded selected sources; absence is not global absence.',**POLICY)
     require(packet_bytes(result)<=maximum,'SUPPORT_PACKET_BUDGET');return result
 
+SUPPORT_INDEX = "CREATE INDEX IF NOT EXISTS support_decision_lookup ON record_versions(scope,json_extract(payload,'$.support.kind'),json_extract(payload,'$.support.detail.decision.caseId'),json_extract(payload,'$.support.detail.alternativeId'),record_id,recorded_at)"
+
+
 def dispatch_support(records,request):
     op=request['op'];scope=records.memory.scope
-    records.db.execute("CREATE INDEX IF NOT EXISTS support_decision_lookup ON record_versions(scope,json_extract(payload,'$.support.kind'),json_extract(payload,'$.support.detail.decision.caseId'),json_extract(payload,'$.support.detail.alternativeId'),record_id,recorded_at)")
+    # The operator installs this shared index once. Read-only consumers verify
+    # its real catalogue entry without attempting schema mutation.
+    require(records.db.catalog.get('support_decision_lookup',{}).get('kind')=='index','SUPPORT_INDEX_MISSING')
     if op in ('support_put','support_impact'):
         kind='justification' if op=='support_put' else 'impact';detail=request.get('detail');key=request.get('id') if kind=='justification' else digest(detail.get('target')) if isinstance(detail,dict) else None;_identifier(key)
         version=request.get('expectedVersion',0);require(type(version) is int and version>=0,'INVALID_VERSION');chain=history(records,kind,key)

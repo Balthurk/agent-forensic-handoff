@@ -1,11 +1,11 @@
-import fs from 'node:fs';import path from 'node:path';
+import fs from '../agent-forensic-handoff/src/common-files.js';import path from 'node:path';
 import {knowledgeOperation,verifiedSources} from './knowledge.mjs';
 import {DATA,refreshLibrary} from './corpus.mjs';
 export async function collectiveSources(ids,options={}){
  refreshLibrary();const {sources}=await verifiedSources(ids,options);
  return sources.filter(s=>!s.aliasOf).map(({id,revision,conversationId,eventId,role,text,document})=>({id,revision,conversationId,eventId,role,text,...(document?{document}:{})}));
 }
-export const hasCollectives=()=>fs.existsSync(path.join(DATA,'semantic','collectives','records.sqlite3'));
+export const hasCollectives=()=>fs.existsSync(path.join(DATA,'semantic','collectives','records.pgstore'));
 export async function collectiveOperation(op,input={},options={}){
  if(!['put','query','get','history'].includes(op))throw new Error('UNKNOWN_COLLECTIVE_OPERATION');
  refreshLibrary();const {conversationIds,...body}=input;

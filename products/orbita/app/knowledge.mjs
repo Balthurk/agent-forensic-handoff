@@ -1,5 +1,5 @@
 import {pythonExecutable} from '../agent-forensic-handoff/src/python-runtime.js';
-import fs from 'node:fs';import path from 'node:path';import {spawn} from 'node:child_process';import {createHash,randomUUID} from 'node:crypto';import {fileURLToPath} from 'node:url';
+import fs from '../agent-forensic-handoff/src/common-files.js';import path from 'node:path';import {spawn} from 'node:child_process';import {createHash,randomUUID} from 'node:crypto';import {fileURLToPath} from 'node:url';
 import {DATA,library,loadCase} from './corpus.mjs';
 import {classifyOccurrences} from '../agent-forensic-handoff/src/representation-equivalence.js';
 import {infer} from './llm.mjs';
@@ -7,7 +7,9 @@ import {Utf8Stream} from './utf8-stream.mjs';
 import {cancellationPoint} from './deadline.mjs';
 import {terminateOwned} from './owned-process.mjs';
 import {retainedGeneration} from './retained-generation.mjs';
-import {hasSemanticStorage} from './semantic-storage.mjs';
+import {setTimeout as delay} from 'node:timers/promises';
+import {commonWorkerConfiguration,observeCommonWorker} from '../agent-forensic-handoff/src/common-store.js';
+import {commonWorkerEnv} from './common-worker-env.mjs';
 import {GraphProgress} from './graph-progress.mjs';
 import {validateDiscovery} from './semantic-discovery.mjs';
 const ROOT=path.dirname(fileURLToPath(import.meta.url));
@@ -44,24 +46,36 @@ export async function verifiedSources(ids,{signal}={}){
 }
 function bridge(request,{signal}={}){
  signal?.throwIfAborted();
+ const ownerId=randomUUID(),configuration=commonWorkerConfiguration(DATA);
+ const remoteGraph=['graph_publish','graph_query','graph_original'].includes(request.op)&&request.backend==='postgresql-verified';
+ const child=spawn(pythonExecutable(['ORBITA_POSTGRES_PYTHON']),['-I','-B',BRIDGE],{windowsHide:true,stdio:['pipe','pipe','pipe'],cwd:ROOT,env:{...commonWorkerEnv(configuration,{data:DATA,ownerId}),AFH_G1_PROGRESS:remoteGraph?'1':'0'}});
+ const out=new Utf8Stream(32000000),err=new Utf8Stream(1000000);let settled=false,failure=null,closeTimer;
  return new Promise((resolve,reject)=>{
-  const python=pythonExecutable(hasSemanticStorage(DATA)?['AFH_SEMANTIC_PYTHON','AFH_VOLUME_PYTHON']:[]);
-  const remoteGraph=['graph_publish','graph_query','graph_original'].includes(request.op)&&request.backend==='janusgraph';
-  const child=spawn(python,['-I','-B',BRIDGE],{windowsHide:true,stdio:['pipe','pipe','pipe'],cwd:ROOT,env:{...process.env,AFH_G1_PROGRESS:remoteGraph?'1':'0'}});
-  const out=new Utf8Stream(32000000),err=new Utf8Stream(1000000);let settled=false;
-  const fail=e=>{if(settled)return;settled=true;clearTimeout(timer);clearTimeout(hardTimer);signal?.removeEventListener('abort',cancel);terminateOwned(child);reject(e);};
+  const finish=(error,result)=>{if(settled)return;settled=true;clearTimeout(timer);clearTimeout(hardTimer);clearTimeout(closeTimer);signal?.removeEventListener('abort',cancel);if(error)reject(error);else resolve(result);};
+  const fail=e=>{failure??=e;terminateOwned(child);if(!closeTimer)closeTimer=setTimeout(()=>finish(new Error('SEMANTIC_BRIDGE_CLOSE_UNVERIFIED')),15000);};
   const timer=setTimeout(()=>fail(new Error('SEMANTIC_BRIDGE_TIMEOUT')),60000);
   const hardTimer=remoteGraph?setTimeout(()=>fail(new Error('GRAPH_OPERATION_TOTAL_TIMEOUT')),600000):undefined;
-  const progress=remoteGraph?new GraphProgress(()=>{if(!settled)timer.refresh();}):null;
-  const cancel=()=>fail(signal.reason??new Error('CALLER_CANCELLED'));signal?.addEventListener('abort',cancel,{once:true});if(signal?.aborted)cancel();
-  child.on('error',fail);
+  const progress=remoteGraph?new GraphProgress(()=>{if(!failure&&!settled)timer.refresh();}):null;
+  const cancel=()=>fail(signal.reason??new Error('CALLER_CANCELLED'));signal?.addEventListener('abort',cancel,{once:true});
+  child.on('error',()=>{failure??=new Error('SEMANTIC_BRIDGE_UNAVAILABLE');});
   child.stdout.on('data',b=>{try{out.push(b);}catch(e){fail(e);}});
   child.stderr.on('data',b=>{try{err.push(b);progress?.push(b);}catch(e){fail(e);}});
-  child.on('close',code=>{clearTimeout(timer);clearTimeout(hardTimer);signal?.removeEventListener('abort',cancel);if(settled)return;try{
-   const output=out.end(),errors=err.end();let r;try{r=JSON.parse(output);}catch{throw new Error('SEMANTIC_BRIDGE_INVALID_OUTPUT_'+code+' '+errors.slice(-1000));}
-   if(!r.ok)throw new Error(r.error);if(code!==0)throw new Error('SEMANTIC_BRIDGE_EXIT_'+code+' '+errors.slice(-1000));settled=true;resolve(r.result);
-  }catch(e){fail(e);}});
-  child.stdin.on('error',()=>{});child.stdin.end(JSON.stringify({...request,root:STORE,scope:'afh-corpus'}));
+  child.once('close',async code=>{
+   clearTimeout(timer);clearTimeout(hardTimer);clearTimeout(closeTimer);
+   let observed;const deadline=performance.now()+15000;
+   try{do{observed=observeCommonWorker(ownerId);if(observed.backends===0)break;await delay(25);}while(performance.now()<deadline);}catch{observed=null;}
+   if(observed?.backends!==0)return finish(new Error('SEMANTIC_POSTGRES_DRAIN_UNVERIFIED'));
+   if(signal?.aborted)failure??=signal.reason??new Error('CALLER_CANCELLED');
+   if(failure)return finish(failure);
+   try{
+    const output=out.end();err.end();let r;try{r=JSON.parse(output);}catch{throw new Error('SEMANTIC_BRIDGE_INVALID_OUTPUT_'+code);}
+    if(!r.ok)throw new Error(typeof r.error==='string'?r.error:'SEMANTIC_BRIDGE_FAILED');if(code!==0)throw new Error('SEMANTIC_BRIDGE_EXIT_'+code);
+    if(JSON.stringify(commonWorkerConfiguration(DATA))!==JSON.stringify(configuration))throw new Error('SEMANTIC_AUTHORITY_CHANGED');
+    finish(null,r.result);
+   }catch(e){finish(e);}
+  });
+  child.stdin.on('error',()=>{});
+  try{const input=JSON.stringify({...request,root:STORE,scope:'afh-corpus'});if(Buffer.byteLength(input)>32000000)throw new Error('BRIDGE_INPUT_BUDGET');child.stdin.end(input);if(signal?.aborted)cancel();}catch(e){fail(e);}
  });
 }
 export async function knowledgeOperation(op,ids,input={},{signal}={}){
@@ -76,14 +90,14 @@ export async function knowledgeOperation(op,ids,input={},{signal}={}){
  return result;
 }
 export async function knowledgeCoverage(ids){
- if(!fs.existsSync(path.join(STORE,'records.sqlite3')))return {};
+ if(!fs.existsSync(path.join(STORE,'records.pgstore')))return {};
  const records=await knowledgeOperation('list',ids),out={};
  for(const id of ids){const rs=records.filter(r=>r.sourceBindings.some(s=>s.id===r.payload.semantic_unit.target_ref.id&&s.conversationId===id));const targets=new Set(rs.map(r=>r.payload.semantic_unit.target_ref.id));
   out[id]={status:rs.length?'partial':'not_performed',records:targets.size,semanticRecords:rs.length,clauses:rs.reduce((n,r)=>n+r.payload.semantic_unit.clauses.length,0),reviewedClauses:rs.reduce((n,r)=>n+r.payload.semantic_unit.clauses.filter(c=>c.applicability==='eligible_for_publication').length,0),unit:'target_representations',completeness:'not_certified'};}
  return out;
 }
 export async function semanticContext(question,ids,options={}){
- if(!fs.existsSync(path.join(STORE,'records.sqlite3')))return {schema:'afh-semantic-context-1',items:[],edges:[],missing:[],limitations:[],status:'not_extracted',requiresAbstention:false,coverage:'No semantic extraction yet'};
+ if(!fs.existsSync(path.join(STORE,'records.pgstore')))return {schema:'afh-semantic-context-1',items:[],edges:[],missing:[],limitations:[],status:'not_extracted',requiresAbstention:false,coverage:'No semantic extraction yet'};
  return knowledgeOperation('query',ids,{question,knownAt:options.knownAt??null,validAt:options.validAt??null,roots:options.roots??[],hops:options.hops??2,limit:20},{signal:options.signal});
 }
 const str={type:'string'},arr=items=>({type:'array',items}),obj=properties=>({type:'object',additionalProperties:false,required:Object.keys(properties),properties});

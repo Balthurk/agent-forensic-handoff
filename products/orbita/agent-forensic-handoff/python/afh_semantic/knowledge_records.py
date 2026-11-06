@@ -6,13 +6,12 @@ semantic truth evaluation occurs here. Original N01 evidence remains authority.
 from datetime import datetime, timezone
 import hashlib
 import json
-from pathlib import Path
+from orbita_store.paths import Path
 import re
-import sqlite3
+from orbita_store.connection import Row
 
-from .sqlite_runtime import _deadline_connect
 from .sqlite_runtime import QueryAborted
-from .postgres_backend import connect as semantic_connect
+from .common_backend import connect as semantic_connect
 
 DEFAULT_RECORDS = None  # explicit candidate database path required
 SEMANTIC_TYPES = ("fact", "belief", "preference", "goal", "constraint", "criterion",
@@ -52,11 +51,9 @@ class KnowledgeRecords:
         self.memory, self.path, self.read_only = memory, Path(path).resolve(), read_only
         if not read_only:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.db = semantic_connect(self.path, read_only=read_only)
+        self.db = semantic_connect(self.path, family='semantic', read_only=read_only)
         try:
-            self.db.row_factory = sqlite3.Row
-            if read_only:
-                self.db.execute("PRAGMA query_only=ON")
+            self.db.row_factory = Row
             if not read_only:
                 self.db.executescript("""
                     CREATE TABLE IF NOT EXISTS record_versions (
@@ -133,6 +130,9 @@ class KnowledgeRecords:
                     CREATE TRIGGER IF NOT EXISTS g1_events_no_delete BEFORE DELETE ON g1_projection_events
                         BEGIN SELECT RAISE(ABORT, 'append only'); END;
                 """)
+                # Initialization inserted the integrity policy. Finish that
+                # transaction explicitly before callers begin admission/CAS.
+                self.db.commit()
             self.has_envelopes = self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='record_integrity_policy'").fetchone() is not None
             self.has_semantic_map = all(self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone() is not None for name in ("semantic_act_identity", "semantic_clause_identity", "semantic_clause_versions"))
         except BaseException:

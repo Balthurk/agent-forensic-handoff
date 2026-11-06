@@ -1,5 +1,5 @@
-import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import path from 'node:path';import net from 'node:net';
-const root=fs.mkdtempSync(path.join(process.env.AFH_TEST_ROOT||'C:/T','afh-semantic-app-'));process.env.AFH_COSMOS_DATA=root;process.env.AFH_COSMOS_EMPTY_LIBRARY='1';
+import test from 'node:test';import assert from 'node:assert/strict';import fs from '../agent-forensic-handoff/src/common-files.js';import {commonFixture} from './common-test-scope.mjs';import path from 'node:path';import net from 'node:net';
+const root=commonFixture('afh-semantic-app-');process.env.AFH_COSMOS_DATA=root;process.env.AFH_COSMOS_EMPTY_LIBRARY='1';
 const {addSource,library,loadCase}=await import('./corpus.mjs');const {verifiedSources,knowledgeOperation}=await import('./knowledge.mjs');const {retrievePackage,coverage,closeMemory}=await import('./memory.mjs');
 async function add(id,text){return addSource({filename:id+'.json',content:JSON.stringify({id,title:id,current_node:'u',mapping:{u:{id:'u',parent:null,children:[],message:{id:'u',author:{role:'user'},content:{content_type:'text',parts:[text]}}}}})});}
 const clauses=(source,key,predicate,polarity='positive')=>({key,targetSourceId:source.id,type:'policy',summary:source.text,modality:'directive',clauses:[{key,quote:source.text,predicate,polarity,resolution:'resolved',arguments:[{role:'environment',literal:key,evidence:[{sourceId:source.id,quote:source.text}]}],conditions:[],temporal:[],relations:[]}]});

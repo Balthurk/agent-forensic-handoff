@@ -1,7 +1,8 @@
 import {collectFullTextChunks,verifyFullTextChunks} from './fulltext-chunks.js';
-import fs from "node:fs";
+import native from "node:fs";
+import fs from './common-files.js';
 import path from "node:path";
-import { DatabaseSync, loadVectorExtension } from "./sqlite-compat.js";
+import { DatabaseSync } from './common-store.js';
 import { AFH_VERSION } from "./constants.js";
 import { CaseDatabase } from "./database.js";
 import { verifyCaseIntegrity } from "./integrity.js";
@@ -10,9 +11,10 @@ import {
   createTransformersProvider, digestDirectory, SemanticUnavailableError,
   validateProviderIdentity, validateProviderVectors,
 } from "./semantic-model.js";
-import { ensureDir, hashFile, preview, sha256, stableStringify } from "./util.js";
+import { preview, sha256, stableStringify } from "./util.js";
+import {ensureDir} from './common-util.js';
 
-const PROJECTION_SCHEMA_VERSION = 1;
+const PROJECTION_SCHEMA_VERSION = 2;
 const NORMALIZATION_VERSION = "event-preview-normalization-v1";
 const CHUNKING_VERSION = "event-preview-chunking-v1";
 const REDACTION_VERSION = "afh-redaction-v1";
@@ -51,7 +53,7 @@ export async function buildSemanticIndex(caseDir, options = {}) {
     chunkOverlap,
     embeddingBatchSize: batchSize,
     maxBatchChars,
-    vectorEngine: { name: "sqlite-vec", version: await sqliteVecVersion() },
+    vectorEngine: {name:'postgresql-common-exact',version:'1',numericContract:'sqlite-vec-0.1.9-cosine-f32',ties:'chunk1024-asc-slot-desc'},
   };
   const projectionId = `sem-${sha256(stableStringify(projectionConfig)).slice(0, 24)}`;
   const projectionsRoot = path.resolve(options.out || path.join(root, "projections"));
@@ -76,12 +78,8 @@ export async function buildSemanticIndex(caseDir, options = {}) {
       for (const chunk of chunks) if (!unique.has(chunk.contentHash)) unique.set(chunk.contentHash, chunk.text);
       options.onProgress?.({ phase: "prepared", chunks: chunks.length, uniqueEmbeddings: unique.size });
       const createdAt = new Date().toISOString();
-      const dbPath = path.join(staging, "semantic.sqlite");
-      db = new DatabaseSync(dbPath, { allowExtension: true });
-      db.enableLoadExtension(true);
-      const sqliteVec = await loadSqliteVec();
-      sqliteVec.load(db);
-      db.exec("PRAGMA foreign_keys=ON; PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; PRAGMA temp_store=MEMORY");
+      const dbPath = path.join(staging, "semantic.pgstore");
+      db = new DatabaseSync(dbPath, {family:'vector',create:true});
       createProjectionSchema(db, Number(identity.dimensions));
       db.exec("BEGIN IMMEDIATE");
       db.prepare(`INSERT INTO semantic_projection
@@ -92,6 +90,7 @@ export async function buildSemanticIndex(caseDir, options = {}) {
         schema: PROJECTION_SCHEMA_VERSION, tool: AFH_VERSION, provider: stableStringify(identity),
         config: stableStringify(projectionConfig), created: createdAt,
       });
+      db.exec('COMMIT');
 
       const rowByContent = new Map();
       const entries = [...unique.entries()];
@@ -100,9 +99,14 @@ export async function buildSemanticIndex(caseDir, options = {}) {
       let completedEmbeddings = 0;
       for (const batch of batches) {
         const vectors = validateProviderVectors(await provider.embed(batch.map(([, text]) => text)), Number(identity.dimensions), batch.length);
+        // Inference runs outside database transactions. Each completed batch
+        // remains private to BUILDING staging until final verified publication.
+        db.exec('BEGIN IMMEDIATE');
         for (let index = 0; index < batch.length; index += 1) {
           const [contentHash] = batch[index];
           const vector = vectorToBuffer(vectors[index]);
+          const exact=bufferToVector(vector);
+          if(!exact.every(Number.isFinite)||!exact.some(x=>x!==0))throw new Error('Semantic float32 vector must be finite with defined cosine');
           const vectorHash = sha256(vector);
           const rowId = nextRowId++;
           db.prepare(`INSERT INTO semantic_embedding
@@ -114,10 +118,12 @@ export async function buildSemanticIndex(caseDir, options = {}) {
           db.prepare("INSERT INTO vector_index(rowid,embedding) VALUES ($rowid,$vector)").run({ rowid: BigInt(rowId), vector });
           rowByContent.set(contentHash, rowId);
         }
+        db.exec('COMMIT');
         completedEmbeddings += batch.length;
         options.onProgress?.({ phase: "embedding", completedEmbeddings, uniqueEmbeddings: entries.length });
       }
 
+      db.exec('BEGIN IMMEDIATE');
       const insertChunk = db.prepare(`INSERT INTO semantic_chunk
         (id,content_hash,embedding_rowid,event_id,source_id,record_ordinal,evidence_uri,
          session_id,event_kind,event_status,actor_kind,observed_at,chunk_index,text,text_sha256,
@@ -145,10 +151,9 @@ export async function buildSemanticIndex(caseDir, options = {}) {
       db.prepare("UPDATE semantic_projection SET status='COMPLETE',projection_hash=$hash,metrics_json=$metrics WHERE id=$id")
         .run({ id: projectionId, hash: projectionHash, metrics: stableStringify(metrics) });
       db.exec("COMMIT");
+      const rowManifest=db.logicalManifest();
       db.close();
       db = null;
-      const sqliteSha256 = await hashFile(dbPath);
-      const sqliteBytes = fs.statSync(dbPath).size;
       const projectionManifest = {
         schemaVersion: PROJECTION_SCHEMA_VERSION,
         status: "COMPLETE",
@@ -161,7 +166,7 @@ export async function buildSemanticIndex(caseDir, options = {}) {
         model: identity,
         config: projectionConfig,
         metrics,
-        storage: { sqlitePath: "semantic.sqlite", sqliteSha256, sqliteBytes },
+        storage: {engine:'postgresql-common',path:'semantic.pgstore',manifest:rowManifest},
         safety: {
           remoteContentSent: false,
           sourceEvidenceModified: false,
@@ -220,14 +225,14 @@ export async function semanticSearch(caseDir, terms, options = {}) {
     assertSameProvider(projection.model, validateProviderIdentity(provider.identity));
     const [vector] = validateProviderVectors(await provider.embed([String(terms)]), Number(projection.model.dimensions), 1);
     const queryVector = vectorToBuffer(vector);
-    const sqliteVec = await loadSqliteVec();
-    const db = new DatabaseSync(path.join(projectionDir, projection.storage.sqlitePath), { readOnly: true, allowExtension: true });
-    db.enableLoadExtension(true);
-    sqliteVec.load(db);
-    // sqlite-vec currently enforces a hard KNN limit of 4096 candidates.
+    const db = new DatabaseSync(path.join(projectionDir, projection.storage.path), {family:'vector',readOnly:true});
+    // Retain the qualified exact-search candidate bound and tie ordering.
     const candidateLimit = Math.min(4_096, Math.max(limit * 20, 100));
-    const nearest = db.prepare(`SELECT rowid,distance FROM vector_index WHERE embedding MATCH $query ORDER BY distance LIMIT ${candidateLimit}`).all({ query: queryVector });
     const bestByEvent = new Map();
+    try {
+    db.exec('BEGIN');
+    if(db.logicalManifest().sha256!==projection.storage.manifest.sha256)throw new Error('Semantic projection changed during query preparation');
+    const nearest = db.nearestVectors(queryVector,candidateLimit);
     let rank = 0;
     for (const item of nearest) {
       rank += 1;
@@ -239,8 +244,8 @@ export async function semanticSearch(caseDir, terms, options = {}) {
         if (!prior || Number(item.distance) < prior.distance) bestByEvent.set(chunk.event_id, { chunk, distance: Number(item.distance), rank });
       }
     }
-    db.close();
-    const caseDb = new CaseDatabase(path.join(root, "case.sqlite"), { readOnly: true });
+    } finally {db.close();}
+    const caseDb = new CaseDatabase(path.join(root, "case.pgstore"), { readOnly: true });
     try {
       const results = [...bestByEvent.values()]
         .sort((a, b) => a.distance - b.distance || a.chunk.event_id.localeCompare(b.chunk.event_id))
@@ -291,19 +296,16 @@ export async function verifySemanticProjection(caseDir, projectionDir, { deep = 
   add("semantic.manifest.complete", manifest.status === "COMPLETE", `status=${manifest.status ?? "missing"}`);
   add("semantic.case_identity", manifest.caseHash === caseManifest.caseHash && manifest.sourceSnapshotHash === caseManifest.sourceSnapshotHash,
     `projection=${manifest.caseHash}/${manifest.sourceSnapshotHash}; case=${caseManifest.caseHash}/${caseManifest.sourceSnapshotHash}`);
-  const dbPath = path.resolve(target, manifest.storage?.sqlitePath || "");
-  add("semantic.sqlite.path", dbPath.startsWith(`${target}${path.sep}`) && fs.existsSync(dbPath), manifest.storage?.sqlitePath || "missing");
+  const dbPath = path.resolve(target, manifest.storage?.path || "");
+  add("semantic.postgresql.path", manifest.storage?.engine==='postgresql-common'&&manifest.storage?.path==='semantic.pgstore'&&dbPath.startsWith(`${target}${path.sep}`) && fs.existsSync(dbPath), manifest.storage?.path || "missing");
   if (!fs.existsSync(dbPath) || !dbPath.startsWith(`${target}${path.sep}`)) return { projectionDir: target, manifest, passed: false, deep, findings };
-  const actualDbHash = await hashFile(dbPath);
-  add("semantic.sqlite.sha256", actualDbHash === manifest.storage.sqliteSha256, `actual=${actualDbHash}; expected=${manifest.storage.sqliteSha256}`);
-  const sqliteVec = await loadSqliteVec().catch((error) => null);
   let db;
   try {
-    db = new DatabaseSync(dbPath, { readOnly: true, allowExtension: true });
-    if (sqliteVec) { db.enableLoadExtension(true); sqliteVec.load(db); }
-    const integrityPragma = deep ? "PRAGMA integrity_check" : "PRAGMA quick_check";
-    const integrity = db.prepare(integrityPragma).all().map((row) => row.integrity_check ?? row.quick_check);
-    add("semantic.sqlite.integrity", integrity.length === 1 && integrity[0] === "ok", integrity.join("; "));
+    db = new DatabaseSync(dbPath, {family:'vector',readOnly:true});db.exec('BEGIN');
+    const actualManifest=db.logicalManifest();
+    const legacyHash=legacyProjectionHash(db,manifest);
+    add('semantic.postgresql.rows_integrity',actualManifest.sha256===manifest.storage?.manifest?.sha256,
+      `actual=${actualManifest.sha256}; expected=${manifest.storage?.manifest?.sha256??'missing'}`);
     const projection = db.prepare("SELECT * FROM semantic_projection WHERE id=$id").get({ id: manifest.projectionId });
     add("semantic.projection_row", Boolean(projection) && projection.status === "COMPLETE", projection ? `status=${projection.status}` : "missing");
     const embeddingCount = Number(db.prepare("SELECT COUNT(*) n FROM semantic_embedding").get().n);
@@ -328,17 +330,17 @@ export async function verifySemanticProjection(caseDir, projectionDir, { deep = 
         add('semantic.fulltext_coverage',check.coveredCodepoints===manifest.metrics.fullText.sourceCodepoints && check.coveredCodepoints===manifest.metrics.fullText.coveredCodepoints && check.representations===manifest.metrics.fullText.representations,'Exact union of original codepoint ranges');
         add('semantic.token_bound',chunks.every(c=>Number(c.token_count)>0&&Number(c.token_count)<=manifest.config.tokenLimit),'Token counts bounded before embedding');
         const bad=Number(db.prepare('SELECT COUNT(*) n FROM semantic_chunk c LEFT JOIN semantic_fts f ON f.chunk_id=c.id WHERE f.chunk_id IS NULL OR f.text<>c.text').get().n);
-        add('semantic.fulltext_fts',bad===0 && Number(db.prepare('SELECT COUNT(*) n FROM semantic_fts').get().n)===chunks.length,'Full literal text indexed in FTS5');
+        add('semantic.fulltext_fts',bad===0 && Number(db.prepare('SELECT COUNT(*) n FROM semantic_fts').get().n)===chunks.length,'Full literal text indexed in common lexical tables');
       }
       add("semantic.chunks", chunkFailures === 0, `${chunks.length} chunk(s); ${chunkFailures} hash mismatch(es)`);
     } else {
-      add("semantic.vectors", embeddingCount === Number(manifest.metrics?.uniqueEmbeddings), `${embeddingCount} vector(s); bytes/finiteness covered by database SHA-256; deep scan skipped`);
-      add("semantic.chunks", chunkCount === Number(manifest.metrics?.chunks), `${chunkCount} chunk(s); database SHA-256 passed; deep hash scan skipped`);
+      add("semantic.vectors", embeddingCount === Number(manifest.metrics?.uniqueEmbeddings), `${embeddingCount} vector(s); bytes/finiteness covered by typed-row SHA-256; deep scan skipped`);
+      add("semantic.chunks", chunkCount === Number(manifest.metrics?.chunks), `${chunkCount} chunk(s); typed-row SHA-256 passed; deep hash scan skipped`);
     }
     const orphanMappings = Number(db.prepare(`SELECT COUNT(*) n FROM semantic_chunk c LEFT JOIN semantic_embedding e ON e.rowid=c.embedding_rowid
       WHERE e.rowid IS NULL OR e.content_hash<>c.content_hash`).get().n);
     add("semantic.orphans", orphanMappings === 0, `${orphanMappings} orphan or mismatched chunk mapping(s)`);
-    if (sqliteVec) {
+    {
       const vectorIndexCount = Number(db.prepare("SELECT COUNT(*) n FROM vector_index").get().n);
       add("semantic.vector_index_count", vectorIndexCount === embeddingCount, `index=${vectorIndexCount}; embeddings=${embeddingCount}`);
       if (deep) {
@@ -349,10 +351,10 @@ export async function verifySemanticProjection(caseDir, projectionDir, { deep = 
         }
         add("semantic.vector_index_bytes", indexFailures === 0, `${indexFailures} index/vector mismatch(es)`);
       }
-    } else add("semantic.vector_engine", false, "sqlite-vec is unavailable; no silent verifier fallback");
+    }
 
     if (deep) {
-      const caseDb = new CaseDatabase(path.join(root, "case.sqlite"), { readOnly: true });
+      const caseDb = new CaseDatabase(path.join(root, "case.pgstore"), { readOnly: true });
       try {
         const eventIds = new Set(caseDb.all("SELECT id FROM event").map((row) => row.id));
         const evidence = new Map(caseDb.all("SELECT event_id,uri,availability FROM evidence_ref").map((row) => [`${row.event_id}\0${row.uri}`, row.availability]));
@@ -360,11 +362,11 @@ export async function verifySemanticProjection(caseDir, projectionDir, { deep = 
         for (const chunk of chunks) if (!eventIds.has(chunk.event_id) || evidence.get(`${chunk.event_id}\0${chunk.evidence_uri}`) !== "AVAILABLE") evidenceFailures += 1;
         add("semantic.evidence_links", evidenceFailures === 0, `${evidenceFailures} unresolved semantic chunk evidence link(s)`);
       } finally { caseDb.close(); }
-      const projectionHash = computeProjectionHash(db);
+      const projectionHash = computeProjectionHash(db,{legacyHash});
       add("semantic.projection_hash", projectionHash === manifest.projectionHash && projection?.projection_hash === manifest.projectionHash,
         `actual=${projectionHash}; expected=${manifest.projectionHash}`);
     } else {
-      add("semantic.evidence_links", true, "case/source identity and full database SHA-256 passed; deep link scan skipped");
+      add("semantic.evidence_links", true, "case/source identity and full typed-row SHA-256 passed; deep link scan skipped");
       add("semantic.projection_hash", projection?.projection_hash === manifest.projectionHash, `row=${projection?.projection_hash}; expected=${manifest.projectionHash}; full recomputation skipped`);
     }
     add("semantic.metrics", Number(manifest.metrics?.chunks) === chunkCount && Number(manifest.metrics?.uniqueEmbeddings) === embeddingCount,
@@ -374,7 +376,7 @@ export async function verifySemanticProjection(caseDir, projectionDir, { deep = 
   } finally { db?.close(); }
 
   if (manifest.model?.snapshotPath) {
-    const available = fs.existsSync(manifest.model.snapshotPath);
+    const available = native.existsSync(manifest.model.snapshotPath);
     let digest = null;
     try { if (available && deep) digest = digestDirectory(manifest.model.snapshotPath); } catch {}
     add("semantic.model_snapshot", available && (!deep || digest === manifest.model.modelDigest),
@@ -397,7 +399,7 @@ export function findSemanticProjection(caseDir, {representation} = {}) {
 }
 
 function collectSemanticChunks(caseDir, { chunkChars, chunkOverlap }) {
-  const db = new CaseDatabase(path.join(caseDir, "case.sqlite"), { readOnly: true });
+  const db = new CaseDatabase(path.join(caseDir, "case.pgstore"), { readOnly: true });
   try {
     const events = db.all(`SELECT e.*,a.kind actor_kind,
       (SELECT uri FROM evidence_ref er WHERE er.event_id=e.id AND er.availability='AVAILABLE' ORDER BY er.id LIMIT 1) evidence_uri
@@ -427,42 +429,32 @@ function collectSemanticChunks(caseDir, { chunkChars, chunkOverlap }) {
   } finally { db.close(); }
 }
 
-function createProjectionSchema(db, dimensions) {
-  db.exec(`
-    CREATE TABLE semantic_projection (
-      id TEXT PRIMARY KEY, case_hash TEXT NOT NULL, source_snapshot_hash TEXT NOT NULL,
-      projection_schema_version INTEGER NOT NULL, tool_version TEXT NOT NULL,
-      provider_json TEXT NOT NULL, config_json TEXT NOT NULL, created_at TEXT NOT NULL,
-      status TEXT NOT NULL, failure_reason TEXT, projection_hash TEXT NOT NULL,
-      metrics_json TEXT NOT NULL DEFAULT '{}'
-    );
-    CREATE TABLE semantic_embedding (
-      rowid INTEGER PRIMARY KEY, content_hash TEXT NOT NULL UNIQUE, vector BLOB NOT NULL,
-      vector_sha256 TEXT NOT NULL, dimensions INTEGER NOT NULL, created_at TEXT NOT NULL
-    );
-    CREATE TABLE semantic_chunk (
-      id TEXT PRIMARY KEY, content_hash TEXT NOT NULL, embedding_rowid INTEGER NOT NULL REFERENCES semantic_embedding(rowid),
-      event_id TEXT NOT NULL, source_id TEXT NOT NULL, record_ordinal INTEGER NOT NULL,
-      evidence_uri TEXT NOT NULL, session_id TEXT NOT NULL, event_kind TEXT NOT NULL,
-      event_status TEXT, actor_kind TEXT, observed_at TEXT, chunk_index INTEGER NOT NULL,
-      text TEXT NOT NULL, text_sha256 TEXT NOT NULL, redaction_state TEXT NOT NULL,
-      created_at TEXT NOT NULL, start_cp INTEGER, end_cp INTEGER, token_count INTEGER, representation_id TEXT, source_text_sha256 TEXT
-    );
-    CREATE VIRTUAL TABLE semantic_fts USING fts5(chunk_id UNINDEXED,text);
-    CREATE INDEX semantic_chunk_event_idx ON semantic_chunk(event_id,chunk_index);
-    CREATE INDEX semantic_chunk_embedding_idx ON semantic_chunk(embedding_rowid);
-    CREATE INDEX semantic_chunk_filter_idx ON semantic_chunk(session_id,event_kind,event_status,actor_kind,observed_at);
-    CREATE VIRTUAL TABLE vector_index USING vec0(embedding float[${dimensions}] distance_metric=cosine);
-  `);
+function createProjectionSchema(db,dimensions) {
+  boundedInteger(dimensions,'dimensions',2,65536);
+  db.exec(native.readFileSync(new URL('../python/orbita_store/schemas/vector.sql',import.meta.url),'utf8'));
 }
 
-function computeProjectionHash(db) {
-  const projection = db.prepare("SELECT id,case_hash,source_snapshot_hash,projection_schema_version,tool_version,provider_json,config_json FROM semantic_projection ORDER BY id").all();
+function legacyProjectionHash(db,manifest) {
+  const declared=manifest.storage?.legacyProjectionHash;
+  if(declared===undefined)return false;
+  const columns=['start_cp','end_cp','token_count','representation_id','source_text_sha256'];
+  if(!declared||declared.schema!=='sqlite-preview-without-fulltext-columns-1'||JSON.stringify(Object.keys(declared).sort())!==JSON.stringify(['absentColumns','schema'])||JSON.stringify(declared.absentColumns)!==JSON.stringify(columns)||manifest.config?.representation==='full_source_text')throw new Error('LEGACY_PROJECTION_HASH_FORMAT');
+  const present=Number(db.prepare('SELECT COUNT(*) n FROM semantic_chunk WHERE start_cp IS NOT NULL OR end_cp IS NOT NULL OR token_count IS NOT NULL OR representation_id IS NOT NULL OR source_text_sha256 IS NOT NULL').get().n);
+  if(present!==0)throw new Error('LEGACY_PROJECTION_COORDINATES_PRESENT');
+  return true;
+}
+
+function computeProjectionHash(db,{legacyHash=false}={}) {
+  // The original Node SQLite projection rows had a null prototype. Their
+  // SELECT column order is part of the existing hash format: stableStringify
+  // sorts plain objects, but deliberately leaves these rows in that order.
+  // Preserve that format for both new builds and imported projections.
+  const projection = db.prepare("SELECT id,case_hash,source_snapshot_hash,projection_schema_version,tool_version,provider_json,config_json FROM semantic_projection ORDER BY id").all().map(row=>Object.assign(Object.create(null),row));
   const chunks = db.prepare(`SELECT id,content_hash,embedding_rowid,event_id,source_id,record_ordinal,evidence_uri,
     session_id,event_kind,event_status,actor_kind,observed_at,chunk_index,text_sha256,redaction_state
     FROM semantic_chunk ORDER BY id`).all().map(normalizeBigInts);
   const embeddings = db.prepare("SELECT rowid,content_hash,vector_sha256,dimensions FROM semantic_embedding ORDER BY rowid").all().map(normalizeBigInts);
-  const fullText = db.prepare("PRAGMA table_info(semantic_chunk)").all().some(c=>c.name==="start_cp") ? db.prepare("SELECT id,start_cp,end_cp,token_count,representation_id,source_text_sha256 FROM semantic_chunk ORDER BY id").all().map(normalizeBigInts) : null;
+  const fullText = !legacyHash&&db.tableColumns("semantic_chunk").includes("start_cp") ? db.prepare("SELECT id,start_cp,end_cp,token_count,representation_id,source_text_sha256 FROM semantic_chunk ORDER BY id").all().map(normalizeBigInts) : null;
   return sha256(stableStringify({ projection, chunks, embeddings, ...(fullText ? {fullText} : {}) }));
 }
 
@@ -551,20 +543,6 @@ function resolveProjectionDir(caseDir, explicit) {
   return target;
 }
 
-async function loadSqliteVec() {
-  try { return await loadVectorExtension(); }
-  catch (error) { throw new SemanticUnavailableError(`Optional sqlite-vec runtime is unavailable: ${error.message || error}`); }
-}
-
-async function sqliteVecVersion() {
-  const sqliteVec = await loadSqliteVec();
-  const db = new DatabaseSync(":memory:", { allowExtension: true });
-  try {
-    db.enableLoadExtension(true);
-    sqliteVec.load(db);
-    return String(db.prepare("SELECT vec_version() version").get().version);
-  } finally { db.close(); }
-}
 
 function normalizeBigInts(row) {
   return Object.fromEntries(Object.entries(row).map(([key, value]) => [key, typeof value === "bigint" ? Number(value) : value]));

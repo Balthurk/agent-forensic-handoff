@@ -1,13 +1,13 @@
 import {automaticAllowed} from './recovery.mjs';
-import fs from 'node:fs';import path from 'node:path';import {randomUUID} from 'node:crypto';
+import fs from '../agent-forensic-handoff/src/common-files.js';import path from 'node:path';import {randomUUID} from 'node:crypto';
 import {DATA,library,refreshLibrary} from './corpus.mjs';
 import {knowledgeOperation,verifiedSources} from './knowledge.mjs';
-import {openDB,transaction,sha,now,checkpoint} from './durable.mjs';
+import {openDB,transaction,sha,now,checkpoint} from './common-durable.mjs';
 import {retainedGeneration} from './retained-generation.mjs';
 import {infer,MODELS} from './llm.mjs';import {publishPending} from './publication.mjs';
-const ROOT=path.join(DATA,'reevaluation'),FILE=path.join(ROOT,'queue.sqlite'),encode=JSON.stringify;
+const ROOT=path.join(DATA,'reevaluation'),FILE=path.join(ROOT,'queue.pgstore'),encode=JSON.stringify;
 function require(ok,code){if(!ok)throw new Error(code);}
-function open(){const db=openDB(FILE);db.exec(`CREATE TABLE IF NOT EXISTS watches(id TEXT PRIMARY KEY,config TEXT NOT NULL,hash TEXT NOT NULL,created_at TEXT NOT NULL,owner TEXT,fence INTEGER NOT NULL DEFAULT 0,lease INTEGER NOT NULL DEFAULT 0);
+function open(){const db=openDB(FILE,'reevaluation');db.exec(`CREATE TABLE IF NOT EXISTS watches(id TEXT PRIMARY KEY,config TEXT NOT NULL,hash TEXT NOT NULL,created_at TEXT NOT NULL,owner TEXT,fence INTEGER NOT NULL DEFAULT 0,lease INTEGER NOT NULL DEFAULT 0);
  CREATE TABLE IF NOT EXISTS seen(watch_id TEXT,source_key TEXT,PRIMARY KEY(watch_id,source_key));
  CREATE TABLE IF NOT EXISTS scanned(watch_id TEXT,case_id TEXT,PRIMARY KEY(watch_id,case_id));
  CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,watch_id TEXT,request TEXT NOT NULL,hash TEXT NOT NULL,status TEXT NOT NULL,error TEXT,run_request TEXT,result TEXT,created_at TEXT NOT NULL);

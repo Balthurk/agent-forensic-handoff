@@ -210,8 +210,8 @@ export async function main(argv = process.argv.slice(2)) {
   const options = { base:'http://127.0.0.1:4475', timeoutMs:60000, conversationIds:[] };
   for (let i=0;i<argv.length;i++) {
     const key=argv[i];
-    if (key === '--help') { console.log('node orbita-preflight.mjs [--base-url http://127.0.0.1:4475] [--conversation ID] [--timeout-ms 60000] [--json NEW_FILE] [--markdown NEW_FILE]\nExit 0: observaciones recogidas; 2: revisión necesaria; 1: uso/archivo. Ninguno autoriza operar. No sobrescribe archivos.'); return 0; }
-    if (!['--base-url','--conversation','--timeout-ms','--json','--markdown'].includes(key) || !argv[i+1] || argv[i+1].startsWith('--')) throw new Error(`Unknown or incomplete argument: ${key}`);
+    if (key === '--help') { console.log('node orbita-preflight.mjs [--base-url http://127.0.0.1:4475] [--conversation ID] [--timeout-ms 60000] [--provenance PRIVATE_JSON] [--json NEW_FILE] [--markdown NEW_FILE]\nExit 0: observaciones recogidas; 2: revisión necesaria; 1: uso/archivo. Ninguno autoriza operar. No sobrescribe archivos.'); return 0; }
+    if (!['--base-url','--conversation','--timeout-ms','--provenance','--json','--markdown'].includes(key) || !argv[i+1] || argv[i+1].startsWith('--')) throw new Error(`Unknown or incomplete argument: ${key}`);
     const value=argv[++i];
     if (key==='--conversation') options.conversationIds.push(value);
     else if (key==='--base-url') options.base=value;
@@ -219,7 +219,7 @@ export async function main(argv = process.argv.slice(2)) {
     else options[key.slice(2)]=value;
   }
   validateBase(options.base);
-  const provenance=validateProvenance(JSON.parse(await readFile(path.join(ROOT,'provenance.json'),'utf8')));
+  const provenance=validateProvenance(JSON.parse(await readFile(path.resolve(options.provenance ?? path.join(ROOT,'provenance.json')),'utf8')));
   const collection=await collect({...options,provenance});
   const report=buildReport(collection,{...options,provenance});
   if (options.json) await writeFile(options.json,JSON.stringify(report,null,2)+'\n',{flag:'wx'});

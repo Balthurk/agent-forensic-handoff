@@ -1,4 +1,7 @@
 import test from 'node:test';
+import files from '../agent-forensic-handoff/src/common-files.js';
+import {closeCommonStore} from '../agent-forensic-handoff/src/common-store.js';
+test.after(()=>closeCommonStore());
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -6,12 +9,13 @@ import {AccessStore} from './access-store.mjs';
 import {createAccessServer} from './access-server.mjs';
 
 async function fixture(t){
- const root=fs.mkdtempSync(path.join(process.env.AFH_TEST_ROOT||'C:/T','i05-transport-'));
+ files.mkdirSync(process.env.ORBITA_POSTGRES_TEST_ROOT,{recursive:true});
+ const root=files.mkdtempSync(path.join(process.env.ORBITA_POSTGRES_TEST_ROOT,'i05-transport-'));
  const store=new AccessStore(root,{create:true}),owner=store.createAccount('owner','synthetic-transport-test',{admin:true});
  const space=store.createWorkspace(owner.id,{name:'Synthetic transport',policy:{basis:'Synthetic transport regression',purpose:'Exact request and socket checks',rightsUntil:new Date(Date.now()+86400000).toISOString(),retainUntil:new Date(Date.now()+172800000).toISOString()}});
  const token=store.issue(owner.id,{workspace:space.id}).token;store.close();
  const prior=process.env.NODE_OPTIONS,priorDir=process.env.ORBITA_TRANSPORT_FIXTURE_DIR;
- const dir=path.join(root,'observed-transport');fs.mkdirSync(dir);
+ const dir=fs.mkdtempSync(path.join(process.env.ORBITA_POSTGRES_TEST_RECEIPTS,'observed-transport-'));
  process.env.NODE_OPTIONS=(prior?prior+' ':'')+'--import='+new URL('./managed-transport-fixture.mjs',import.meta.url).href;
  process.env.ORBITA_TRANSPORT_FIXTURE_DIR=dir;
  const app=createAccessServer({root,port:0});

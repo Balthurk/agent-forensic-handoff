@@ -1,5 +1,8 @@
+from common_test_fixture import WorkspaceFixture, connect_semantic, corrupt_path, temporary_corruption
+from psycopg import IntegrityError
 import unittest, tempfile, copy
-from pathlib import Path
+from orbita_store.paths import Path
+from pathlib import Path as NativePath
 from afh_semantic.host import dispatch
 from afh_semantic.knowledge_records import RecordError
 import test_semantic as semantic_fixture
@@ -8,7 +11,7 @@ import test_collectives as collective_fixture
 
 class ContextRetrievalTest(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
+        self.tmp = WorkspaceFixture(self._testMethodName); self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
         self.sources = [semantic_fixture.source('s'+str(i), text, 'chat-'+str(i)) for i, text in enumerate([
             'Permito staging de Alfa sólo si pasa QA.', 'Excepto durante mantenimiento de Alfa.',

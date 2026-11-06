@@ -1,5 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {extractionInput,validateDraftSelection} from './knowledge.mjs';
+process.env.AFH_COSMOS_DATA=process.env.ORBITA_POSTGRES_TEST_ROOT+'/semantic-context';
+const {extractionInput,validateDraftSelection}=await import('./knowledge.mjs');
 test('antecedents include exact versions and whole originals; missing originals cannot form a relation target',()=>{
  const target={id:'target',text:'Revoco staging.',target:true,role:'user'},past={id:'past',text:'Permito staging si pasa QA.',role:'user'};
  const item={clauseVersionId:'cv-past',predicate:'permits',sourceRefs:[{id:'past'}]};const input=extractionInput('staging',[target,past],{items:[item,{...item,clauseVersionId:'cv-missing',sourceRefs:[{id:'missing'}]}]});

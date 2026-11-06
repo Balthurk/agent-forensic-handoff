@@ -3,12 +3,16 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import {closeCommonStore} from '../src/common-store.js';
+const fixtureRoot=path.join(process.env.ORBITA_POSTGRES_TEST_RECEIPTS,'native-benchmarks');
+fs.mkdirSync(fixtureRoot,{recursive:true});
+test.after(()=>{if(fs.existsSync(process.env.ORBITA_POSTGRES_TEST_ROOT))throw new Error('NATIVE_OPERATIONAL_OUTPUT');closeCommonStore();});
 import { installSkill } from "../src/install.js";
 import { runBenchmark } from "../src/benchmark.js";
 
 function temporary(t, prefix) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const root = fs.mkdtempSync(path.join(fixtureRoot, prefix));
+  // Explicit native fixture/export bytes remain bound to this receipt.
   return root;
 }
 
@@ -30,7 +34,7 @@ test("generic skill installation is idempotent and protects divergent content", 
 
 test("deterministic benchmark gates pass on committed fixtures", async (t) => {
   const root = temporary(t, "afh-benchmark-test-");
-  const result = await runBenchmark({ output: root, giantRecords: 100 });
+  const result = await runBenchmark({ output: root, caseRoot:path.join(process.env.ORBITA_POSTGRES_TEST_ROOT,"benchmark",path.basename(root)), giantRecords: 100 });
   assert.equal(result.passed, true);
   assert.equal(result.metrics.parseAccounting, 1);
   assert.equal(result.metrics.evidenceRefResolvability, 1);

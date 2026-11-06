@@ -1,18 +1,18 @@
-import fs from 'node:fs';
+import fs from '../agent-forensic-handoff/src/common-files.js';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {DATA,library,refreshLibrary,loadCase} from './corpus.mjs';
 import {reconcileDocuments} from './documents.mjs';
 import {extractKnowledge} from './knowledge.mjs';
 import {publishPending} from './publication.mjs';
-import {openDB,transaction,sha,now,checkpoint} from './durable.mjs';
+import {openDB,transaction,sha,now,checkpoint} from './common-durable.mjs';
 import {MODELS} from './llm.mjs';
 import {classifyOccurrences} from '../agent-forensic-handoff/src/representation-equivalence.js';
 
 const POLICY='corpus-neighbors-1';
 const demand=(v,m)=>{if(!v)throw new Error(m);};
 function alive(pid){try{process.kill(pid,0);return true;}catch(e){return e.code!=='ESRCH';}}
-function open(){const db=openDB(path.join(DATA,'corpus-plans.sqlite'));db.exec(`
+function open(){const db=openDB(path.join(DATA,'corpus-plans.pgstore'),'library');db.exec(`
  CREATE TABLE IF NOT EXISTS corpus_plans(id TEXT PRIMARY KEY,created_at TEXT,spec TEXT,cut TEXT,inventory TEXT,owner TEXT,pid INTEGER);
  CREATE TABLE IF NOT EXISTS corpus_targets(id TEXT PRIMARY KEY,request TEXT,status TEXT,result TEXT,error TEXT,owner TEXT,pid INTEGER);
  CREATE TABLE IF NOT EXISTS corpus_members(plan TEXT,target TEXT,ordinal INTEGER,case_id TEXT,event_id TEXT,source_role TEXT,PRIMARY KEY(plan,target));
@@ -32,7 +32,7 @@ export function corpusPlanStatus(id,{cursor=null,limit=50}={}){
   const total=Object.values(counts).reduce((a,b)=>a+b,0),processed=['proposed','proposed_with_gaps','no_acts','review_required'].reduce((n,s)=>n+(counts[s]||0),0),inventory=JSON.parse(row.inventory);
   const all=db.prepare('SELECT m.ordinal,m.case_id,m.event_id,m.source_role,t.id,t.status,t.error,t.result FROM corpus_members m JOIN corpus_targets t ON t.id=m.target WHERE m.plan=? AND m.ordinal>? ORDER BY m.ordinal LIMIT ?').all(id,after,limit+1),hasMore=all.length>limit;
   const page=all.slice(0,limit).map(r=>({...r,result:r.result?JSON.parse(r.result):null}));
-  const usage=db.prepare(`SELECT count(*) n,sum(CASE WHEN t.result IS NOT NULL AND json_extract(t.result,'$.usage') IS NULL THEN 1 ELSE 0 END) unknown_usage,sum(json_extract(t.result,'$.elapsedMs')) inference_ms FROM corpus_targets t JOIN corpus_members m ON m.target=t.id WHERE m.plan=? AND t.result IS NOT NULL`).get(id);
+  const usage=db.prepare(`SELECT count(*) n,sum(CASE WHEN t.result IS NOT NULL AND json_extract(t.result,'$.usage') IS NULL THEN 1 ELSE 0 END) unknown_usage,sum(CAST(json_extract(t.result,'$.elapsedMs') AS REAL)) inference_ms FROM corpus_targets t JOIN corpus_members m ON m.target=t.id WHERE m.plan=? AND t.result IS NOT NULL`).get(id);
   return {id,createdAt:row.created_at,spec:JSON.parse(row.spec),cut:JSON.parse(row.cut),current:current(row),inventory,counts,totalTargets:total,processedTargets:processed,
    processingPercent:total&&!inventory.unavailableCases?Math.round(processed/total*10000)/100:null,
    mechanicalCoverage:!inventory.unavailableCases&&total>0&&processed===total?'all_planned_targets_processed':'pending_or_blocked',

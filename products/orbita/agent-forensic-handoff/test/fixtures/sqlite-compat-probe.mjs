@@ -10,6 +10,14 @@ const file = path.join(root, 'source with spaces.sqlite');
 const result = { nativeAvailable };
 const plain = value => JSON.parse(JSON.stringify(value));
 if (mode === 'ingest') {
+  // SQLite engine/fault probes below remain native legacy fixtures. The migrated
+  // application always stores its output in this explicit common test scope.
+  const commonRoot=process.env.ORBITA_POSTGRES_TEST_ROOT;
+  assert.ok(commonRoot,'EXPLICIT_COMMON_INGESTION_ROOT_REQUIRED');
+  const stored=(await import(new URL('common-files.js',moduleUrl))).default;
+  const {closeCommonStore}=await import(new URL('common-store.js',moduleUrl));
+  const caseDir=path.join(commonRoot,'sqlite-availability',path.basename(root),'case');
+  try {
   const {auditSession,verifyCaseIntegrity,searchCase,readUnifiedEvidence,exportN01Packet}=await import(new URL('index.js',moduleUrl));
   const message=(id,role,text)=>({id,author:{role},create_time:1700000000,content:{content_type:'text',parts:[text]},status:'finished_successfully'});
   const text='I02unicode á 漢 😀 e\u0301; conservar "todo"\nLínea dos';
@@ -21,10 +29,10 @@ if (mode === 'ingest') {
   }};
   const raw=JSON.stringify(conversation,null,4)+'\r\n',input=path.join(root,'original.json');
   fs.writeFileSync(input,raw);
-  const dest=(await auditSession(input,{caseDir:path.join(root,'case')})).caseDir;
-  result.originalExact=fs.readFileSync(path.join(dest,'acquisition/original.bin'),'utf8')===raw;
+  const dest=(await auditSession(input,{caseDir})).caseDir;
+  result.originalExact=stored.readFileSync(path.join(dest,'acquisition/original.bin'),'utf8')===raw;
   result.integrity=(await verifyCaseIntegrity(dest)).passed;
-  const id=JSON.parse(fs.readFileSync(path.join(dest,'identity.json'))).representations.find(r=>r.message_id==='m-u');
+  const id=JSON.parse(stored.readFileSync(path.join(dest,'identity.json'))).representations.find(r=>r.message_id==='m-u');
   result.quote=(await readUnifiedEvidence(dest,id.representation_id)).quote;
   const emoji=[...text].indexOf('😀');
   result.emoji=(await readUnifiedEvidence(dest,id.representation_id,{start:emoji,end:emoji+1})).quote;
@@ -33,6 +41,13 @@ if (mode === 'ingest') {
   result.alternativeAll=searchCase(dest,'I02alternative',25,{scope:'all'}).length;
   result.beforeRegistration=(await exportN01Packet([dest],{knownAt:'2020-01-01T00:00:00Z'})).records.length;
   assert.equal(result.quote,text);
+  assert.equal(fs.existsSync(caseDir),false,'COMMON_OUTPUT_MUST_NOT_CREATE_NATIVE_CASE');
+  result.storageEngine=JSON.parse(stored.readFileSync(path.join(dest,'case.json'),'utf8')).storage.engine;
+  assert.equal(result.storageEngine,'postgresql-common');
+  } finally {
+    const closed=closeCommonStore();
+    assert.ok(closed.alreadyClosed||(closed.drained&&closed.ownedExit===0),'COMMON_PROBE_NOT_DRAINED');
+  }
 } else if (mode === 'matrix') {
   const db = new DatabaseSync(file);
   db.exec(`

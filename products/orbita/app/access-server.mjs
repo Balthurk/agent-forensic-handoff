@@ -1,4 +1,6 @@
 import fs from 'node:fs';
+import contentFiles from '../agent-forensic-handoff/src/common-files.js';
+import {acquireStoreLease,closeCommonStore} from '../agent-forensic-handoff/src/common-store.js';
 import http from 'node:http';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -14,13 +16,10 @@ const ROOT=path.dirname(fileURLToPath(import.meta.url));
 const security={'cache-control':'no-store','x-content-type-options':'nosniff','referrer-policy':'no-referrer','content-security-policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'"};
 function json(res,status,value,headers={}){res.writeHead(status,{...security,'content-type':'application/json; charset=utf-8',...headers});res.end(JSON.stringify(value));}
 async function body(req){let n=0,chunks=[];for await(const b of req){n+=b.length;demand(n<=64*1024**2,'ACCESS_REQUEST_TOO_LARGE',413);chunks.push(b);}try{const value=JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}');demand(value&&typeof value==='object'&&!Array.isArray(value),'ACCESS_JSON_OBJECT');return value;}catch(e){demand(false,e.message.startsWith('ACCESS_')?e.message:'ACCESS_JSON_INVALID');}}
-const alive=pid=>{try{process.kill(pid,0);return true;}catch(e){return e.code!=='ESRCH';}};
-
 export function createAccessServer({root,port=4492,clock}={}){
- const store=new AccessStore(root,{clock}),workers=new Workers(store),lifecycle=new Lifecycle(store,id=>workers.stop(id));
- const lock=plainPath(path.join(store.root,'service.lock')),lockId=randomUUID();
- if(fs.existsSync(lock)){const old=JSON.parse(fs.readFileSync(lock,'utf8'));demand(Number.isInteger(old.pid)&&!alive(old.pid),'ACCESS_SERVICE_ALREADY_RUNNING',409);fs.unlinkSync(lock);}
- fs.writeFileSync(lock,JSON.stringify({pid:process.pid,id:lockId}),{flag:'wx',mode:0o600});
+ const store=new AccessStore(root,{clock});let serviceLease;
+ try{serviceLease=acquireStoreLease(store.root,{mode:'exclusive'});}catch(error){store.close();if(error.message==='RECOVERY_STORE_BUSY')demand(false,'ACCESS_SERVICE_ALREADY_RUNNING',409);throw error;}
+ const workers=new Workers(store),lifecycle=new Lifecycle(store,id=>workers.stop(id));
  let actualPort=port,closed=false,closing=null,storeClosed=false,loginWindow={at:0,count:0};const origins=()=>['http://127.0.0.1:'+actualPort,'http://localhost:'+actualPort];
  const cookieName=()=> 'orbita_access_'+actualPort;
  function secret(req){const auth=req.headers.authorization;const cookies=String(req.headers.cookie||'').split(';').map(x=>x.trim()).filter(x=>x.startsWith(cookieName()+'='));demand(cookies.length<=1&&!(auth&&cookies.length),'ACCESS_CREDENTIAL_AMBIGUOUS',401);if(auth){demand(/^Bearer [A-Za-z0-9_-]{43}$/.test(auth),'ACCESS_SESSION_REQUIRED',401);return auth.slice(7);}return cookies[0]?.slice(cookieName().length+1);}
@@ -77,7 +76,7 @@ export function createAccessServer({root,port=4492,clock}={}){
    else if(p==='/access/api/purge'){store.authorize(credential,b.id,'owner',{maintenance:true});result=await lifecycle.purge(session.user,b.id,b.planId,b.confirmation);}
    else if(p==='/access/api/export'){
     const access=store.authorize(credential,b.id,'owner'),archive=await lifecycle.archive(session.user,b.id,b.backupId);store.fence(credential,access,'owner');
-    store.externalCopy(session.user,b.id,'Exportación '+b.backupId);const bytes=fs.readFileSync(archive.archive);store.authorize(credential,b.id,'owner');res.writeHead(200,{...security,'content-type':'application/octet-stream','content-disposition':`attachment; filename="orbita-${b.backupId}.orbita"`,'x-content-sha256':archive.sha256});return res.end(bytes);
+    store.externalCopy(session.user,b.id,'Exportación '+b.backupId);const bytes=contentFiles.readFileSync(archive.archive);store.authorize(credential,b.id,'owner');res.writeHead(200,{...security,'content-type':'application/octet-stream','content-disposition':`attachment; filename="orbita-${b.backupId}.orbita"`,'x-content-sha256':archive.sha256});return res.end(bytes);
    }else demand(false,'ACCESS_ROUTE_NOT_ADMITTED',403);
    // A self-erasure/purge can invalidate the initiating credential by design.
    if(!['/access/api/purge','/access/api/account-delete'].includes(p))store.session(credential);
@@ -111,13 +110,13 @@ export function createAccessServer({root,port=4492,clock}={}){
  server.on('listening',()=>actualPort=server.address().port);server.requestTimeout=190000;server.headersTimeout=15000;
  function close(){
   if(closed)return Promise.resolve();if(closing)return closing;
-  const task=(async()=>{await workers.close();await new Promise(resolve=>server.close(resolve));if(!storeClosed){store.close();storeClosed=true;}if(fs.existsSync(lock)&&JSON.parse(fs.readFileSync(lock,'utf8')).id===lockId)fs.unlinkSync(lock);closed=true;})();
+  const task=(async()=>{await workers.close();await new Promise(resolve=>server.close(resolve));if(!storeClosed){store.close();storeClosed=true;}serviceLease.release();closed=true;})();
   closing=task;void task.catch(()=>{if(closing===task)closing=null;});return task;
  }
  return {server,store,workers,lifecycle,close};
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
- const app=createAccessServer({root:process.env.AFH_ACCESS_ROOT,port:Number(process.env.AFH_ACCESS_PORT||4492)});
+ let app;try{app=createAccessServer({root:process.env.AFH_ACCESS_ROOT,port:Number(process.env.AFH_ACCESS_PORT||4492)});}catch(error){closeCommonStore();throw error;}
  app.server.listen(Number(process.env.AFH_ACCESS_PORT||4492),'127.0.0.1',()=>console.log('ORBITA ACCESS http://127.0.0.1:'+app.server.address().port+'/access'));
- for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>app.close().then(()=>process.exit(0)));
+ for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>app.close().then(()=>{closeCommonStore();process.exitCode=0;}).catch(e=>{console.error(e.message);process.exitCode=1;}));
 }

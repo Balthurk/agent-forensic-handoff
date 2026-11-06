@@ -1,4 +1,4 @@
-import fs from 'node:fs';import path from 'node:path';
+import fs from '../agent-forensic-handoff/src/common-files.js';import {closeCommonStore} from '../agent-forensic-handoff/src/common-store.js';import path from 'node:path';
 import {conversation,original,late,draft,reviewOutput} from './reevaluation-fixture.mjs';
 import {DATA,addSource} from './corpus.mjs';import {knowledgeOperation,verifiedSources} from './knowledge.mjs';import {registerWatch,reevaluationStatus,runReevaluation,scanReevaluations} from './reevaluation.mjs';
 const mode=process.argv[2];
@@ -15,4 +15,4 @@ try{
   const inferReview=async prompt=>{fs.appendFileSync(counter,'call\n');if(mode==='unknown')throw new Error('MODEL_RESPONSE_LOST');return {value:reviewOutput(JSON.parse(prompt.split('\nPACKET\n')[1])),modelObserved:'fixture',receipt:'fixture'};};
   const result=await runReevaluation({id},{inferReview});console.log(JSON.stringify(result));
  }
-}catch(e){console.log(JSON.stringify({error:e.message}));process.exitCode=1;}
+}catch(e){console.log(JSON.stringify({error:e.message}));process.exitCode=1;}finally{closeCommonStore();}

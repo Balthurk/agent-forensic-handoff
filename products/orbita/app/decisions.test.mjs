@@ -1,6 +1,6 @@
-import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import path from 'node:path';import {spawnSync} from 'node:child_process';import {fileURLToPath} from 'node:url';
+import test from 'node:test';import assert from 'node:assert/strict';import fs from '../agent-forensic-handoff/src/common-files.js';import {commonFixture} from './common-test-scope.mjs';import path from 'node:path';import {spawnSync} from 'node:child_process';import {fileURLToPath} from 'node:url';
 import {userText,resultText,exportConversation,decisionFixture,actionFixture} from './decision-fixture.mjs';
-const root=fs.mkdtempSync(path.join(process.env.AFH_TEST_ROOT||'C:/T','afh-decisions-'));process.env.AFH_COSMOS_DATA=root;process.env.AFH_COSMOS_EMPTY_LIBRARY='1';
+const root=commonFixture('afh-decisions-');process.env.AFH_COSMOS_DATA=root;process.env.AFH_COSMOS_EMPTY_LIBRARY='1';
 const {addSource,library}=await import('./corpus.mjs');const {decisionOperation:op,decisionSources}=await import('./decisions.mjs');const {learningOperation}=await import('./learning.mjs');const {knowledgeOperation,verifiedSources}=await import('./knowledge.mjs');const {retrievePackage,closeMemory}=await import('./memory.mjs');
 const here=path.dirname(fileURLToPath(import.meta.url));
 test('F26 concurrent CAS, retry, fresh process/full restore, F25 and semantic coexistence, abort and source drift',async t=>{
@@ -22,7 +22,7 @@ test('F26 concurrent CAS, retry, fresh process/full restore, F25 and semantic co
  const retrieved=await retrievePackage('conservar originales',conversationIds,{mode:'lexical'});assert.ok(retrieved.evidence.length);assert.equal(retrieved.knowledge.items.length,1);
  function fresh(data,opName='list',params={}){const p=spawnSync(process.execPath,[path.join(here,'incremental-cli.mjs')],{env:{...process.env,AFH_COSMOS_DATA:data},input:JSON.stringify({op:'decision.'+opName,input:{conversationIds,...params}}),encoding:'utf8',timeout:30000,windowsHide:true});assert.equal(p.status,0,p.stdout+p.stderr);return JSON.parse(p.stdout).result;}
  const reopened=fresh(root);assert.equal(reopened.items[0].record.version,3);assert.equal(reopened.bytes,Buffer.byteLength(JSON.stringify(reopened)));
- const restored=root+'-restored';fs.cpSync(root,restored,{recursive:true});assert.deepEqual(fresh(restored),reopened);assert.deepEqual(fresh(restored,'history',{id:'backup'})[0],first);
+ const restored=root+'-restored';fs.cloneTreeSync(root,restored);assert.deepEqual(fresh(restored),reopened);assert.deepEqual(fresh(restored,'history',{id:'backup'})[0],first);
  const control=new AbortController();control.abort(new Error('TEST_ABORT'));await assert.rejects(op('list',{conversationIds},{signal:control.signal}),/TEST_ABORT/);
  const item=library.find(i=>i.id===a.id);fs.appendFileSync(path.join(item.path,'acquisition/original.bin'),'drift');await assert.rejects(op('list',{conversationIds}),/Integridad/);
 });

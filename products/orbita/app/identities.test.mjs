@@ -1,6 +1,9 @@
-import test,{before,after} from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import path from 'node:path';import net from 'node:net';import {spawnSync} from 'node:child_process';import {fileURLToPath} from 'node:url';
+import test,{before,after} from 'node:test';import assert from 'node:assert/strict';import fs from '../agent-forensic-handoff/src/common-files.js';import native from 'node:fs';
+import {closeCommonStore} from '../agent-forensic-handoff/src/common-store.js';
+import {nativeFixture,runtimeEnv} from './common-test-fixtures.mjs';
+fs.mkdirSync(process.env.ORBITA_POSTGRES_TEST_ROOT,{recursive:true});import path from 'node:path';import net from 'node:net';import {spawnSync} from 'node:child_process';import {fileURLToPath} from 'node:url';
 import {exportConversation} from './decision-fixture.mjs';
-const root=fs.mkdtempSync(path.join(process.env.AFH_TEST_ROOT||'C:/T','orbita-identities-'));process.env.AFH_COSMOS_DATA=root;process.env.AFH_COSMOS_EMPTY_LIBRARY='1';
+const root=fs.mkdtempSync(path.join(process.env.ORBITA_POSTGRES_TEST_ROOT,'orbita-identities-'));process.env.AFH_COSMOS_DATA=root;process.env.AFH_COSMOS_EMPTY_LIBRARY='1';
 const {addSource,library}=await import('./corpus.mjs');const {identityOperation}=await import('./identities.mjs');const {retrievePackage,closeMemory}=await import('./memory.mjs');const {explorer}=await import('./explorer.mjs');
 let ids=[],source,a,b,link,page,packet,map;
 const text='Fixture sintético: Órbita y Orbita son nombres del mismo proyecto en el directorio local. Beta es otro proyecto. Desde 2026-01-01 hasta 2027-01-01. No es una identidad autenticada.';
@@ -14,7 +17,7 @@ before(async()=>{
  link=await call('put',{kind:'link',detail:{left:a.reference,right:b.reference,judgment:'same',temporal:{eventAt:null,validFrom:'2026-01-01T00:00:00Z',validTo:'2027-01-01T00:00:00Z',endOpen:false,evidence},state:'active',actor:'test',reason:'Comparación sintética',evidence},requestId:'link'});
  packet=await retrievePackage('¿Qué identidad y alias tiene Órbita?',ids,{mode:'lexical',validAt:'2026-06-01T00:00:00Z',maxBytes:150000});map=await explorer({id:packet.context.snapshot.id,conversationIds:ids});
 });
-after(()=>closeMemory());
+after(async()=>{try{await closeMemory();}finally{closeCommonStore();assert.equal(native.existsSync(root),false);}});
 test('F28 whole snapshots bind selection, cut, cursor and budget and expose staleness',async()=>{
  assert.ok(page.nextCursor);assert.equal(page.bytes,Buffer.byteLength(JSON.stringify(page)));const next=await call('page',{snapshotId:page.snapshotId,cursor:page.nextCursor,limit:1});assert.notEqual(next.items[0].reference.id,page.items[0].reference.id);assert.equal(next.freshness.current,false);assert.equal(next.knownAt,page.knownAt);
  await assert.rejects(call('page',{snapshotId:page.snapshotId,cursor:page.nextCursor,limit:2}),/CURSOR_BINDING/);await assert.rejects(call('page',{snapshotId:page.snapshotId,conversationIds:ids.slice(1)}),/SELECTION_MISMATCH/);await assert.rejects(call('page',{snapshotId:page.snapshotId,cursor:page.nextCursor+'x',limit:1}),/CURSOR/);
@@ -40,14 +43,14 @@ test('F28 HTTP assets and CLI use the same service and enforce origin',async t=>
  const http=await fetch(url+'/api/identities',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(request)});assert.equal(http.status,200);assert.deepEqual(await http.json(),await call('page',request));
  const denied=await fetch(url+'/api/identities',{method:'POST',headers:{origin:'https://other.invalid','content-type':'application/json'},body:JSON.stringify(request)});assert.equal(denied.status,403);
  for(const asset of ['identities-web.mjs','identities.css']){const response=await fetch(url+'/'+asset);assert.equal(response.status,200);assert.doesNotMatch(response.headers.get('content-security-policy'),/unsafe-inline|unsafe-eval/);}
- const file=path.join(root,'identity-request.json');fs.writeFileSync(file,JSON.stringify(request));const run=spawnSync(process.execPath,[fileURLToPath(new URL('./memory-cli.mjs',import.meta.url)),'identities',file],{env:process.env,encoding:'utf8',timeout:60000,windowsHide:true});assert.equal(run.status,0,run.stderr);assert.deepEqual(JSON.parse(run.stdout),await call('page',request));
+ const file=path.join(nativeFixture('identity-cli'),'request.json');native.writeFileSync(file,JSON.stringify(request));const run=spawnSync(process.execPath,[fileURLToPath(new URL('./memory-cli.mjs',import.meta.url)),'identities',file],{env:runtimeEnv({data:root}),encoding:'utf8',timeout:60000,windowsHide:true});assert.equal(run.status,0,run.stderr);assert.deepEqual(JSON.parse(run.stdout),await call('page',request));
 });
 test('F28 integral restore reproduces cursor, history and context projection in a fresh process',async()=>{
- const {createBackup,restoreBackup}=await import('./recovery.mjs');const lab=fs.mkdtempSync(path.join(process.env.AFH_TEST_ROOT||'C:/T','orbita-identity-restore-')),archive=path.join(lab,'all.orbita'),destination=path.join(lab,'restored');
+ const {createBackup,restoreBackup}=await import('./recovery.mjs');const lab=fs.mkdtempSync(path.join(process.env.ORBITA_POSTGRES_TEST_ROOT,'orbita-identity-restore-')),exports=nativeFixture('identity-restore'),archive=path.join(exports,'all.orbita'),destination=path.join(lab,'restored');
  const requests=[{op:'page',snapshotId:page.snapshotId,cursor:page.nextCursor,limit:1,conversationIds:ids},{op:'history',kind:'link',id:link.reference.id,conversationIds:ids}],before=await Promise.all(requests.map(r=>identityOperation(r.op,r)));
  await createBackup({source:root,archive,password:'synthetic-f28-only',ownSession:true});await restoreBackup({archive,destination,password:'synthetic-f28-only'});
- const script=path.join(lab,'fresh.mjs');fs.writeFileSync(script,`import {identityOperation} from ${JSON.stringify(new URL('./identities.mjs',import.meta.url).href)};console.log(JSON.stringify(await Promise.all(${JSON.stringify(requests)}.map(r=>identityOperation(r.op,r)))));`);
- const result=spawnSync(process.execPath,[script],{env:{...process.env,AFH_COSMOS_DATA:destination},encoding:'utf8',timeout:60000,windowsHide:true});assert.equal(result.status,0,result.stderr);assert.deepEqual(JSON.parse(result.stdout),before);
+ const script=path.join(exports,'fresh.mjs');native.writeFileSync(script,`import {identityOperation} from ${JSON.stringify(new URL('./identities.mjs',import.meta.url).href)};try{console.log(JSON.stringify(await Promise.all(${JSON.stringify(requests)}.map(r=>identityOperation(r.op,r)))));}finally{const {closeMemory}=await import(${JSON.stringify(new URL('./memory.mjs',import.meta.url).href)});const {closeCommonStore}=await import(${JSON.stringify(new URL('../agent-forensic-handoff/src/common-store.js',import.meta.url).href)});try{await closeMemory();}finally{closeCommonStore();}}`);
+ const result=spawnSync(process.execPath,[script],{env:runtimeEnv({data:destination}),encoding:'utf8',timeout:60000,windowsHide:true});assert.equal(result.status,0,result.stderr);assert.deepEqual(JSON.parse(result.stdout),before);
 });
 test('F28 tampered source and tampered retained projection fail closed',async()=>{
  const file=path.join(library.find(i=>i.id===ids[0]).path,'acquisition/original.bin'),raw=fs.readFileSync(file);fs.appendFileSync(file,'bad');try{await assert.rejects(call('page',{snapshotId:page.snapshotId}),/Integridad/);}finally{fs.writeFileSync(file,raw);}

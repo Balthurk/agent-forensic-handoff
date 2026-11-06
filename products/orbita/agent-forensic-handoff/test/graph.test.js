@@ -1,3 +1,4 @@
+import {nativeTemporary,caseRoot} from "./common-case-fixtures.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -11,9 +12,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const fixture = path.join(here, "fixtures", "codex", "basic.jsonl");
 
 function temporary(t, prefix) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  return root;
+  return nativeTemporary(t,prefix);
 }
 
 test("schema v3 graph traversal explains result, artifact, and validation relations", async (t) => {
@@ -22,12 +21,12 @@ test("schema v3 graph traversal explains result, artifact, and validation relati
   fs.mkdirSync(path.join(workspace, "src"), { recursive: true });
   fs.writeFileSync(path.join(workspace, "src", "parser.js"), "export const canary = 'ALPHA-42';\n");
   const result = await auditSession(fixture, {
-    harness: "codex", caseDir: path.join(root, "case"), workspace, includeChildren: false,
+    harness: "codex", caseDir: caseRoot(root), workspace, includeChildren: false,
   });
   assert.equal(result.manifest.schemaVersion, 3);
   assert.match(result.manifest.graphIdentity, /^[a-f0-9]{64}$/);
 
-  const db = new CaseDatabase(path.join(result.caseDir, "case.sqlite"), { readOnly: true });
+  const db = new CaseDatabase(path.join(result.caseDir, "case.pgstore"), { readOnly: true });
   let call;
   let toolResult;
   let artifactEdge;
@@ -55,9 +54,9 @@ test("schema v3 graph traversal explains result, artifact, and validation relati
 test("graph traversal is cycle-safe and bounded", async (t) => {
   const root = temporary(t, "afh-graph-cycle-");
   const result = await auditSession(fixture, {
-    harness: "codex", caseDir: path.join(root, "case"), workspace: root, includeChildren: false,
+    harness: "codex", caseDir: caseRoot(root), workspace: root, includeChildren: false,
   });
-  const db = new CaseDatabase(path.join(result.caseDir, "case.sqlite"));
+  const db = new CaseDatabase(path.join(result.caseDir, "case.pgstore"));
   let a;
   let b;
   try {

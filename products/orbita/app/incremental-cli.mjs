@@ -1,3 +1,4 @@
+import {closeCommonStore} from '../agent-forensic-handoff/src/common-store.js';
 import fs from 'node:fs';import path from 'node:path';
 import {DATA} from './corpus.mjs';import {registerCapture,captureOnce,captureStatus} from './capture.mjs';import {runPipeline,pipelineStatus} from './pipeline.mjs';import {saveTurn} from './turns.mjs';import {publishPending} from './publication.mjs';import {knowledgeOperation,extractKnowledge} from './knowledge.mjs';import {generationStatus,generationRequest} from './retained-generation.mjs';import {registerStore,listStores,federatedRetrieve} from './federation.mjs';import {closeMemory} from './memory.mjs';
 const controller=new AbortController();for(const event of ['SIGINT','SIGTERM'])process.on(event,()=>controller.abort(new Error('CALLER_CANCELLED')));
@@ -27,4 +28,4 @@ try{const request=JSON.parse(fs.readFileSync(0,'utf8'));const b=request.input??{
  default:throw new Error('UNKNOWN_INCREMENTAL_OPERATION');
  }
  controller.signal.throwIfAborted();process.stdout.write(JSON.stringify({ok:true,result})+'\n');
-}catch(e){process.stdout.write(JSON.stringify({ok:false,error:e.message})+'\n');process.exitCode=1;}finally{await closeMemory();}
+}catch(e){process.stdout.write(JSON.stringify({ok:false,error:e.message})+'\n');process.exitCode=1;}finally{try{await closeMemory();}finally{closeCommonStore();}}

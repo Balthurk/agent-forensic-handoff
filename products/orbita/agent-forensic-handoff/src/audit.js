@@ -1,21 +1,25 @@
-import fs from "node:fs";
+import {commonOutputBase} from './common-root.js';
+import fs from './common-files.js';
 import os from "node:os";
 import path from "node:path";
 import { AFH_VERSION, DEFAULTS, EPISTEMIC, SCHEMA_VERSION } from "./constants.js";
 import { CaseDatabase } from "./database.js";
-import { assertSafeSourcePath, resolveSession, validateResolvedSources } from "./discovery.js";
+import { resolveSession, validateResolvedSources } from "./discovery.js";
 import { decodedLines, EvidenceStore } from "./evidence.js";
 import { inferredSessionFromSource, normalizeRecord } from "./adapters.js";
 import { reduceCase, computeCaseMetrics } from "./reducers.js";
 import { verifyCurrentState } from "./verify.js";
 import { renderCase } from "./render.js";
-import { atomicWrite, ensureDir, hashFile, preview, redactText, safeJson, sha256, shortHash, stableStringify, slug } from "./util.js";
+import { preview, redactText, safeJson, sha256, shortHash, stableStringify, slug } from "./util.js";
+import {atomicWrite,ensureDir} from './common-util.js';
 import { computeGraphIdentity, computeTemporalIdentity } from "./graph.js";
+import {inputStorage} from './input-storage.js';
 
 export async function auditSession(identifier, options = {}) {
+  const sourceInput=inputStorage(options.inputStorage),sourceIO=sourceInput.files,sourceHashFile=sourceInput.hashFile;
   if (!options._deferIdentity && !/^https?:\/\//i.test(identifier)) {
     const {isConversationInput,importConversation}=await import('./conversation-intake.js');
-    if(isConversationInput(identifier))return importConversation(identifier,options);
+    if(isConversationInput(identifier,options))return importConversation(identifier,options);
   }
   if (/^https?:\/\//i.test(identifier)) {
     const { importChatGPTShare } = await import('./chatgpt-share.js');
@@ -37,20 +41,20 @@ export async function auditSession(identifier, options = {}) {
   };
   validateAuditConfig(config);
   const resolution = await resolveSession(identifier, { ...options, ...config });
-  validateResolvedSources(resolution.sources, { allowSymlink: Boolean(options.allowSymlink) });
-  const sources = resolution.sources.map((source) => ({ ...source, byteLength: fs.statSync(source.path).size }));
+  if(!sourceInput.common)validateResolvedSources(resolution.sources, { allowSymlink: Boolean(options.allowSymlink) });
+  const sources = resolution.sources.map((source) => ({ ...source, byteLength: sourceIO.statSync(source.path).size }));
   const totalSourceBytes = sources.reduce((sum, source) => sum + source.byteLength, 0);
   if (totalSourceBytes > config.maxTotalSourceBytes) {
     throw new Error(`Resolved sources total ${totalSourceBytes} bytes, exceeding maxTotalSourceBytes=${config.maxTotalSourceBytes}`);
   }
-  for (const source of sources) source.rawSha256 = await hashFile(source.path, source.byteLength);
+  for (const source of sources) source.rawSha256 = await sourceHashFile(source.path, source.byteLength);
   sources.sort((a, b) => a.path.localeCompare(b.path));
   const snapshotHash = sha256(stableStringify(sources.map((source) => ({
     harness: source.harness, nativeId: source.nativeId, rawSha256: source.rawSha256, byteLength: source.byteLength,
   }))));
   const semanticConfig = { ...config, workspace: config.workspace ? "<explicit>" : null };
   const caseHash = sha256(stableStringify({ schemaVersion: SCHEMA_VERSION, sources: snapshotHash, config: semanticConfig }));
-  const base = path.resolve(options.out || process.env.AFH_HOME || path.join(os.homedir(), ".afh"));
+  const base = commonOutputBase(options);
   const caseDir = options.caseDir
     ? path.resolve(options.caseDir)
     : path.join(base, "cases", slug(resolution.rootNativeId || identifier), caseHash.slice(0, 16));
@@ -67,7 +71,7 @@ export async function auditSession(identifier, options = {}) {
   const staging = `${caseDir}.tmp-${process.pid}`;
   if (fs.existsSync(staging)) fs.rmSync(staging, { recursive: true, force: true });
   ensureDir(staging);
-  const db = new CaseDatabase(path.join(staging, "case.sqlite"));
+  const db = new CaseDatabase(path.join(staging, "case.pgstore"));
   const evidence = new EvidenceStore(staging, { db, inlineBlobBytes: config.inlineBlobBytes });
   const runId = `run-${caseHash.slice(0, 20)}`;
   const startedAt = new Date().toISOString();
@@ -76,7 +80,7 @@ export async function auditSession(identifier, options = {}) {
 
   try {
     db.insertRun({ id: runId, schemaVersion: SCHEMA_VERSION, toolVersion: AFH_VERSION, config, sourceSnapshotHash: snapshotHash, startedAt, status: "RUNNING" });
-    db.begin();
+    db.beginAtomicBatch();
     for (const source of sources) {
       const sourceId = `src-${shortHash([source.harness, source.rawSha256], 24)}`;
       source.sourceId = sourceId;
@@ -95,7 +99,7 @@ export async function auditSession(identifier, options = {}) {
       let decompressedBytes = 0;
       const dedupe = new Map();
 
-      for await (const decoded of decodedLines(source.path, source.byteLength)) {
+      for await (const decoded of decodedLines(source.path, source.byteLength,sourceIO)) {
         counters.records += 1;
         decompressedBytes = decoded.byteOffset + decoded.byteLength + 1;
         if (decoded.byteLength > config.maxRecordBytes) throw new Error(`Record ${decoded.ordinal} in ${source.path} exceeds maxRecordBytes`);
@@ -162,7 +166,7 @@ export async function auditSession(identifier, options = {}) {
       source.canonicalSha256 = canonical.sha256;
       source.canonicalByteLength = canonical.byteLength;
       source.evidencePath = canonical.path;
-      const stableRawSha256 = await hashFile(source.path, source.byteLength);
+      const stableRawSha256 = await sourceHashFile(source.path, source.byteLength);
       if (stableRawSha256 !== source.rawSha256) throw new Error(`Source prefix changed during acquisition: ${source.path}`);
     }
     for (const edge of resolution.edges ?? []) {
@@ -206,6 +210,7 @@ export async function auditSession(identifier, options = {}) {
       sources: sources.map((source) => ({
         harness: source.harness, nativeId: source.nativeId, kind: source.kind,
         nativeUri: source.path, rawSha256: source.rawSha256, byteLength: source.byteLength,
+        inputStorage:options.inputStorage??'native',
         compression: source.path.endsWith(".zst") || source.path.endsWith(".zstd") ? "zstd" : source.path.endsWith(".gz") ? "gzip" : "none",
         canonicalSha256: source.canonicalSha256, canonicalByteLength: source.canonicalByteLength,
         evidencePath: source.evidencePath,
@@ -223,10 +228,12 @@ export async function auditSession(identifier, options = {}) {
     };
     atomicWrite(path.join(staging, "case.json"), `${JSON.stringify(manifest, null, 2)}\n`);
     await renderCase(db, staging, manifest, { tokenBudget: config.tokenBudget });
+    manifest.storage={engine:'postgresql-common',path:'case.pgstore',manifest:db.logicalManifest()};
+    atomicWrite(path.join(staging,'case.json'),JSON.stringify(manifest,null,2)+'\n');
     db.close();
     if(!options._deferIdentity) {
       const {archiveNativeSources,writeIdentity}=await import('./identity-evidence.js');
-      archiveNativeSources(staging,sources);await writeIdentity(staging);
+      archiveNativeSources(staging,sources,sourceIO);await writeIdentity(staging);
     }
     ensureDir(path.dirname(caseDir));
     fs.renameSync(staging, caseDir);

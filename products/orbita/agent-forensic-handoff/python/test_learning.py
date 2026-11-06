@@ -1,7 +1,10 @@
+from common_test_fixture import WorkspaceFixture, connect_semantic, corrupt_path, temporary_corruption
+from psycopg import IntegrityError
 import copy, hashlib, json, sqlite3, sys, tempfile, unittest
 from contextlib import closing
-from pathlib import Path
-sys.path.insert(0,str(Path(__file__).resolve().parent))
+from orbita_store.paths import Path
+from pathlib import Path as NativePath
+sys.path.insert(0,str(NativePath(__file__).resolve().parent))
 from afh_semantic.host import dispatch
 from afh_semantic.knowledge_records import RecordError
 
@@ -11,7 +14,7 @@ def source(i,text,conversation):
 
 class LearningTest(unittest.TestCase):
     def setUp(self):
-        self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup);self.root=Path(self.temp.name)
+        self.temp=WorkspaceFixture(self._testMethodName);self.addCleanup(self.temp.cleanup);self.root=Path(self.temp.name)
         self.sources=[source('rep-a','Con Windows y Excel abierto, escribir FEATURES.csv falla: archivo ocupado. El proceso informó failure.','A'),source('rep-b','Después de cerrar Excel se guardó FEATURES.csv. El proceso informó success. Cerrar Excel no repara permisos NTFS.','B')]
         a={'sourceId':'rep-a','quote':'escribir FEATURES.csv falla: archivo ocupado'};b={'sourceId':'rep-b','quote':'Después de cerrar Excel se guardó FEATURES.csv'}
         claim=lambda text,e: {'text':text,'evidence':[e]}
@@ -21,8 +24,8 @@ class LearningTest(unittest.TestCase):
     def test_immutable_n04_and_literal_evidence(self):
         row=self.put();self.assertEqual(row['integrity'],'envelope_v1');self.assertEqual(row['version'],1)
         l=row['payload']['learning_episode'];self.assertEqual(l['episode']['unknown'],self.episode['unknown']);self.assertFalse(l['executionAuthority']);self.assertFalse(l['humanAcceptance']);self.assertEqual(l['originConversations'],['A','B'])
-        with closing(sqlite3.connect(self.root/'learning/records.sqlite3')) as db:
-            with self.assertRaisesRegex(sqlite3.IntegrityError,'append only'):db.execute('DELETE FROM record_versions')
+        with closing(connect_semantic(self.root/'learning/records.pgstore')) as db:
+            with self.assertRaisesRegex(IntegrityError,'append only'):db.execute('DELETE FROM record_versions')
     def test_idempotency_and_conflict(self):
         first=self.put();self.assertEqual(first,self.put());self.episode['title']='changed'
         with self.assertRaisesRegex(RecordError,'IDEMPOTENCY_CONFLICT'):self.put()
@@ -55,11 +58,7 @@ class LearningTest(unittest.TestCase):
         self.put();self.sources[0]=source('rep-a','A changed original','A');p=self.call('query',question='zzzz');self.assertEqual(p['status'],'incomplete');self.assertTrue(p['errors'])
     def test_corrupt_envelope_is_not_hidden_by_query(self):
         self.put()
-        with closing(sqlite3.connect(self.root/'learning/records.sqlite3')) as db:
-            names=[r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='record_versions'")]
-            for name in names:db.execute('DROP TRIGGER "'+name+'"')
-            db.execute("UPDATE record_versions SET recorded_at='2000-01-01T00:00:00Z'")
-            db.commit()
+        corrupt_path(self.root/'learning/records.pgstore','record_versions',{'recorded_at':'2000-01-01T00:00:00Z'})
         p=self.call('query',question='nonmatching');self.assertEqual(p['status'],'incomplete');self.assertEqual(p['items'],[])
     def test_empty_archive_distinguished_and_validation(self):
         self.assertEqual(self.call('query',question='CSV')['status'],'no_precedent_found')
@@ -68,7 +67,7 @@ class LearningTest(unittest.TestCase):
     def test_budget_whole_episodes_no_clipping(self):
         self.put();p=self.call('query',question='CSV',maxBytes=4096);self.assertEqual(p['items'],[]);self.assertEqual(p['omittedByBudget'],1);self.assertEqual(p['status'],'omitted');self.assertLessEqual(p['bytes'],4096)
     def test_scope_identity_and_no_semantic_store_pollution(self):
-        self.put();self.assertFalse((self.root/'records.sqlite3').exists())
+        self.put();self.assertFalse((self.root/'records.pgstore').exists())
         request={'root':str(self.root),'scope':'other','sources':self.sources,'op':'learning_query','question':'CSV'}
         self.assertEqual(dispatch(request)['items'],[])
     def test_field_evidence_required_and_input_budget(self):

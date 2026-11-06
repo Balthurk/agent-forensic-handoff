@@ -57,7 +57,7 @@ class IntegrityBatch:
                 if entries>5000 or not isinstance(item,dict) or not isinstance(item.get('semantic_clause_id'),str) or not isinstance(item.get('clause_version_id'),str):return None
                 clauses.add(item['semantic_clause_id']);versions.add(item['clause_version_id'])
         required={'record_envelopes','record_integrity_policy','semantic_act_identity','semantic_clause_identity','semantic_clause_versions'}
-        tables={r[0] for r in connection.raw.execute("SELECT name FROM orbita_ddl WHERE type='table' AND name=ANY(%s)",(sorted(required|{'semantic_support_admissions'}),))}
+        tables={r[0] for r in connection.raw.execute("SELECT name FROM orbita_common.catalogue(%s) WHERE kind='table' AND name=ANY(%s)",(connection.family,sorted(required|{'semantic_support_admissions'})))}
         if not required.issubset(tables):return None
         value=cls();value.scope=scope;value.rowids={r['_rowid'] for r in rows};value.records={r['record_id'] for r in rows};value.acts=acts;value.clauses=clauses;value.versions=versions
         raw=connection.raw

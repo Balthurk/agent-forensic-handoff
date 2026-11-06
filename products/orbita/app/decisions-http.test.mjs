@@ -1,7 +1,7 @@
-import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import path from 'node:path';
+import test from 'node:test';import assert from 'node:assert/strict';import fs from '../agent-forensic-handoff/src/common-files.js';import {commonFixture} from './common-test-scope.mjs';import path from 'node:path';
 import net from 'node:net';
 import {exportConversation,userText,resultText,decisionFixture,actionFixture} from './decision-fixture.mjs';
-process.env.AFH_COSMOS_DATA=fs.mkdtempSync(path.join(process.env.AFH_TEST_ROOT||'C:/T','afh-decision-http-'));process.env.AFH_COSMOS_EMPTY_LIBRARY='1';
+process.env.AFH_COSMOS_DATA=commonFixture('afh-decision-http-');process.env.AFH_COSMOS_EMPTY_LIBRARY='1';
 const probe=net.createServer();await new Promise(resolve=>probe.listen(0,'127.0.0.1',resolve));const port=probe.address().port;await new Promise(resolve=>probe.close(resolve));process.env.AFH_COSMOS_PORT=String(port);
 const {server}=await import('./server.mjs');const {addSource}=await import('./corpus.mjs');
 test('F26 HTTP frame/choose/result, invalid authority, history and UI assets',async t=>{

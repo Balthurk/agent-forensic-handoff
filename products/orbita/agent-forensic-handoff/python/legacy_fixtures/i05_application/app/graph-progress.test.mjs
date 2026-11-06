@@ -1,0 +1,5 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {GraphProgress} from './graph-progress.mjs';
+const frame=(sequence,stage='objects',completed=50)=>'ORBITA_G1_PROGRESS '+JSON.stringify({schema:1,sequence,stage,completed})+'\n';
+test('completed graph work survives split transport frames',()=>{let n=0;const p=new GraphProgress(()=>n++),v=Buffer.from(frame(1)+frame(2,'readback',1));for(let i=0;i<v.length;i+=7)p.push(v.subarray(i,i+7));assert.equal(n,2);});
+test('logs, replayed, missing and malformed progress cannot extend liveness',()=>{let n=0;const p=new GraphProgress(()=>n++);p.push(Buffer.from('anything\nORBITA_G1_PROGRESS {}\n'+frame(2)+frame(1,'timer',1)+frame(1,'objects',0)));assert.equal(n,0);p.push(Buffer.from(frame(1)+frame(1)+frame(3)));assert.equal(n,1);p.push(Buffer.from(frame(2,'links',1)));assert.equal(n,2);});
+test('unbounded or incomplete frames do not extend liveness',()=>{let n=0;const p=new GraphProgress(()=>n++);p.push(Buffer.from(frame(1).trim()));assert.equal(n,0);p.push(Buffer.from('x'.repeat(65537)));assert.equal(n,0);p.push(Buffer.from(frame(1)));assert.equal(n,1);});

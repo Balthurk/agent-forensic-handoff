@@ -24,9 +24,9 @@ def origin_record(records,origin):
     from .host import AFHMemory
     require(isinstance(origin,dict) and set(origin)=={'id','version','digest','mentionId'},'IDENTITY_ORIGIN_FIELDS')
     _identifier(origin['id']);_identifier(origin['mentionId']);require(type(origin['version']) is int and origin['version']>0,'IDENTITY_ORIGIN_VERSION')
-    root=records.memory.path.parent.parent;require((root/'records.sqlite3').exists(),'IDENTITY_ORIGIN_UNAVAILABLE')
-    memory=AFHMemory(root,list(records.memory.sources.values()),records.memory.scope)
-    foreign=KnowledgeRecords(memory,root/'records.sqlite3',read_only=True)
+    root=records.memory.path.parent.parent;require((root/'records.pgstore').exists(),'IDENTITY_ORIGIN_UNAVAILABLE')
+    memory=AFHMemory(root,list(records.memory.sources.values()),records.memory.scope,read_only=True)
+    foreign=KnowledgeRecords(memory,root/'records.pgstore',read_only=True)
     try:
         row=foreign.db.execute('SELECT rowid AS _rowid,* FROM record_versions WHERE scope=? AND record_id=? AND version=?',(records.memory.scope,origin['id'],origin['version'])).fetchone()
         require(row is not None,'IDENTITY_ORIGIN_UNAVAILABLE');record=foreign._envelope(row)

@@ -1,7 +1,7 @@
-import fs from 'node:fs';import path from 'node:path';import {randomUUID} from 'node:crypto';
-import {openDB,transaction,sha,writeJSON,now,checkpoint} from './durable.mjs';
+import fs from '../agent-forensic-handoff/src/common-files.js';import path from 'node:path';import {randomUUID} from 'node:crypto';
+import {openDB,transaction,sha,writeJSON,now,checkpoint} from './common-durable.mjs';
 const encode=JSON.stringify;
-function open(root){const db=openDB(path.join(root,'generations.sqlite'));db.exec('CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,request_hash TEXT,status TEXT,owner TEXT,fence INTEGER DEFAULT 0,lease INTEGER DEFAULT 0,error TEXT);CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY,id TEXT,at TEXT,status TEXT,detail TEXT);');return db;}
+function open(root){const db=openDB(path.join(root,'generations.pgstore'),'generation');db.exec('CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,request_hash TEXT,status TEXT,owner TEXT,fence INTEGER DEFAULT 0,lease INTEGER DEFAULT 0,error TEXT);CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY,id TEXT,at TEXT,status TEXT,detail TEXT);');return db;}
 function sealed(file,value){writeJSON(file,{sha256:sha(encode(value)),value});}
 function unseal(file){const e=JSON.parse(fs.readFileSync(file,'utf8'));if(sha(encode(e.value))!==e.sha256)throw new Error('GENERATION_ARTIFACT_CORRUPT');return e.value;}
 export function generationStatus(root){const db=open(root);try{return {jobs:db.prepare('SELECT * FROM jobs').all(),events:db.prepare('SELECT * FROM events ORDER BY seq').all()};}finally{db.close();}}

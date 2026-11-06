@@ -4,6 +4,8 @@ import path from "node:path";
 import { DatabaseSync, loadVectorExtension } from "./sqlite-compat.js";
 import { decodedLines } from "./evidence.js";
 import { expandHome, walkFiles } from "./util.js";
+import {inputStorage} from './input-storage.js';
+import {walkFiles as walkCommon} from './common-util.js';
 
 const SESSION_EXTENSIONS = [".jsonl", ".jsonl.zst", ".jsonl.gz", ".ndjson"];
 
@@ -18,19 +20,19 @@ function existingVariant(filePath) {
   return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
 }
 
-async function sniffHarness(filePath) {
+async function sniffHarness(filePath,sourceIO=fs) {
   if (/[/\\]\.codex[/\\]|[/\\]codex[/\\]/i.test(filePath)) return "codex";
   if (/[/\\]\.claude[/\\]/i.test(filePath)) return "claude";
   if (/[/\\](?:antigravity|\.gemini)[/\\]/i.test(filePath)) return "antigravity";
   try {
-    for await (const { line } of decodedLines(filePath)) {
+    for await (const { line } of decodedLines(filePath,null,sourceIO)) {
       const record = JSON.parse(line);
       if (["session_meta", "turn_context", "world_state", "response_item", "event_msg", "token_usage_record", "realtime_item", "inter_agent_communication_metadata", "compacted"].includes(record?.type)) return "codex";
       if (record?.sessionId && ["user", "assistant", "system", "progress", "summary", "file-history-snapshot"].includes(record?.type)) return "claude";
       if (record?.conversationId || record?.transcriptPath || record?.artifactDirectory) return "antigravity";
       return "generic";
     }
-  } catch {}
+  } catch(error) {if(sourceIO!==fs&&!(error instanceof SyntaxError))throw error;}
   return "generic";
 }
 
@@ -345,6 +347,19 @@ export function validateResolvedSources(sources, options = {}) {
 export async function resolveSession(identifier, options = {}) {
   const requestedHarness = options.harness || "auto";
   const expanded = expandHome(identifier);
+  const input=inputStorage(options.inputStorage);
+  if(input.common){
+    const stat=input.files.statSync(expanded);
+    const files=stat.isDirectory()?walkCommon(expanded,isSessionFile):[expanded];
+    if(!files.length)throw new Error(`No supported transcript files found at ${expanded}`);
+    const sources=[];
+    for(const file of files){
+      const harness=requestedHarness==='auto'?await sniffHarness(file,input.files):requestedHarness;
+      sources.push({path:path.resolve(file),nativeId:path.basename(file).replace(/\.(?:jsonl(?:\.zst|\.gz)?|ndjson)$/i,''),harness,kind:`${harness}-transcript`,stateMetadata:{}});
+    }
+    return {requestedIdentifier:identifier,rootNativeId:sources[0].nativeId,harness:requestedHarness==='auto'?sources[0].harness:requestedHarness,
+      sources,edges:[],warnings:sources.length>1?['Explicit directory import: session relationships are included only when source records expose them.']:[]};
+  }
   let directStat = null;
   try {
     directStat = fs.lstatSync(expanded);

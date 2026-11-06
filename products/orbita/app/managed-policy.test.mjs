@@ -1,6 +1,7 @@
 import test,{before,after} from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
+import fs from '../agent-forensic-handoff/src/common-files.js';
+import {closeCommonStore} from '../agent-forensic-handoff/src/common-store.js';
 import path from 'node:path';
 import {managedFixture} from './managed-fixture.mjs';
 import {createAccessServer} from './access-server.mjs';
@@ -12,8 +13,8 @@ async function call(route,{token=f.tokens.owner,body,cookie,headers={}}={}){
  const r=await fetch(base+route,{method:body?'POST':'GET',headers:{connection:'close',...(cookie?{cookie}:{authorization:'Bearer '+token}),...(body?{'content-type':'application/json'}:{}),...headers},...(body?{body:JSON.stringify(body)}:{}),redirect:'manual'});
  const text=await r.text();let value;try{value=JSON.parse(text);}catch{value=text;}return {status:r.status,value,headers:r.headers};
 }
-before(async()=>{f=managedFixture(fs.mkdtempSync(path.join(process.env.AFH_TEST_ROOT||'C:/T','o4-policy-')));app=createAccessServer({root:f.root,port:0});await new Promise(r=>app.server.listen(0,'127.0.0.1',r));base='http://127.0.0.1:'+app.server.address().port;});
-after(async()=>{await app?.close();});
+before(async()=>{fs.mkdirSync(process.env.ORBITA_POSTGRES_TEST_ROOT,{recursive:true});f=managedFixture(fs.mkdtempSync(path.join(process.env.ORBITA_POSTGRES_TEST_ROOT,'o4-policy-')));app=createAccessServer({root:f.root,port:0});await new Promise(r=>app.server.listen(0,'127.0.0.1',r));base='http://127.0.0.1:'+app.server.address().port;});
+after(async()=>{try{await app?.close();}finally{closeCommonStore();}});
 
 test('I04 managed session capabilities match current roles and exclude unavailable inference/backends',async()=>{
  for(const name of ['owner','editor','reader']){
@@ -33,12 +34,12 @@ test('I04 managed bootstrap includes the four preserved feature modules',async()
 
 test('I04 real workers execute permitted writes and readers see all four original-backed modules',async()=>{
  const c=f.causal,ids=c.ids,reader=f.tokens.reader;
- const writes=[['/api/retrospectives',{op:'put',conversationIds:ids,id:'managed-context',detail:c.context.record.payload.retrospective.detail,requestId:'managed-context'}],['/api/decision-intelligence',{op:'put',conversationIds:ids,id:'managed-review',kind:'review',detail:c.review,requestId:'managed-review'}],['/api/causal',{op:'put',conversationIds:ids,id:'managed-causal',detail:c.detail,requestId:'managed-causal'}],['/api/graph-publication',{op:'publish',conversationIds:f.graph.ids,outboxId:f.graph.entry.outboxId,backend:'sqlite'}]];
+ const writes=[['/api/retrospectives',{op:'put',conversationIds:ids,id:'managed-context',detail:c.context.record.payload.retrospective.detail,requestId:'managed-context'}],['/api/decision-intelligence',{op:'put',conversationIds:ids,id:'managed-review',kind:'review',detail:c.review,requestId:'managed-review'}],['/api/causal',{op:'put',conversationIds:ids,id:'managed-causal',detail:c.detail,requestId:'managed-causal'}],['/api/graph-publication',{op:'publish',conversationIds:f.graph.ids,outboxId:f.graph.entry.outboxId,backend:'postgresql'}]];
  for(const [route,body] of writes){assert.equal((await call(route,{token:reader,body})).status,403,route);const r=await call(route,{token:f.tokens.editor,body});assert.equal(r.status,200,JSON.stringify(r.value));}
  for(const route of ['retrospectives','decision-intelligence','causal']){const r=await call('/api/'+route,{token:reader,body:{op:'query',conversationIds:ids}});assert.equal(r.status,200,JSON.stringify(r.value));assert.ok(r.value.items.length>0,route);}
  const s=await call('/api/graph-publication',{token:reader,body:{op:'status',conversationIds:f.graph.ids}}),entry=s.value.entries.find(e=>e.state==='selected');assert.ok(entry);
- const page=await call('/api/graph-publication',{token:reader,body:{op:'query',conversationIds:f.graph.ids,generation:entry.generation,sourceCut:entry.sourceCut,mode:'current',backend:'sqlite'}});assert.equal(page.status,200,JSON.stringify(page.value));assert.ok(page.value.items.length>0);
- const item=page.value.items[0],original=await call('/api/graph-publication',{token:reader,body:{op:'original',conversationIds:f.graph.ids,generation:entry.generation,sourceCut:entry.sourceCut,mode:'current',backend:'sqlite',recordId:item.record.id,sourceId:item.record.payload.source_refs[0].id}});assert.equal(original.status,200);assert.ok(original.value.source.text.includes('sintética'));
+ const page=await call('/api/graph-publication',{token:reader,body:{op:'query',conversationIds:f.graph.ids,generation:entry.generation,sourceCut:entry.sourceCut,mode:'current',backend:'postgresql'}});assert.equal(page.status,200,JSON.stringify(page.value));assert.ok(page.value.items.length>0);
+ const item=page.value.items[0],original=await call('/api/graph-publication',{token:reader,body:{op:'original',conversationIds:f.graph.ids,generation:entry.generation,sourceCut:entry.sourceCut,mode:'current',backend:'postgresql',recordId:item.record.id,sourceId:item.record.payload.source_refs[0].id}});assert.equal(original.status,200);assert.ok(original.value.source.text.includes('sintética'));
 });
 
 test('I04 evidence impact is a write and a reader cannot persist a valid review',async()=>{
@@ -47,10 +48,10 @@ test('I04 evidence impact is a write and a reader cannot persist a valid review'
  const allowed=await call('/api/supports',{token:f.tokens.editor,body:{...body,requestId:'editor-impact'}});assert.equal(allowed.status,200,JSON.stringify(allowed.value));
 });
 
-test('I04 managed entry does not activate host inference, remote graphs or PostgreSQL',async()=>{
+test('I04 managed entry does not activate host inference, remote graphs or legacy external PostgreSQL',async()=>{
  for(const [route,body] of [['/api/ask',{}],['/api/semantic/extract',{}],['/api/semantic/review',{}],['/api/corpus-plan',null],['/api/volume',{op:'page',backend:'postgres'}],['/api/routing',{op:'classify',policy:'jev'}]])assert.equal((await call(route,{body})).status,403,route);
- const r=await call('/api/graph-publication',{body:{op:'capabilities',conversationIds:f.graph.ids}});assert.equal(r.status,200);assert.equal(r.value.configured,false);
- const remote=await call('/api/graph-publication',{body:{op:'publish',conversationIds:f.graph.ids,outboxId:f.graph.entry.outboxId,backend:'janusgraph'}});assert.ok(remote.status>=400);assert.ok(!JSON.stringify((await call('/access/api/session')).value).includes(app.workers.items.get(f.a.id).secret));
+ const r=await call('/api/graph-publication',{body:{op:'capabilities',conversationIds:f.graph.ids}});assert.equal(r.status,200);assert.equal(r.value.configured,true);assert.equal(r.value.backend,'postgresql');assert.equal(r.value.default,'postgresql');assert.equal(r.value.readers,2);assert.equal(r.value.verified,false);assert.equal(r.value.automaticPromotion,false);assert.equal(r.value.humanAcceptance,false);
+ const remote=await call('/api/graph-publication',{body:{op:'publish',conversationIds:f.graph.ids,outboxId:f.graph.entry.outboxId,backend:'janusgraph'}});assert.ok(remote.status>=400);assert.match(remote.value.error,/G1_REMOTE_BACKEND_NOT_QUALIFIED/);assert.ok(!JSON.stringify((await call('/access/api/session')).value).includes(app.workers.items.get(f.a.id).secret));
 });
 
 test('I04 a second actual login invalidates the old tab even with identical role and workspace',async()=>{

@@ -1,10 +1,10 @@
-import fs from 'node:fs';import path from 'node:path';import {randomUUID} from 'node:crypto';import {DatabaseSync} from 'node:sqlite';
+import fs from '../agent-forensic-handoff/src/common-files.js';import path from 'node:path';import {randomUUID} from 'node:crypto';import {DatabaseSync} from '../agent-forensic-handoff/src/common-store.js';
 import {library,loadCase,getEvidence,DATA,refreshLibrary} from './corpus.mjs';
 import {verifyCaseIntegrity} from '../agent-forensic-handoff/src/integrity.js';
 import {readEvidence} from '../agent-forensic-handoff/src/render.js';
 import {queryCase} from '../agent-forensic-handoff/src/retrieval.js';
 import {buildSemanticIndex,findSemanticProjection,verifySemanticProjection,semanticSearch} from '../agent-forensic-handoff/src/semantic.js';
-import {createTransformersProvider} from '../agent-forensic-handoff/src/semantic-model.js';
+import {memoryProvider as provider} from './memory-provider.mjs';
 import {queryPlan,normalize,buildMemoryPackage,rankEvidence} from '../agent-forensic-handoff/src/memory-package.js';
 import {loadTaxonomy,validateProposal,SEMANTIC_TYPES,digest} from '../agent-forensic-handoff/src/knowledge-proposals.js';
 import {classifyOccurrences} from '../agent-forensic-handoff/src/representation-equivalence.js';
@@ -15,14 +15,12 @@ import {cancellationPoint} from './deadline.mjs';
 import {cachedEmbeddingProvider} from './embedding-cache.mjs';
 import {semanticSeeds,contextDiscovery} from './semantic-discovery.mjs';
 export {loadTaxonomy,SEMANTIC_TYPES};
-let providerPromise;
-const provider=()=>providerPromise??=(createTransformersProvider().catch(e=>{providerPromise=null;throw e;}));
-export async function closeMemory(){if(providerPromise){const p=await providerPromise.catch(()=>null);await p?.dispose?.();providerPromise=null;}}
+export {closeMemory} from './memory-provider.mjs';
 function itemFor(id){const item=library.find(i=>i.id===id);if(!item)throw new Error('Unknown conversation: '+id);return item;}
 async function verifiedCase(item){return loadCase(item);}
 const keyOf=(id,event)=>id+':'+event;
 function graph(c){
- const db=new DatabaseSync(path.join(c.item.path,'case.sqlite'),{readOnly:true});let rows;
+ const db=new DatabaseSync(path.join(c.item.path,'case.pgstore'),{family:'case',readOnly:true});let rows;
  try{rows=db.prepare('SELECT id,turn_id,call_id,parent_event_id,kind,metadata_json FROM event WHERE canonical=1 ORDER BY record_ordinal,subordinal').all();}finally{db.close();}
  const live=new Map(c.messages.map(m=>[m.id,m])),users=new Map(),calls=new Map(),links={};
  for(const row of rows){const m=live.get(row.id);if(!m)continue;if(m.role==='user'&&row.turn_id)users.set(row.turn_id,[...(users.get(row.turn_id)||[]),row.id]);
@@ -43,7 +41,7 @@ function graph(c){
  return links;
 }
 async function stages(c){
- const db=new DatabaseSync(path.join(c.item.path,'case.sqlite'),{readOnly:true});let total,parsed,indexed,full;
+ const db=new DatabaseSync(path.join(c.item.path,'case.pgstore'),{family:'case',readOnly:true});let total,parsed,indexed,full;
  try{total=Number(db.prepare('SELECT COUNT(*) n FROM source_record').get().n);
   parsed=Number(db.prepare("SELECT COUNT(*) n FROM source_record WHERE parse_status='PARSED'").get().n);
   indexed=Number(db.prepare('SELECT COUNT(*) n FROM (SELECT DISTINCT e.source_id,e.record_ordinal FROM event e JOIN event_fts f ON f.event_id=e.id)').get().n);
@@ -52,7 +50,7 @@ async function stages(c){
  let semantic={status:'not_indexed',records:0,representation:'full_source_text',revision:c.manifest.caseHash};
  const dir=findSemanticProjection(c.item.path,{representation:"full_source_text"});
  if(dir){const v=await verifySemanticProjection(c.item.path,dir,{deep:false});
-   if(v.passed){const sdb=new DatabaseSync(path.join(dir,'semantic.sqlite'),{readOnly:true});try{semantic={status:'indexed',records:Number(sdb.prepare('SELECT COUNT(*) n FROM (SELECT DISTINCT source_id,record_ordinal FROM semantic_chunk)').get().n),representation:'full_source_text',revision:c.manifest.caseHash,projectionId:v.manifest.projectionId,model:v.manifest.model.modelId,...v.manifest.metrics.fullText};}finally{sdb.close();}}
+   if(v.passed){const sdb=new DatabaseSync(path.join(dir,'semantic.pgstore'),{family:'vector',readOnly:true});try{semantic={status:'indexed',records:Number(sdb.prepare('SELECT COUNT(*) n FROM (SELECT DISTINCT source_id,record_ordinal FROM semantic_chunk)').get().n),representation:'full_source_text',revision:c.manifest.caseHash,projectionId:v.manifest.projectionId,model:v.manifest.model.modelId,...v.manifest.metrics.fullText};}finally{sdb.close();}}
    else semantic={...semantic,status:'unavailable',reason:'PROJECTION_INTEGRITY_FAILED'};}
  return {revision:c.manifest.caseHash,denominator:total,unit:'source_records',archived:total,parsed,indexedPreview:indexed,availableFullText:full,indexedFullText:semantic.status==='indexed'?semantic.records:0,semantic,
    extracted:{status:'not_performed',records:0},limits:'Parsed/indexed counts do not certify semantic completeness. Proposals are manual, not automatic extraction.'};

@@ -1,3 +1,5 @@
+from common_test_fixture import WorkspaceFixture, connect_semantic, corrupt_path, temporary_corruption
+from psycopg import IntegrityError
 """New family histories keep source verification, exact versions and known-time cuts."""
 import copy,sqlite3,unittest
 from contextlib import closing
@@ -64,17 +66,13 @@ class ExplorerDerivedHistoryTest(unittest.TestCase):
             with self.subTest(kind=kind):
                 with self.assertRaises(RecordError):self.read(kind,sources=[])
     def test_tampered_envelopes_are_rejected_instead_of_empty_success(self):
-        # Corrupt only the family under test; restore its bytes before testing a
-        # dependent family, so every assertion discriminates its own store.
+        # Corrupt only the selected family, then restore the exact field values
+        # before the next dependent family. Runtime immutability stays enabled.
         for kind in self.items:
             with self.subTest(kind=kind):
-                p=self.root/self.folders[kind]/'records.sqlite3';original=p.read_bytes()
-                try:
-                    with closing(sqlite3.connect(p)) as db,db:
-                        db.execute('DROP TRIGGER records_no_update')
-                        db.execute("UPDATE record_versions SET payload_sha256='bad'")
+                p=self.root/self.folders[kind]/'records.pgstore'
+                with temporary_corruption(p,'record_versions',{'payload_sha256':'bad'}):
                     with self.assertRaises(RecordError):self.read(kind)
-                finally:p.write_bytes(original)
     def test_history_contains_all_thirteen_versions_without_changing_old_reference(self):
         first=self.items['retrospective'];current=first
         for i in range(2,14):current=self.revise('retrospective',current,reason=str(i))

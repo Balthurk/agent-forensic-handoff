@@ -1,5 +1,7 @@
-import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import path from 'node:path';import {retainedGeneration,generationStatus} from './retained-generation.mjs';
-const root=fs.mkdtempSync('C:/T/afh-retained-test-');let calls=0,commits=0,fail=true;
+import test from 'node:test';import assert from 'node:assert/strict';import nativeFs from 'node:fs';import fs from '../agent-forensic-handoff/src/common-files.js';import {closeCommonStore} from '../agent-forensic-handoff/src/common-store.js';import path from 'node:path';import {retainedGeneration,generationStatus} from './retained-generation.mjs';
+assert.ok(process.env.ORBITA_POSTGRES_TEST_ROOT,'A scoped PostgreSQL test binding is required');
+const root=path.join(process.env.ORBITA_POSTGRES_TEST_ROOT,'retained-consumer');let calls=0,commits=0,fail=true;
+test.after(()=>{assert.equal(nativeFs.existsSync(root),false);assert.equal(closeCommonStore().ownedExit,0);});
 const base={root,id:'stable',request:{target:'one'},prepare:async()=>({input:'literal',cut:'a'}),verify:async()=>{},infer:async()=>{calls++;return {value:'proposal'};},admit:async()=>{commits++;if(fail)throw new Error('mechanical');return {records:[{id:'r',version:1}],errors:[]};}};
 test('retained output is replayed without inference; binding and corruption fail closed',async()=>{
  await assert.rejects(retainedGeneration(base),/mechanical/);fail=false;const r=await retainedGeneration(base);assert.equal(calls,1);assert.equal(commits,2);assert.equal(r.records[0].version,1);assert.equal(generationStatus(root).jobs[0].status,'complete');

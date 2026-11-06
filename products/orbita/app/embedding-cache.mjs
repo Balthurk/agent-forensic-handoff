@@ -1,11 +1,11 @@
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {openDB,sha,now,transaction} from './durable.mjs';
+import {openDB,sha,now,transaction} from './common-durable.mjs';
 import {validateProviderIdentity,validateProviderVectors} from '../agent-forensic-handoff/src/semantic-model.js';
 import {stableStringify} from '../agent-forensic-handoff/src/util.js';
 export function cachedEmbeddingProvider(provider,root,{tokenizerPolicy='exact-provider-tokenizer-v1',signal}={}){
  validateProviderIdentity(provider.identity);if(typeof provider.countTokens!=='function'||!provider.maxInputTokens)throw new Error('CACHE_TOKENIZER_IDENTITY_REQUIRED');
- const identity={model:provider.identity,tokenizerPolicy,maxInputTokens:provider.maxInputTokens,textEncoding:'utf8-exact-v1',vectorEncoding:'json-f64-v1'},identityJSON=stableStringify(identity),namespace=sha(identityJSON),db=openDB(path.join(root,'embeddings.sqlite'));
+ const identity={model:provider.identity,tokenizerPolicy,maxInputTokens:provider.maxInputTokens,textEncoding:'utf8-exact-v1',vectorEncoding:'json-f64-v1'},identityJSON=stableStringify(identity),namespace=sha(identityJSON),db=openDB(path.join(root,'embeddings.pgstore'),'embedding');
  db.exec('CREATE TABLE IF NOT EXISTS vectors(namespace TEXT,text_hash TEXT,text TEXT,vector TEXT,vector_hash TEXT,PRIMARY KEY(namespace,text_hash)); CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY,started TEXT,ended TEXT,status TEXT,identity TEXT,metrics TEXT,error TEXT);');
  const id=randomUUID(),started=performance.now(),metrics={hits:0,misses:0,embeddingCalls:0,embeddedTokens:0,embeddedCharacters:0,embeddedBytes:0,elapsedMs:0,monetaryCost:null};let closed=false;
  db.prepare('INSERT INTO runs VALUES(?,?,?,?,?,?,?)').run(id,now(),null,'running',identityJSON,JSON.stringify(metrics),null);

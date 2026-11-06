@@ -1,6 +1,9 @@
+from common_test_fixture import WorkspaceFixture, connect_semantic, corrupt_path, temporary_corruption
+from psycopg import IntegrityError
 import copy, unittest, tempfile, sys
-from pathlib import Path
-sys.path.insert(0,str(Path(__file__).resolve().parent))
+from orbita_store.paths import Path
+from pathlib import Path as NativePath
+sys.path.insert(0,str(NativePath(__file__).resolve().parent))
 from test_semantic import source
 from afh_semantic.host import AFHMemory, compile_act, digest, query_records
 from afh_semantic.knowledge_records import KnowledgeRecords, RecordError
@@ -8,9 +11,9 @@ from afh_semantic.reevaluation import prepare, apply, verify
 
 class ReevaluationTest(unittest.TestCase):
     def setUp(self):
-        self.tmp=tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup);root=Path(self.tmp.name)
+        self.tmp=WorkspaceFixture(self._testMethodName); self.addCleanup(self.tmp.cleanup);root=Path(self.tmp.name)
         self.sources=[source('original','Ella llegó.'),source('late','Con «ella» me refería a Ana.','B'),source('other','Llueve.','C')]
-        self.memory=AFHMemory(root,self.sources,'scope',register=True);self.addCleanup(self.memory.close);self.records=KnowledgeRecords(self.memory,root/'records.sqlite3');self.addCleanup(self.records.close)
+        self.memory=AFHMemory(root,self.sources,'scope',register=True);self.addCleanup(self.memory.close);self.records=KnowledgeRecords(self.memory,root/'records.pgstore');self.addCleanup(self.records.close)
         act={'key':'arrival','targetSourceId':'original','type':'fact','summary':'Ella llegó.','modality':'stated','clauses':[{'key':'arrival','quote':'Ella llegó.','predicate':'llegar','polarity':'positive','resolution':'insufficient_context','arguments':[{'role':'subject','literal':'Ella','interpreted':'','evidence':[{'sourceId':'original','quote':'Ella llegó.'}]}]}]}
         p=compile_act(self.memory,act,'producer','old-cut');p['opaque']={'preserve':42};p['semantic_unit']['clauses'][0]['opaque']={'x':1};p['semantic_unit']['clauses'][0]['unrepresented_fields']=['/opaque']
         from afh_semantic.host import manifest

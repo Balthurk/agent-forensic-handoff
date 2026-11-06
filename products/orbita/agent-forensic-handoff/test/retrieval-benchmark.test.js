@@ -3,6 +3,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import {closeCommonStore} from '../src/common-store.js';
+const fixtureRoot=path.join(process.env.ORBITA_POSTGRES_TEST_RECEIPTS,'native-benchmarks');
+fs.mkdirSync(fixtureRoot,{recursive:true});
+test.after(()=>{if(fs.existsSync(process.env.ORBITA_POSTGRES_TEST_ROOT))throw new Error('NATIVE_OPERATIONAL_OUTPUT');closeCommonStore();});
 import { runRetrievalBenchmark } from "../src/index.js";
 
 function fixtureProvider() {
@@ -33,9 +37,9 @@ function fixtureProvider() {
 }
 
 test("versioned hybrid gold set enforces retrieval, graph, evidence, and negative-state gates", async (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "afh-gold-test-"));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const result = await runRetrievalBenchmark({ output: root, provider: fixtureProvider() });
+  const root = fs.mkdtempSync(path.join(fixtureRoot, "afh-gold-test-"));
+  // Explicit native fixture/export bytes remain bound to this receipt.
+  const result = await runRetrievalBenchmark({ output: root, caseRoot:path.join(process.env.ORBITA_POSTGRES_TEST_ROOT,"benchmark",path.basename(root)), provider: fixtureProvider() });
   assert.equal(result.passed, true);
   assert.equal(result.metrics.exactRecallAtK, 1);
   assert.equal(result.metrics.semanticParaphraseRecallAt25, 1);

@@ -1,15 +1,36 @@
 import path from 'node:path';
-import fs from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {fork} from 'node:child_process';
 import {randomBytes,randomUUID} from 'node:crypto';
+import {setTimeout as delay} from 'node:timers/promises';
 import {terminateOwned} from './owned-process.mjs';
 import {demand} from './access-store.mjs';
+import {plainPath} from './store-access.mjs';
+
+function workerEnvironment(store,id,secret,configuration){
+ const allowed=new Set(['systemroot','windir','comspec','path','pathext','temp','tmp','lang','lc_all','pythonutf8','pythondontwritebytecode','orbita_postgres_python','afh_python','afh_model_home']);
+ const env=Object.fromEntries(Object.entries(process.env).filter(([key])=>allowed.has(key.toLowerCase())));
+ Object.assign(env,{ORBITA_POSTGRES_BINDING:JSON.stringify(configuration),AFH_PYTHON:process.env.AFH_PYTHON||process.env.ORBITA_POSTGRES_PYTHON,AFH_MODEL_HOME:plainPath(process.env.AFH_MODEL_HOME||fileURLToPath(new URL('../runtime/models/',import.meta.url))),AFH_COSMOS_DATA:path.join(store.workspaceRoot(id),'data'),AFH_COSMOS_PORT:'0',AFH_PRIVATE_TOKEN:secret,AFH_MANAGED:'1'});
+ // A test may install only these checked-in observers, and only with native
+ // barriers inside its explicit receipt root, outside the content namespace.
+ const imports=[];
+ for(const [name,file] of [['ORBITA_ACTIVITY_FIXTURE_DIR','managed-activity-fixture.mjs'],['ORBITA_TRANSPORT_FIXTURE_DIR','managed-transport-fixture.mjs']]){
+  if(!process.env[name])continue;
+  demand(process.env.ORBITA_POSTGRES_TEST_RECEIPTS,'ACCESS_WORKER_FIXTURE_ROOT');
+  const root=plainPath(process.env.ORBITA_POSTGRES_TEST_RECEIPTS),dir=plainPath(process.env[name]),relative=path.relative(root,dir);
+  demand(relative&&!relative.startsWith('..')&&!path.isAbsolute(relative),'ACCESS_WORKER_FIXTURE_ROOT');
+  const virtual=process.env.ORBITA_POSTGRES_TEST_ROOT&&path.relative(plainPath(process.env.ORBITA_POSTGRES_TEST_ROOT),dir);
+  demand(virtual&&(virtual.startsWith('..')||path.isAbsolute(virtual)),'ACCESS_WORKER_FIXTURE_CONTENT_BOUNDARY');
+  env[name]=dir;imports.push('--import='+new URL('./'+file,import.meta.url).href);
+ }
+ if(imports.length)env.NODE_OPTIONS=imports.join(' ');
+ return env;
+}
 
 export class Workers{
  constructor(store){
   this.store=store;this.items=new Map();this.pending=new Map();this.stopping=new Map();this.slots=new Map();this.holds=new Map();this.closed=false;this.sequence=0;this.allocator=Promise.resolve();
-  this.timer=setInterval(()=>{for(const id of this.slots.keys()){try{store.active(store.workspace(id));}catch{void this.stop(id).catch(()=>{});}}},500);this.timer.unref();
+  this.timer=setInterval(()=>{for(const [id,slot] of this.slots){try{store.active(store.workspace(id));if(slot.epoch!==undefined)demand(store.managedState(id).epoch===slot.epoch,'ACCESS_WORKER_EPOCH');}catch{void this.stop(id).catch(()=>{});}}},500);this.timer.unref();
  }
  admit(id){demand(!this.closed&&!this.stopping.has(id),'ACCESS_WORKER_STOPPING',503);this.store.active(this.store.workspace(id));}
  hold(id){
@@ -20,7 +41,7 @@ export class Workers{
  exclusive(fn){const task=this.allocator.then(fn);this.allocator=task.catch(()=>{});return task;}
  async get(id){
   this.admit(id);const current=this.slots.get(id);
-  if(current?.state==='running'){current.lastUsed=++this.sequence;return current;}
+  if(current?.state==='running'){if(this.store.managedState(id).epoch!==current.epoch){await this.stop(id);return this.get(id);}current.lastUsed=++this.sequence;return current;}
   demand(!current||!['retiring','stopping'].includes(current.state),'ACCESS_WORKER_STOPPING',503);
   if(this.pending.has(id))return this.pending.get(id);
   const task=Promise.resolve().then(()=>this.allocate(id)).then(slot=>slot.state==='running'?slot:this.start(id,slot));
@@ -63,27 +84,47 @@ export class Workers{
  async resume(slot){
   await this.rpc(slot,'orbita-resume','orbita-resumed');
   demand(this.slots.get(slot.id)===slot&&!slot.exited&&!this.closed&&!this.stopping.has(slot.id)&&slot.state==='uncertain','ACCESS_WORKER_STOPPING',503);
+  demand(this.store.managedState(slot.id).epoch===slot.epoch,'ACCESS_WORKER_EPOCH',503);
   slot.state='running';slot.nonce=null;
  }
  releaseSlot(slot){
   slot.closedSeen=true;slot.state='closed';if(this.slots.get(slot.id)===slot)this.slots.delete(slot.id);if(this.items.get(slot.id)===slot)this.items.delete(slot.id);slot.resolveClosed();
  }
- terminate(slot){if(slot.terminationStarted||slot.exited||slot.closedSeen||!slot.child)return;slot.terminationStarted=true;terminateOwned(slot.child);}
- async waitClosed(slot){let timer;try{await Promise.race([slot.closed,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('ACCESS_WORKER_STOP_TIMEOUT')),15000);})]);}finally{clearTimeout(timer);}}
+ terminate(slot){
+  if(slot.terminationStarted||slot.exited||slot.closedSeen||!slot.child)return;
+  slot.terminationStarted=true;slot.stopDeadline??=Date.now()+15000;
+  const child=slot.child;let forced=false;
+  const force=()=>{if(forced||slot.exited||slot.closedSeen)return;forced=true;terminateOwned(child);};
+  // The worker closes its HTTP, providers and common-store bridge, then its
+  // own IPC endpoint. Parent-initiated disconnect can omit close in Node24.
+  // Keep the slot until the real close event and PostgreSQL drain.
+  // The fallback uses the same owned child and never extends the stop deadline.
+  if(!child.connected){force();return;}
+  const timer=setTimeout(force,5000);child.once('exit',()=>clearTimeout(timer));
+  try{child.send({type:'orbita-shutdown',nonce:randomUUID()},error=>{if(error){clearTimeout(timer);force();}});}catch{clearTimeout(timer);force();}
+ }
+ async drain(id,deadline){
+  for(;;){const state=this.store.drainContent(id);if(state.backends===0)return state;demand(Date.now()<deadline,'ACCESS_WORKER_STOP_TIMEOUT',503);await delay(Math.min(100,Math.max(1,deadline-Date.now())));}
+ }
+ async waitClosed(slot){
+  if(slot.finishing)return slot.finishing;
+  const deadline=slot.stopDeadline??=Date.now()+15000;
+  const task=(async()=>{let timer;try{await Promise.race([slot.closed,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('ACCESS_WORKER_STOP_TIMEOUT')),Math.max(1,deadline-Date.now()));})]);}finally{clearTimeout(timer);}await this.drain(slot.id,deadline);this.releaseSlot(slot);})();
+  slot.finishing=task;try{return await task;}finally{if(slot.finishing===task)slot.finishing=null;}
+ }
  async start(id,slot){
   try{
-   this.admit(id);const temporary=path.join(this.store.workspaceRoot(id),'temporary');fs.mkdirSync(temporary,{recursive:true});
-   slot.secret=randomBytes(32).toString('base64url');const env={...process.env,TEMP:temporary,TMP:temporary,AFH_COSMOS_DATA:path.join(this.store.workspaceRoot(id),'data'),AFH_COSMOS_PORT:'0',AFH_PRIVATE_TOKEN:slot.secret,AFH_MANAGED:'1'};
-   delete env.AFH_VOLUME_PG_CONFIG;delete env.AFH_JEV_CONFIG;delete env.OPENAI_API_KEY;delete env.CODEX_API_KEY;
-   const child=slot.child=fork(fileURLToPath(new URL('./server.mjs',import.meta.url)),[],{env,windowsHide:true,stdio:['ignore','ignore','ignore','ipc']});
+   this.admit(id);const binding=this.store.workerConfiguration(id);slot.epoch=binding.epoch;
+   slot.secret=randomBytes(32).toString('base64url');const env=workerEnvironment(this.store,id,slot.secret,binding.configuration);
+   const child=slot.child=fork(fileURLToPath(new URL('./server.mjs',import.meta.url)),[],{env,execArgv:[],windowsHide:true,stdio:['ignore','ignore','ignore','ipc']});
    child.once('exit',()=>{slot.exited=true;slot.state='stopping';if(this.items.get(id)===slot)this.items.delete(id);});
-   child.once('close',()=>this.releaseSlot(slot));
+   child.once('close',()=>{slot.closedSeen=true;slot.resolveClosed();void this.waitClosed(slot).catch(()=>{});});
    await new Promise((resolve,reject)=>{
     const finish=(error)=>{clearTimeout(timer);child.removeListener('error',errorEvent);child.removeListener('exit',exit);child.removeListener('message',message);error?reject(error):resolve();};
     const errorEvent=e=>finish(e),exit=()=>finish(new Error('ACCESS_WORKER_EXIT')),message=m=>{if(m?.type==='orbita-ready'&&Number.isInteger(m.port)&&m.port>0&&m.port<65536){slot.port=m.port;finish();}};
     const timer=setTimeout(()=>finish(new Error('ACCESS_WORKER_START_TIMEOUT')),20000);child.once('error',errorEvent);child.once('exit',exit);child.on('message',message);
    });
-   this.admit(id);demand(!slot.exited&&this.slots.get(id)===slot,'ACCESS_WORKER_EXIT',503);slot.state='running';this.items.set(id,slot);return slot;
+   this.admit(id);demand(this.store.managedState(id).epoch===slot.epoch,'ACCESS_WORKER_EPOCH',503);demand(!slot.exited&&this.slots.get(id)===slot,'ACCESS_WORKER_EXIT',503);slot.state='running';this.items.set(id,slot);return slot;
   }catch(e){if(!slot.child)this.releaseSlot(slot);else{slot.state='stopping';this.terminate(slot);await this.waitClosed(slot);}throw e;}
  }
  async stop(id){
@@ -91,9 +132,9 @@ export class Workers{
   // Publish stopping before waiting for admission/startup, so neither can
   // revive this workspace while revocation or maintenance is closing it.
   const task=Promise.resolve().then(async()=>{
-   let slot=this.slots.get(id);if(slot?.child){slot.state='stopping';this.terminate(slot);}
+   let slot=this.slots.get(id),deadline=Date.now()+15000;if(slot?.child){slot.state='stopping';this.terminate(slot);deadline=slot.stopDeadline??deadline;}
    const pending=this.pending.get(id);if(pending)try{await pending;}catch{}
-   slot=this.slots.get(id);if(slot){slot.state='stopping';this.terminate(slot);await this.waitClosed(slot);}
+   slot=this.slots.get(id);if(slot){slot.state='stopping';this.terminate(slot);await this.waitClosed(slot);}else await this.drain(id,deadline);
   });
   this.stopping.set(id,task);try{await task;}finally{if(this.stopping.get(id)===task)this.stopping.delete(id);}
  }

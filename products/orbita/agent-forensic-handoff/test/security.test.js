@@ -1,3 +1,5 @@
+import stored from "../src/common-files.js";
+import {nativeTemporary,caseRoot} from "./common-case-fixtures.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -7,9 +9,7 @@ import { auditSession, readEvidence, readHotContext } from "../src/index.js";
 import { CaseDatabase } from "../src/database.js";
 
 function temporary(t, prefix) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  return root;
+  return nativeTemporary(t,prefix);
 }
 
 test("projections redact secrets while cold evidence remains exact", async (t) => {
@@ -24,7 +24,7 @@ test("projections redact secrets while cold evidence remains exact", async (t) =
   });
   fs.writeFileSync(source, `${line}\n`);
   const result = await auditSession(source, {
-    harness: "generic", caseDir: path.join(root, "case"), workspace: root, includeChildren: false,
+    harness: "generic", caseDir: caseRoot(root), workspace: root, includeChildren: false,
   });
 
   const hot = readHotContext(result.caseDir);
@@ -32,7 +32,7 @@ test("projections redact secrets while cold evidence remains exact", async (t) =
   assert.match(hot, /REDACTED:github-token/);
   assert.equal(result.metrics.secretFindings, 1);
 
-  const db = new CaseDatabase(path.join(result.caseDir, "case.sqlite"), { readOnly: true });
+  const db = new CaseDatabase(path.join(result.caseDir, "case.pgstore"), { readOnly: true });
   let uri;
   try { uri = db.get("SELECT uri FROM evidence_ref LIMIT 1").uri; }
   finally { db.close(); }
@@ -44,17 +44,15 @@ test("tampered evidence fails closed", async (t) => {
   const source = path.join(root, "source.jsonl");
   fs.writeFileSync(source, `${JSON.stringify({ session_id: "tamper", role: "user", content: "canary" })}\n`);
   const result = await auditSession(source, {
-    harness: "generic", caseDir: path.join(root, "case"), workspace: root, includeChildren: false,
+    harness: "generic", caseDir: caseRoot(root), workspace: root, includeChildren: false,
   });
-  const db = new CaseDatabase(path.join(result.caseDir, "case.sqlite"), { readOnly: true });
+  const db = new CaseDatabase(path.join(result.caseDir, "case.pgstore"), { readOnly: true });
   let uri;
   try { uri = db.get("SELECT uri FROM evidence_ref LIMIT 1").uri; }
   finally { db.close(); }
 
   const canonical = path.join(result.caseDir, result.manifest.sources[0].evidencePath);
-  const fd = fs.openSync(canonical, "r+");
-  try { fs.writeSync(fd, Buffer.from("X"), 0, 1, 0); }
-  finally { fs.closeSync(fd); }
+  const tampered=stored.readFileSync(canonical);tampered[0]=Buffer.from("X")[0];stored.writeFileSync(canonical,tampered);
   assert.throws(() => readEvidence(result.caseDir, uri), /hash mismatch/);
 });
 
@@ -67,9 +65,9 @@ test("artifact path traversal is not probed and remains explicitly unverified", 
   };
   fs.writeFileSync(source, `${JSON.stringify(record)}\n`);
   fs.mkdirSync(path.join(root, "workspace"));
-  const result = await auditSession(source, { harness: "generic", caseDir: path.join(root, "case"), workspace: path.join(root, "workspace"), includeChildren: false });
+  const result = await auditSession(source, { harness: "generic", caseDir: caseRoot(root), workspace: path.join(root, "workspace"), includeChildren: false });
   assert.equal(fs.existsSync(path.join(root, "escape.txt")), false);
-  const db = new CaseDatabase(path.join(result.caseDir, "case.sqlite"), { readOnly: true });
+  const db = new CaseDatabase(path.join(result.caseDir, "case.pgstore"), { readOnly: true });
   try {
     assert.equal(db.get("SELECT current_status FROM artifact").current_status, "LIVE_UNVERIFIED");
     assert.match(db.get("SELECT observed_result FROM validation WHERE method='workspace containment check'").observed_result, /outside verified workspace/);
@@ -85,8 +83,8 @@ test("absolute historical artifact paths cannot probe outside the workspace", as
     session_id: "absolute", type: "tool_call", tool_name: "Write", call_id: "bad-absolute",
     input: { file_path: "/etc/passwd", content: "not used" },
   })}\n`);
-  const result = await auditSession(source, { harness: "generic", caseDir: path.join(root, "case"), workspace, includeChildren: false });
-  const db = new CaseDatabase(path.join(result.caseDir, "case.sqlite"), { readOnly: true });
+  const result = await auditSession(source, { harness: "generic", caseDir: caseRoot(root), workspace, includeChildren: false });
+  const db = new CaseDatabase(path.join(result.caseDir, "case.pgstore"), { readOnly: true });
   try { assert.equal(db.get("SELECT current_status FROM artifact").current_status, "LIVE_UNVERIFIED"); }
   finally { db.close(); }
 });
@@ -97,7 +95,7 @@ test("symlink transcript input is refused by default", { skip: process.platform 
   const link = path.join(root, "link.jsonl");
   fs.writeFileSync(target, `${JSON.stringify({ session_id: "link", role: "user", content: "safe" })}\n`);
   fs.symlinkSync(target, link);
-  await assert.rejects(auditSession(link, { harness: "generic", caseDir: path.join(root, "case") }), /Refusing a symlink source/);
+  await assert.rejects(auditSession(link, { harness: "generic", caseDir: caseRoot(root) }), /Refusing a symlink source/);
 });
 
 test("unsafe numeric limits are rejected before source processing", async (t) => {
@@ -105,6 +103,6 @@ test("unsafe numeric limits are rejected before source processing", async (t) =>
   const source = path.join(root, "source.jsonl");
   fs.writeFileSync(source, `${JSON.stringify({ session_id: "limits", role: "user", content: "safe" })}\n`);
   await assert.rejects(auditSession(source, {
-    harness: "generic", caseDir: path.join(root, "case"), tokenBudget: "not-a-number",
+    harness: "generic", caseDir: caseRoot(root), tokenBudget: "not-a-number",
   }), /tokenBudget must be a positive finite number/);
 });

@@ -1,14 +1,28 @@
-import contextlib,importlib.util,json,os,pathlib,shutil,sqlite3,subprocess,tempfile,unittest
-from volume_store import Store,VolumeError,canonical,digest
+import contextlib,importlib.util,json,os,pathlib,subprocess,unittest,uuid,io
+from volume_store import Store,VolumeError,canonical,digest,PRIMARY,ANALYTICS
+from common_test_fixture import WorkspaceFixture
+from orbita_store.paths import Path as CommonPath
+from orbita_store.transfers import StoreExport,import_stream
+from orbita_store.pool import close_idle
+from orbita_store import StoreError
 
 class VolumeTests(unittest.TestCase):
  def setUp(self):
-  self.base=pathlib.Path(tempfile.mkdtemp(prefix='orbita-volume-',dir=r'C:\T'));self.root=self.base/'data';self.s=Store(self.root)
+  self.fixture=WorkspaceFixture(self.id());self.base=pathlib.Path(os.environ['ORBITA_POSTGRES_TEST_RECEIPTS'])/('volume-export-'+self.fixture.id);self.base.mkdir();self.root=pathlib.Path(self.fixture.name);self.s=Store(self.root)
   self.catalog=[dict(id='alfa',caseHash='a'*64,manifestHash='1'*64,metadata={'currentRevision':True}),dict(id='beta',caseHash='b'*64,manifestHash='2'*64,metadata={'currentRevision':True})]
   self.cat=lambda:dict(sources=self.catalog,token=digest(canonical(self.catalog)))
   self.s.prepare(self.cat())
  def tearDown(self):
-  self.s.close();resolved=self.base.resolve();self.assertEqual(resolved.parent,pathlib.Path(r'C:\T'));self.assertTrue(resolved.name.startswith('orbita-volume-'));shutil.rmtree(resolved)
+  self.s.close();close_idle()
+  self.assertEqual(self.base.resolve().parent,pathlib.Path(os.environ['ORBITA_POSTGRES_TEST_RECEIPTS']).resolve())
+  self.assertTrue(self.base.name.startswith('volume-export-'))
+  self.assertFalse(self.root.exists());self.fixture.cleanup()
+ def worker(self,request,*,crash=None,env=None):
+  environment={**os.environ,'PYTHONUTF8':'1',**(env or {})}
+  if crash:environment['AFH_VOLUME_CRASH_AT']=crash
+  result=subprocess.run([os.sys.executable,'-X','utf8','-B',str(pathlib.Path(__file__).with_name('volume_store.py'))],input=json.dumps(dict(root=str(self.root),**request)),text=True,capture_output=True,encoding='utf8',env=environment,timeout=15)
+  (self.base/('worker-'+str(uuid.uuid4())+'.json')).write_text(json.dumps(dict(exit=result.returncode,stdout=result.stdout,stderr=result.stderr),ensure_ascii=False),encoding='utf8')
+  return result
  def rows(self,source,n,start=1):
   out=[]
   for i in range(start,start+n):
@@ -58,24 +72,38 @@ class VolumeTests(unittest.TestCase):
   with self.assertRaisesRegex(VolumeError,'SOURCE_REBOUND'):self.s.prepare(self.cat())
  def test_11_real_parquet_independent_duckdb_and_exact_hashes(self):
   import duckdb
-  self.seed();first=self.s.lake(limit=4);self.assertEqual(first['added'],4);self.assertFalse(first['ready'])
+  self.seed();first=self.s.lake(limit=4);self.assertEqual(first['added'],4);self.assertFalse(first['ready']);self.assertTrue(first['readbackVerified'])
   with self.assertRaisesRegex(VolumeError,'LAKE_BEHIND'):self.s.verify_lake()
   while not self.s.lake(limit=4)['ready']:pass
   r=self.s.verify_lake();self.assertEqual(r['records'],15)
-  names=[str(self.s.path/f['path']) for f in r['files']];got=duckdb.sql('SELECT seq,payload,row_hash FROM read_parquet(?) ORDER BY seq',params=[names]).fetchall();expected=[tuple(x) for x in self.s.db.execute('SELECT seq,payload,row_hash FROM records ORDER BY seq')];self.assertEqual(got,expected)
+  receipt=self.s.export_parquet(self.base/'parquet');self.assertEqual(self.s.verify_export(receipt)['status'],'VERIFIED')
+  names=[str(self.base/'parquet'/f['path']) for f in receipt['files']]
+  got=duckdb.sql('SELECT seq,payload,row_hash FROM read_parquet(?) ORDER BY seq',params=[names]).fetchall();expected=[tuple(x) for x in self.s.db.execute('SELECT seq,payload,row_hash FROM records ORDER BY seq')];self.assertEqual(got,expected)
+  catalog=duckdb.sql('SELECT source_id,catalog_token,cut FROM read_parquet(?) ORDER BY source_id',params=[str(self.base/'parquet'/receipt['catalogFile'])]).fetchall();self.assertEqual(catalog,[('alfa',self.cat()['token'],15),('beta',self.cat()['token'],15)])
   self.assertEqual(self.s.lake()['added'],0)
  def test_12_missing_or_mutated_parquet_is_not_success(self):
-  self.seed();self.s.lake();r=self.s.verify_lake();p=self.s.path/r['files'][0]['path'];p.write_bytes(b'PAR1not-parquetPAR1')
-  with self.assertRaisesRegex(VolumeError,'LAKE_FILE_CHANGED'):self.s.verify_lake()
+  self.seed();self.s.lake();receipt=self.s.export_parquet(self.base/'parquet');p=self.base/'parquet'/receipt['files'][0]['path'];before=p.read_bytes();p.write_bytes(b'PAR1not-parquetPAR1')
+  with self.assertRaisesRegex(VolumeError,'EXPORT_FILE_CHANGED'):self.s.verify_export(receipt)
+  p.write_bytes(before);p.rename(p.with_suffix('.retained-missing-fixture'))
+  with self.assertRaisesRegex(VolumeError,'EXPORT_FILE_CHANGED'):self.s.verify_export(receipt)
+  self.assertEqual(self.s.verify_lake()['records'],15)
  def test_13_lake_orphan_does_not_advance_cursor(self):
-  self.seed();self.s.close();env={**os.environ,'AFH_VOLUME_CRASH_AT':'lake-after-file','PYTHONUTF8':'1'}
-  request=dict(op='lake',root=str(self.root),limit=4);r=subprocess.run([os.sys.executable,'-B',str(pathlib.Path(__file__).with_name('volume_store.py'))],input=json.dumps(request),text=True,capture_output=True,env=env)
-  self.assertEqual(r.returncode,86);self.s=Store(self.root);self.assertEqual(self.s.status()['lake']['cursor'],0);self.assertEqual(len(list((self.s.path/'lake').glob('*.parquet'))),1)
+  self.seed();self.s.close();r=self.worker(dict(op='lake',limit=4),crash='lake-after-file');self.assertEqual(r.returncode,86)
+  self.s=Store(self.root);self.assertEqual(self.s.status()['lake']['cursor'],0)
+  with contextlib.closing(self.s._connect(self.s.analytics_path)) as reader:self.assertEqual(reader.execute('SELECT COUNT(*) FROM records').fetchone()[0],0);self.assertEqual(reader.execute('SELECT COUNT(*) FROM parts').fetchone()[0],0)
+  self.assertFalse(self.root.exists())
   while not self.s.lake(limit=4)['ready']:pass
   self.assertEqual(self.s.verify_lake()['records'],15)
  def test_14_copied_local_state_restores_cursor_and_parquet(self):
-  self.seed();c=self.s.query({'limit':3})['cursor'];self.s.lake();self.s.close();copy=self.base/'restored';shutil.copytree(self.root,copy);restored=Store(copy)
-  try:self.assertEqual(len(restored.query({'limit':200,'cursor':c})['rows']),12);self.assertEqual(restored.verify_lake()['records'],15)
+  self.seed();c=self.s.query({'limit':3})['cursor'];self.s.lake();self.s.close();copy=self.root/'restored';config=self.s.config
+  CommonPath(copy/'volume',config=config).mkdir(parents=True,exist_ok=True)
+  for name in ('operational.pgstore','analytical.pgstore'):
+   with StoreExport(self.root/'volume'/name,config=config) as export:
+    restored=import_stream(export,export.size,copy/'volume'/name,config=config);self.assertEqual(restored['manifest']['sha256'],export.manifest['sha256'])
+  restored=Store(copy)
+  try:
+   self.assertEqual(len(restored.query({'limit':200,'cursor':c})['rows']),12);self.assertEqual(restored.verify_lake()['records'],15)
+   r=restored.export_parquet(self.base/'restored-parquet');self.assertEqual(restored.verify_export(r)['records'],15)
   finally:restored.close();self.s=Store(self.root)
  def test_15_invalid_limits_and_large_record_do_not_silently_truncate(self):
   self.seed()
@@ -83,68 +111,45 @@ class VolumeTests(unittest.TestCase):
    with self.assertRaisesRegex(VolumeError,'QUERY_LIMIT'):self.s.query({'limit':limit})
   with self.assertRaisesRegex(VolumeError,'BATCH_LIMIT'):self.s.lake(limit=501)
  def test_16_postgres_real_equivalence_scope_and_delta(self):
-  base=os.environ.get('AFH_VOLUME_PG_TEST_CONFIG');self.assertTrue(base,'Real PostgreSQL test configuration is required; do not skip this regression')
-  config=json.loads(pathlib.Path(base).read_text(encoding='utf8'));config['allowedRoots']=[str(self.root.resolve())];file=self.base/'pg.json';file.write_text(json.dumps(config),encoding='utf8');old=os.environ.get('AFH_VOLUME_PG_CONFIG');os.environ['AFH_VOLUME_PG_CONFIG']=str(file)
+  self.seed();r=self.s.lake(limit=3);self.assertFalse(r['ready'])
+  with self.assertRaisesRegex(VolumeError,'ANALYTICS_BEHIND'):self.s.query({},ANALYTICS)
+  while not self.s.lake(limit=3)['ready']:pass
+  for q in ['', 'RETIRADO', '%', 'café']:
+   left=self.s.query({'query':q,'sourceIds':['alfa']});right=self.s.query({'query':q,'sourceIds':['alfa']},ANALYTICS);self.assertEqual(left['rows'],right['rows'])
+  self.assertEqual(self.s.lake()['added'],0)
+  foreign=WorkspaceFixture('volume-foreign-space')
   try:
-   self.seed();r=self.s.mirror(limit=3);self.assertFalse(r['ready'])
-   with self.assertRaisesRegex(VolumeError,'POSTGRES_BEHIND'):self.s.query({},'postgres')
-   while not self.s.mirror(limit=3)['ready']:pass
-   for q in ['', 'RETIRADO', '%', 'café']:
-    left=self.s.query({'query':q,'sourceIds':['alfa']});right=self.s.query({'query':q,'sourceIds':['alfa']},'postgres');self.assertEqual(left['rows'],right['rows'])
-   self.assertEqual(self.s.mirror()['added'],0)
-   with self.s.pg() as pg:
-    pg.execute("INSERT INTO orbita_volume_rows VALUES('different-space',1,'alfa','secret','{}','bad')")
-   self.assertEqual(len(self.s.query({},'postgres')['rows']),15)
-   self.catalog[0]['metadata']['currentRevision']=False;self.s.prepare(self.cat())
-   with self.assertRaisesRegex(VolumeError,'POSTGRES_BEHIND'):self.s.query({},'postgres')
-   self.s.mirror();self.assertEqual(len(self.s.query({},'postgres')['rows']),15)
-  finally:
-   with self.s.pg() as pg:
-    pg.execute('DELETE FROM orbita_volume_rows WHERE instance IN (%s,%s)',(self.s.get('instance'),'different-space'));pg.execute('DELETE FROM orbita_volume_instances WHERE id=%s',(self.s.get('instance'),))
-   if old is None:os.environ.pop('AFH_VOLUME_PG_CONFIG',None)
-   else:os.environ['AFH_VOLUME_PG_CONFIG']=old
+   other=Store(foreign.name)
+   try:other.prepare(self.cat());other.append('alfa',0,1,self.rows('alfa',1),True);other.append('beta',0,0,[],True);other.lake();self.assertEqual(other.verify_lake()['records'],1)
+   finally:other.close()
+   self.assertEqual(len(self.s.query({},ANALYTICS)['rows']),15)
+  finally:foreign.cleanup()
+  self.catalog[0]['metadata']['currentRevision']=False;self.s.prepare(self.cat())
+  with self.assertRaisesRegex(VolumeError,'ANALYTICS_BEHIND'):self.s.query({},ANALYTICS)
+  self.s.lake();self.assertEqual(len(self.s.query({},ANALYTICS)['rows']),15)
  def test_17_postgres_scope_configuration_cannot_follow_restore(self):
-  self.seed();file=self.base/'pg-denied.json';file.write_text(json.dumps(dict(host='127.0.0.1',port=15436,allowedRoots=[str(self.base/'different')])));old=os.environ.get('AFH_VOLUME_PG_CONFIG');os.environ['AFH_VOLUME_PG_CONFIG']=str(file)
-  try:
-   with self.assertRaisesRegex(VolumeError,'ROOT_NOT_AUTHORIZED'):self.s.mirror()
-  finally:
-   if old is None:os.environ.pop('AFH_VOLUME_PG_CONFIG',None)
-   else:os.environ['AFH_VOLUME_PG_CONFIG']=old
+  self.seed();unauthorized=self.root.parent/('unauthorized-'+str(uuid.uuid4()))
+  with self.assertRaisesRegex(StoreError,'PATH_NOT_BOUND'):Store(unauthorized)
+  self.assertFalse(unauthorized.exists())
  def test_18_postgres_crash_rolls_back_rows_and_cursor_together(self):
-  config=json.loads(pathlib.Path(os.environ['AFH_VOLUME_PG_TEST_CONFIG']).read_text(encoding='utf8'));config['allowedRoots']=[str(self.root.resolve())];file=self.base/'crash-pg.json';file.write_text(json.dumps(config),encoding='utf8');self.seed();self.s.close()
-  env={**os.environ,'AFH_VOLUME_PG_CONFIG':str(file),'AFH_VOLUME_CRASH_AT':'postgres-before-commit','PYTHONUTF8':'1'}
-  r=subprocess.run([os.sys.executable,'-B',str(pathlib.Path(__file__).with_name('volume_store.py'))],input=json.dumps(dict(op='postgres',root=str(self.root),limit=3)),text=True,capture_output=True,env=env);self.assertEqual(r.returncode,86)
-  self.s=Store(self.root);old=os.environ.get('AFH_VOLUME_PG_CONFIG');os.environ['AFH_VOLUME_PG_CONFIG']=str(file)
-  try:
-   r=self.s.mirror();self.assertEqual(r['added'],15);self.assertEqual(len(self.s.query({},'postgres')['rows']),15)
-  finally:
-   with self.s.pg() as pg:
-    pg.execute('DELETE FROM orbita_volume_rows WHERE instance=%s',(self.s.get('instance'),));pg.execute('DELETE FROM orbita_volume_instances WHERE id=%s',(self.s.get('instance'),))
-   if old is None:os.environ.pop('AFH_VOLUME_PG_CONFIG',None)
-   else:os.environ['AFH_VOLUME_PG_CONFIG']=old
+  self.seed();self.s.close();r=self.worker(dict(op='lake',limit=3),crash='postgres-before-commit');self.assertEqual(r.returncode,86)
+  self.s=Store(self.root);self.assertEqual(self.s.status()['lake']['cursor'],0)
+  r=self.s.lake();self.assertEqual(r['added'],15);self.assertEqual(len(self.s.query({},ANALYTICS)['rows']),15)
  def test_19_empty_catalog_is_explicit_and_has_readable_metadata(self):
   self.catalog=[];self.s.prepare(self.cat());self.assertTrue(self.s.status()['ready']);page=self.s.query({});self.assertEqual(page['rows'],[]);self.assertFalse(page['executionAuthority']);self.s.lake();self.assertEqual(self.s.verify_lake()['records'],0)
  def test_20_large_original_has_its_own_page_without_omission_in_both_backends(self):
-  rows=self.rows('alfa',3);rows[1]['raw']='原'*1024**2;rows[1]['sha']=digest(rows[1]['raw']);self.s.append('alfa',0,3,rows,True);self.s.append('beta',0,0,[],True)
-  config=json.loads(pathlib.Path(os.environ['AFH_VOLUME_PG_TEST_CONFIG']).read_text(encoding='utf8'));config['allowedRoots']=[str(self.root.resolve())];file=self.base/'large-pg.json';file.write_text(json.dumps(config),encoding='utf8');old=os.environ.get('AFH_VOLUME_PG_CONFIG');os.environ['AFH_VOLUME_PG_CONFIG']=str(file)
-  try:
-   self.s.mirror()
-   for backend in ['sqlite','postgres']:
-    one=self.s.query({},backend);self.assertEqual(len(one['rows']),1);self.assertFalse(one['singleLargeRecord'])
-    large=self.s.query({'cursor':one['cursor']},backend);self.assertEqual(len(large['rows']),1);self.assertTrue(large['singleLargeRecord']);self.assertEqual(large['rows'][0]['raw'],rows[1]['raw']);self.assertGreater(large['bytes'],2*1024**2);self.assertLess(large['bytes'],large['responseBudgetBytes'])
-    last=self.s.query({'cursor':large['cursor']},backend);self.assertEqual(last['rows'][0]['ordinal'],3);self.assertIsNone(last['cursor'])
-  finally:
-   with self.s.pg() as pg:
-    pg.execute('DELETE FROM orbita_volume_rows WHERE instance=%s',(self.s.get('instance'),));pg.execute('DELETE FROM orbita_volume_instances WHERE id=%s',(self.s.get('instance'),))
-   if old is None:os.environ.pop('AFH_VOLUME_PG_CONFIG',None)
-   else:os.environ['AFH_VOLUME_PG_CONFIG']=old
+  rows=self.rows('alfa',3);rows[1]['raw']='原'*1024**2;rows[1]['sha']=digest(rows[1]['raw']);self.s.append('alfa',0,3,rows,True);self.s.append('beta',0,0,[],True);self.s.lake()
+  for backend in [PRIMARY,ANALYTICS]:
+   one=self.s.query({},backend);self.assertEqual(len(one['rows']),1);self.assertFalse(one['singleLargeRecord'])
+   large=self.s.query({'cursor':one['cursor']},backend);self.assertEqual(len(large['rows']),1);self.assertTrue(large['singleLargeRecord']);self.assertEqual(large['rows'][0]['raw'],rows[1]['raw']);self.assertGreater(large['bytes'],2*1024**2);self.assertLess(large['bytes'],large['responseBudgetBytes'])
+   last=self.s.query({'cursor':large['cursor']},backend);self.assertEqual(last['rows'][0]['ordinal'],3);self.assertIsNone(last['cursor'])
 
  def test_21_unavailable_postgres_never_reports_ready_or_leaks_credentials(self):
   import socket
-  self.seed();sock=socket.socket();sock.bind(('127.0.0.1',0));port=sock.getsockname()[1];sock.close()
-  password='synthetic-unavailable-provider-secret';file=self.base/'offline.json';file.write_text(json.dumps(dict(host='127.0.0.1',port=port,user='synthetic',password=password,dbname='synthetic',allowedRoots=[str(self.root.resolve())])),encoding='utf8')
-  env={**os.environ,'AFH_VOLUME_PG_CONFIG':str(file),'PYTHONUTF8':'1'}
-  result=subprocess.run([os.sys.executable,'-B',str(pathlib.Path(__file__).with_name('volume_store.py'))],input=json.dumps(dict(op='postgres',root=str(self.root))),text=True,capture_output=True,env=env,timeout=15)
+  self.seed();sock=socket.socket();sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
+  password='synthetic-unavailable-provider-secret';config=json.loads(os.environ['ORBITA_POSTGRES_BINDING']);config.update(port=port,password=password)
+  try:result=self.worker(dict(op='status'),env={'ORBITA_POSTGRES_BINDING':json.dumps(config)})
+  finally:sock.close()
   self.assertEqual(result.returncode,1);self.assertEqual(json.loads(result.stdout),{'error':'VOLUME_DEPENDENCY_OR_STORAGE_ERROR'});self.assertNotIn(password,result.stdout+result.stderr);self.assertIsNone(self.s.get('postgres_receipt'))
 
 if __name__=='__main__':

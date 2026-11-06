@@ -1,18 +1,19 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
+
 import path from "node:path";
 import test from "node:test";
-import { DatabaseSync } from "../src/sqlite-compat.js";
+import {DatabaseSync,closeCommonStore} from "../src/common-store.js";
 import {
   auditSession, buildSemanticIndex, queryCase, semanticSearch, verifyCaseIntegrity, verifySemanticProjection,
 } from "../src/index.js";
 
-function temporary(t, prefix) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  return root;
-}
+const commonRoot=process.env.ORBITA_POSTGRES_TEST_ROOT;
+if(!commonRoot)throw new Error('PG_TEST_ROOT_REQUIRED');
+const inputRoot=path.join(path.dirname(commonRoot),'inputs');fs.mkdirSync(inputRoot,{recursive:true});
+const caseRoot=root=>path.join(commonRoot,path.basename(root),'case');
+test.after(()=>{assert.equal(fs.existsSync(commonRoot),false);closeCommonStore();});
+function temporary(t,prefix){return fs.mkdtempSync(path.join(inputRoot,prefix));}
 
 function fixtureProvider({ dimensions = 6, nonFinite = false } = {}) {
   const concepts = [
@@ -58,7 +59,7 @@ async function createSemanticCase(t) {
   ];
   fs.writeFileSync(source, `${records.map(JSON.stringify).join("\n")}\n`);
   const audit = await auditSession(source, {
-    harness: "generic", caseDir: path.join(root, "case"), workspace: root, includeChildren: false,
+    harness: "generic", caseDir:caseRoot(root), workspace: root, includeChildren: false,
   });
   return { root, audit };
 }
@@ -95,8 +96,8 @@ test("semantic build fails closed for wrong dimensions and non-finite vectors", 
 test("semantic verifier detects vector tampering", async (t) => {
   const { audit } = await createSemanticCase(t);
   const built = await buildSemanticIndex(audit.caseDir, { provider: fixtureProvider() });
-  const file = path.join(built.projectionDir, "semantic.sqlite");
-  const db = new DatabaseSync(file);
+  const file = path.join(built.projectionDir, "semantic.pgstore");
+  const db = new DatabaseSync(file,{family:"vector"});
   db.prepare("UPDATE semantic_embedding SET vector=? WHERE rowid=(SELECT rowid FROM semantic_embedding LIMIT 1)").run(Buffer.alloc(24, 7));
   db.close();
   const verification = await verifySemanticProjection(audit.caseDir, built.projectionDir);

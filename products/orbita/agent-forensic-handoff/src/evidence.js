@@ -1,11 +1,13 @@
 import crypto from "node:crypto";
-import fs from "node:fs";
+import native from "node:fs";
+import fs from './common-files.js';
 import path from "node:path";
 import readline from "node:readline";
 import { Readable } from "node:stream";
 import zlib from "node:zlib";
 import { spawn } from "node:child_process";
-import { ensureDir, sha256 } from "./util.js";
+import { sha256 } from "./util.js";
+import {ensureDir} from './common-util.js';
 
 export function compressionFor(filePath) {
   if (filePath.endsWith(".zst") || filePath.endsWith(".zstd")) return "zstd";
@@ -13,11 +15,11 @@ export function compressionFor(filePath) {
   return "none";
 }
 
-export function openDecodedStream(filePath, byteLimit = null) {
+export function openDecodedStream(filePath, byteLimit = null, sourceIO = native) {
   const compression = compressionFor(filePath);
   if (byteLimit === 0) return { stream: Readable.from([]), compression };
   const streamOptions = byteLimit == null ? {} : { start: 0, end: Math.max(0, byteLimit - 1) };
-  const source = fs.createReadStream(filePath, streamOptions);
+  const source = sourceIO.createReadStream(filePath, streamOptions);
   if (compression === "none") return { stream: source, source, compression };
   const decode = (decoder) => {
     source.on("error", (error) => decoder.destroy(error));
@@ -41,8 +43,8 @@ export function openDecodedStream(filePath, byteLimit = null) {
   return { stream: child.stdout, source, child, compression };
 }
 
-export async function* decodedLines(filePath, byteLimit = null) {
-  const { stream, source, child, compression } = openDecodedStream(filePath, byteLimit);
+export async function* decodedLines(filePath, byteLimit = null, sourceIO = native) {
+  const { stream, source, child, compression } = openDecodedStream(filePath, byteLimit, sourceIO);
   const closed = (value) => !value || value.closed ? Promise.resolve() : new Promise(resolve => value.once("close", resolve));
   // readline finishes on input EOF, before a file stream's async descriptor
   // close necessarily completes. A caller may rename the verified directory
@@ -99,6 +101,8 @@ export class EvidenceStore {
     const hash = sha256(buffer);
     const safeExtension = /^[a-z0-9]{1,12}$/i.test(extension) ? extension.toLowerCase() : "bin";
     if (this.db && buffer.length <= this.inlineBlobBytes) {
+      // v1 serialization labels retain import compatibility; inline_data is
+      // now bytea in PostgreSQL, and FILE names resolve to common-store objects.
       this.db.insertContentBlob({
         sha256: hash, byteLength: buffer.length, extension: safeExtension,
         storage: "SQLITE", inlineData: buffer,
@@ -129,7 +133,7 @@ export class EvidenceStore {
         bytes += buffer.length;
       },
       finish: () => {
-        fs.fsyncSync(fd);
+        // Closing publishes and synchronously commits the complete version.
         fs.closeSync(fd);
         const digest = hash.digest("hex");
         const target = path.join(this.sourceRoot, `${locatorHash || digest}.jsonl`);
@@ -142,24 +146,28 @@ export class EvidenceStore {
         };
       },
       abort() {
-        try { fs.closeSync(fd); } catch {}
+        try { fs.abortSync(fd); } catch {}
         try { fs.unlinkSync(tempPath); } catch {}
       },
     };
   }
 }
 
-export function resolveEvidenceRange(caseDir, ref) {
+export function resolveEvidenceRange(caseDir, ref, {readRange=null}={}) {
   const match = /^afh:\/\/evidence\/sha256\/([a-f0-9]{64})\/record\/(\d+)(?:#bytes=(\d+):(\d+))?$/.exec(ref);
   if (!match) throw new Error("Invalid AFH evidence URI");
   const [, sourceHash, ordinal, offsetRaw, lengthRaw] = match;
   const sourcePath = path.resolve(caseDir, "evidence", "sources", `${sourceHash}.jsonl`);
   const evidenceRoot = path.resolve(caseDir, "evidence") + path.sep;
-  if (!sourcePath.startsWith(evidenceRoot) || !fs.existsSync(sourcePath)) throw new Error("Evidence source is unavailable");
+  if (!sourcePath.startsWith(evidenceRoot) || (!readRange&&!fs.existsSync(sourcePath))) throw new Error("Evidence source is unavailable");
   const offset = Number(offsetRaw);
   const length = Number(lengthRaw);
   if (!Number.isSafeInteger(offset) || !Number.isSafeInteger(length) || offset < 0 || length < 0 || length > 64 * 1024 * 1024) {
     throw new Error("Evidence byte range is invalid or exceeds the safe preview limit");
+  }
+  if(readRange){
+    const bytes=readRange(sourcePath,offset,length);
+    return {sourceHash,ordinal:Number(ordinal),text:bytes.toString('utf8')};
   }
   const fd = fs.openSync(sourcePath, "r");
   try {

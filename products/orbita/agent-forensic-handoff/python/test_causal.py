@@ -1,3 +1,5 @@
+from common_test_fixture import WorkspaceFixture, connect_semantic, corrupt_path, temporary_corruption
+from psycopg import IntegrityError
 import copy,json,sqlite3,unittest
 from contextlib import closing
 import test_decision_intelligence as fixture
@@ -68,8 +70,7 @@ class CausalTest(unittest.TestCase):
         with self.assertRaisesRegex(RecordError,'HYPOTHESES'):self.put()
     def test_tampered_envelope_cannot_be_reported_as_empty_success(self):
         self.put()
-        with closing(sqlite3.connect(self.root/'causal/records.sqlite3')) as db,db:
-            db.execute('DROP TRIGGER records_no_update');db.execute("UPDATE record_versions SET payload_sha256='bad'")
+        corrupt_path(self.root/'causal/records.pgstore','record_versions',{'payload_sha256':'bad'})
         with self.assertRaises(RecordError):self.call('query')
     def test_adverse_context_and_late_evidence_keep_gaps_visible(self):
         d=copy.deepcopy(self.h.context['record']['payload']['retrospective']['detail']);d['claims'][0]['position']='uncertain'

@@ -144,6 +144,9 @@ case/
 
 ## Development
 
+The PG01 candidate includes an operator procedure for the complete common
+PostgreSQL service: [encrypted backup and independent recovery](docs/postgresql-service-recovery.md).
+
 ```bash
 npm test
 npm run validate:skill

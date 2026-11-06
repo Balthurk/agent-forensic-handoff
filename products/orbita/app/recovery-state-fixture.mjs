@@ -1,4 +1,4 @@
-import fs from 'node:fs';import path from 'node:path';
+import fs from '../agent-forensic-handoff/src/common-files.js';import {closeCommonStore} from '../agent-forensic-handoff/src/common-store.js';import path from 'node:path';
 import {DATA,addSource} from './corpus.mjs';import {knowledgeOperation as knowledge,verifiedSources} from './knowledge.mjs';import {decisionOperation,decisionSources} from './decisions.mjs';import {learningOperation} from './learning.mjs';import {publishPending} from './publication.mjs';import {registerWatch,reevaluationStatus,runReevaluation,drainReevaluations,pauseAutomaticReevaluations} from './reevaluation.mjs';
 import {userText,resultText,exportConversation,decisionFixture,actionFixture} from './decision-fixture.mjs';import {conversation,original,late,draft,reviewOutput} from './reevaluation-fixture.mjs';import {retrievePackage,closeMemory} from './memory.mjs';
 const file=path.join(DATA,'recovery-scenario.json'),op=process.argv[2];
@@ -26,4 +26,4 @@ try{
   const retrieval=await retrievePackage('reunión',scenario.semanticIds,{mode:'lexical'}),paused=op==='probe'?await drainReevaluations():null;
   console.log(JSON.stringify({decisions,learning,semantic,publication,pending,evidence:retrieval.evidence,paused}));
  }
-}finally{await closeMemory();}
+}finally{try{await closeMemory();}finally{closeCommonStore();}}

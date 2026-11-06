@@ -1,0 +1,39 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "fields"
+  ],
+  "properties": {
+    "fields": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "field_pointer",
+          "judgment",
+          "reason"
+        ],
+        "properties": {
+          "field_pointer": {
+            "type": "string"
+          },
+          "judgment": {
+            "type": "string",
+            "enum": [
+              "supported",
+              "contradicts",
+              "near_match",
+              "insufficient",
+              "pending"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

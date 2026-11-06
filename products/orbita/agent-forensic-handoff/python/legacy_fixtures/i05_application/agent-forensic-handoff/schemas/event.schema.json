@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Balthurk/agent-forensic-handoff/schemas/event.schema.json",
+  "title": "AFH normalized event",
+  "type": "object",
+  "required": ["schema_version", "id", "session_id", "source", "time", "actor", "kind", "epistemic_status", "evidence"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "id": { "type": "string", "pattern": "^evt-[a-f0-9]{16,64}$" },
+    "session_id": { "type": "string" },
+    "source": {
+      "type": "object",
+      "required": ["id", "record_ordinal"],
+      "properties": {
+        "id": { "type": "string" },
+        "record_ordinal": { "type": "integer", "minimum": 0 },
+        "json_pointer": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "time": {
+      "type": "object",
+      "required": ["observed_at", "precision"],
+      "properties": {
+        "observed_at": { "type": ["string", "null"], "format": "date-time" },
+        "precision": { "enum": ["MILLISECOND", "SECOND", "ORDER_ONLY", "UNKNOWN"] }
+      }
+    },
+    "actor": {
+      "type": "object",
+      "required": ["id", "kind"],
+      "properties": {
+        "id": { "type": "string" },
+        "kind": { "type": "string" }
+      }
+    },
+    "kind": { "type": "string" },
+    "subtype": { "type": ["string", "null"] },
+    "status": { "type": ["string", "null"] },
+    "input_blob_sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+    "output_blob_sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+    "epistemic_status": {
+      "enum": ["DIRECT_EVIDENCE", "CORROBORATED", "INFERRED", "UNCERTAIN", "CONTRADICTED", "UNAVAILABLE"]
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "pattern": "^afh://evidence/" }
+    }
+  },
+  "additionalProperties": true
+}

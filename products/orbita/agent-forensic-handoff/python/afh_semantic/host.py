@@ -3,14 +3,15 @@
 The source registry stores bindings, not another copy of the original corpus.
 No live Noetis imports, default paths, authority or network services are used.
 """
-import copy, hashlib, json, sqlite3, re
-from pathlib import Path
+import copy, hashlib, json, re
+from orbita_store.connection import Row
+from orbita_store.paths import Path
 from datetime import datetime, timezone
 from .knowledge_records import KnowledgeRecords, RecordError, _json
 from .semantic_support import validate_review_receipt, verified_clause_support, _pointer
 from .review_contract import _clauses
 from .relational_memory import instant
-from .postgres_backend import connect as semantic_connect, restrict_sources
+from .common_backend import connect as semantic_connect, restrict_sources
 
 def digest(value): return hashlib.sha256(_json(value).encode('utf8')).hexdigest()
 def now(): return datetime.now(timezone.utc).isoformat(timespec='microseconds')
@@ -18,8 +19,8 @@ def require(ok,code):
     if not ok: raise RecordError(code)
 
 class AFHMemory:
-    def __init__(self,root,sources,scope,*,register=False):
-        self.scope=scope; self.sources={}; self.path=Path(root)/'corpus.sqlite3'; self._binding_cache={}
+    def __init__(self,root,sources,scope,*,register=False,read_only=False):
+        self.scope=scope; self.sources={}; self.path=Path(root)/'corpus.pgstore'; self._binding_cache={}
         for e in sources:
             require(isinstance(e,dict) and e.get('verified') is True,'AFH_UNVERIFIED_SOURCE')
             require(e.get('coordinate_space')=='AFH-representation-text-v1','AFH_COORDINATE_SPACE')
@@ -27,9 +28,10 @@ class AFHMemory:
             require(e['id']==e['representation_id'] and e['revision']==e['payload_sha256'],'AFH_IDENTITY_BINDING')
             if e['id'] in self.sources: require(self.sources[e['id']]['revision']==e['revision'],'AFH_SOURCE_CONFLICT')
             self.sources[e['id']]=e
-        self.db=semantic_connect(self.path)
-        self.db.row_factory=sqlite3.Row
-        self.db.executescript('''CREATE TABLE IF NOT EXISTS source_bindings (
+        require(not register or not read_only,'AFH_READ_ONLY_REGISTRATION')
+        self.db=semantic_connect(self.path,family='corpus',read_only=read_only)
+        self.db.row_factory=Row
+        if not read_only:self.db.executescript('''CREATE TABLE IF NOT EXISTS source_bindings (
             id TEXT PRIMARY KEY, revision TEXT NOT NULL, metadata TEXT NOT NULL, digest TEXT NOT NULL, registered_at TEXT NOT NULL);
             CREATE TRIGGER IF NOT EXISTS source_no_update BEFORE UPDATE ON source_bindings BEGIN SELECT RAISE(ABORT,'append only'); END;
             CREATE TRIGGER IF NOT EXISTS source_no_delete BEFORE DELETE ON source_bindings BEGIN SELECT RAISE(ABORT,'append only'); END;''')
@@ -41,6 +43,15 @@ class AFHMemory:
                     if prior: require(prior['digest']==digest(metadata) and digest(json.loads(prior['metadata']))==prior['digest'],'AFH_BINDING_CONFLICT')
                     else: self.db.execute('INSERT INTO source_bindings VALUES(?,?,?,?,?)',(e['id'],e['revision'],_json(metadata),digest(metadata),now()))
     def source_eligible(self,source_id,scope): return scope==self.scope and source_id in self.sources
+    def source_size(self,source_id,revision,scope):
+        # Metadata first; no corpus-table fallback and no evidence payload read.
+        # The exact selected UTF-8 representation is the evidence contract.
+        if not self.source_eligible(source_id,scope):return None
+        source=self.sources[source_id]
+        if source['revision']!=revision:return None
+        raw=source['text'].encode('utf8')
+        require(hashlib.sha256(raw).hexdigest()==source['text_sha256'],'AFH_TEXT_HASH')
+        return len(raw)
     def evidence(self,source_id):
         require(source_id in self.sources,'AFH_SOURCE_NOT_SELECTED')
         e=self.sources[source_id]; row=self._binding_cache.get(source_id)
@@ -132,7 +143,7 @@ def compile_act(memory,act,producer,cut):
 
 def clause_index(records,scope,known_at=None):
     if known_at is not None:instant(known_at)
-    # Fix one SQLite read snapshot. New versions are selected by system time,
+    # Keep one database read snapshot. New versions are selected by system time,
     # independently of semantic validity; old evidence is never backdated.
     rows=records.db.execute('SELECT rowid AS _rowid,* FROM record_versions WHERE scope=? ORDER BY record_id,version LIMIT 5001',(scope,)).fetchall()
     require(len(rows)<=5000,'SEMANTIC_QUERY_ROW_BUDGET')
@@ -269,11 +280,11 @@ def dispatch(request):
         from .causal import dispatch_causal
         request['scope']=request.get('scope','afh-corpus')
         root=Path(request['root']).resolve()/'causal';writing=request['op']=='causal_put'
-        if not writing and not (root/'records.sqlite3').exists():return dispatch_causal(None,request)
+        if not writing and not (root/'records.pgstore').exists():return dispatch_causal(None,request)
         if writing:root.mkdir(parents=True,exist_ok=True)
-        memory=AFHMemory(root,request.get('sources',[]),request['scope'],register=writing)
+        memory=AFHMemory(root,request.get('sources',[]),request['scope'],register=writing,read_only=not writing)
         try:
-            records=KnowledgeRecords(memory,root/'records.sqlite3',read_only=not writing)
+            records=KnowledgeRecords(memory,root/'records.pgstore',read_only=not writing)
             try:return dispatch_causal(records,request)
             finally:records.close()
         finally:memory.close()
@@ -281,11 +292,11 @@ def dispatch(request):
         from .decision_intelligence import dispatch_intelligence
         request['scope']=request.get('scope','afh-corpus')
         root=Path(request['root']).resolve()/'intelligence';writing=request['op']=='intelligence_put'
-        if not writing and not (root/'records.sqlite3').exists():return dispatch_intelligence(None,request)
+        if not writing and not (root/'records.pgstore').exists():return dispatch_intelligence(None,request)
         if writing:root.mkdir(parents=True,exist_ok=True)
-        memory=AFHMemory(root,request.get('sources',[]),request['scope'],register=writing)
+        memory=AFHMemory(root,request.get('sources',[]),request['scope'],register=writing,read_only=not writing)
         try:
-            records=KnowledgeRecords(memory,root/'records.sqlite3',read_only=not writing)
+            records=KnowledgeRecords(memory,root/'records.pgstore',read_only=not writing)
             try:return dispatch_intelligence(records,request)
             finally:records.close()
         finally:memory.close()
@@ -293,11 +304,11 @@ def dispatch(request):
         from .retrospectives import dispatch_retrospective
         request['scope']=request.get('scope','afh-corpus')
         root=Path(request['root']).resolve()/'retrospectives';writing=request['op']=='retrospective_put'
-        if not writing and not (root/'records.sqlite3').exists():return dispatch_retrospective(None,request)
+        if not writing and not (root/'records.pgstore').exists():return dispatch_retrospective(None,request)
         if writing:root.mkdir(parents=True,exist_ok=True)
-        memory=AFHMemory(root,request.get('sources',[]),request['scope'],register=writing)
+        memory=AFHMemory(root,request.get('sources',[]),request['scope'],register=writing,read_only=not writing)
         try:
-            records=KnowledgeRecords(memory,root/'records.sqlite3',read_only=not writing)
+            records=KnowledgeRecords(memory,root/'records.pgstore',read_only=not writing)
             try:return dispatch_retrospective(records,request)
             finally:records.close()
         finally:memory.close()
@@ -307,11 +318,11 @@ def dispatch(request):
         if request['op']=='identity_mentions':return semantic_mentions(request)
         root=Path(request['root']).resolve()/'identities'
         writing=request['op']=='identity_put'
-        if not writing and not (root/'records.sqlite3').exists():return dispatch_identity(None,request)
+        if not writing and not (root/'records.pgstore').exists():return dispatch_identity(None,request)
         if writing:root.mkdir(parents=True,exist_ok=True)
-        memory=AFHMemory(root,request.get('sources',[]),request['scope'],register=writing)
+        memory=AFHMemory(root,request.get('sources',[]),request['scope'],register=writing,read_only=not writing)
         try:
-            records=KnowledgeRecords(memory,root/'records.sqlite3',read_only=not writing)
+            records=KnowledgeRecords(memory,root/'records.pgstore',read_only=not writing)
             try:return dispatch_identity(records,request)
             finally:records.close()
         finally:memory.close()
@@ -323,29 +334,36 @@ def dispatch(request):
         return dispatch_context(request)
     if request['op'].startswith('support_'):
         from .justifications import dispatch_support
-        root=Path(request['root']).resolve()/'supports';root.mkdir(parents=True,exist_ok=True)
-        memory=AFHMemory(root,request.get('sources',[]),request.get('scope','afh-corpus'),register=request['op'] in ('support_put','support_impact','support_review'))
+        root=Path(request['root']).resolve()/'supports'
+        writing=request['op'] in ('support_put','support_impact','support_review')
+        read_only=not writing and (root/'records.pgstore').exists()
+        if not read_only:root.mkdir(parents=True,exist_ok=True)
+        memory=AFHMemory(root,request.get('sources',[]),request.get('scope','afh-corpus'),register=writing,read_only=read_only)
         try:
-            records=KnowledgeRecords(memory,root/'records.sqlite3')
+            records=KnowledgeRecords(memory,root/'records.pgstore',read_only=read_only)
             try:return dispatch_support(records,request)
             finally:records.close()
         finally:memory.close()
     if request['op'].startswith('collective_'):
         from .collectives import dispatch_collective
-        root=Path(request['root']).resolve()/'collectives';root.mkdir(parents=True,exist_ok=True)
-        memory=AFHMemory(root,request.get('sources',[]),request.get('scope','afh-corpus'),register=request['op']=='collective_put')
+        root=Path(request['root']).resolve()/'collectives';writing=request['op']=='collective_put'
+        read_only=not writing and (root/'records.pgstore').exists()
+        if not read_only:root.mkdir(parents=True,exist_ok=True)
+        memory=AFHMemory(root,request.get('sources',[]),request.get('scope','afh-corpus'),register=writing,read_only=read_only)
         try:
-            records=KnowledgeRecords(memory,root/'records.sqlite3')
+            records=KnowledgeRecords(memory,root/'records.pgstore',read_only=read_only)
             try:return dispatch_collective(records,request)
             finally:records.close()
         finally:memory.close()
     if request['op'].startswith('decision_'):
         from .decisions import dispatch_decision
-        root=Path(request['root']).resolve()/'decisions';root.mkdir(parents=True,exist_ok=True)
+        root=Path(request['root']).resolve()/'decisions';writing=request['op'] in ('decision_frame','decision_act')
+        read_only=not writing and (root/'records.pgstore').exists()
+        if not read_only:root.mkdir(parents=True,exist_ok=True)
         scope=request.get('scope','afh-corpus')
-        memory=AFHMemory(root,request.get('sources',[]),scope,register=request['op'] in ('decision_frame','decision_act'))
+        memory=AFHMemory(root,request.get('sources',[]),scope,register=writing,read_only=read_only)
         try:
-            records=KnowledgeRecords(memory,root/'records.sqlite3')
+            records=KnowledgeRecords(memory,root/'records.pgstore',read_only=read_only)
             try:return dispatch_decision(records,request)
             finally:records.close()
         finally:memory.close()
@@ -353,18 +371,22 @@ def dispatch(request):
     # into the existing semantic-act list, coverage, graph or outbox channels.
     if request['op'].startswith('learning_'):
         from .learning import dispatch_learning
-        root=Path(request['root']).resolve()/'learning';root.mkdir(parents=True,exist_ok=True)
+        root=Path(request['root']).resolve()/'learning';writing=request['op']=='learning_record'
+        read_only=not writing and (root/'records.pgstore').exists()
+        if not read_only:root.mkdir(parents=True,exist_ok=True)
         scope=request.get('scope','afh-corpus');request['scope']=scope
-        memory=AFHMemory(root,request.get('sources',[]),scope,register=request['op']=='learning_record')
-        records=KnowledgeRecords(memory,root/'records.sqlite3')
+        memory=AFHMemory(root,request.get('sources',[]),scope,register=writing,read_only=read_only)
+        records=KnowledgeRecords(memory,root/'records.pgstore',read_only=read_only)
         try:return dispatch_learning(records,request)
         finally:records.close();memory.close()
-    root=Path(request['root']).resolve();root.mkdir(parents=True,exist_ok=True);scope=request.get('scope','afh-corpus');request['scope']=scope
-    memory=AFHMemory(root,request.get('sources',[]),scope,register=request['op'] in ['sync','put','extract','reevaluation_prepare'])
-    records=KnowledgeRecords(memory,root/'records.sqlite3')
+    root=Path(request['root']).resolve();scope=request.get('scope','afh-corpus');request['scope']=scope
+    read_only=request['op'] in ('query','list','get','history','review_prepare','graph_query','graph_original','graph_status','graph_capabilities') and (root/'records.pgstore').exists()
+    if not read_only:root.mkdir(parents=True,exist_ok=True)
+    memory=AFHMemory(root,request.get('sources',[]),scope,register=request['op'] in ['sync','put','extract','reevaluation_prepare'],read_only=read_only)
+    records=KnowledgeRecords(memory,root/'records.pgstore',read_only=read_only)
     try:
         op=request['op']
-        records.db.execute('CREATE TABLE IF NOT EXISTS afh_generation_fences(id TEXT PRIMARY KEY,fence INTEGER NOT NULL)')
+        if not read_only:records.db.execute('CREATE TABLE IF NOT EXISTS afh_generation_fences(id TEXT PRIMARY KEY,fence INTEGER NOT NULL)')
         if op=='generation_claim':
             require(type(request['fence']) is int and request['fence']>0,'GENERATION_FENCE_INVALID')
             with records.db:
@@ -397,7 +419,7 @@ def dispatch(request):
                     results.append(records.put(payload,expected_version=0,request_id=request['requestId']+'-'+str(i)))
                 except (RecordError,ValueError,KeyError,TypeError) as error:errors.append({'act':i,'error':str(error)})
             return {'records':results,'errors':errors,'state':'partial' if errors else 'proposed','coverage':'selected targets only; no semantic completeness claim'}
-        if op in ('query','list'):restrict_sources(records)
+        if op in ('query','list'):restrict_sources(records,bounded_diagnostics=True)
         if op=='query':return query_records(records,request)
         if op=='list':return list(clause_index(records,scope,request.get('knownAt'))[0].values())
         if op=='get':return records.get(request['id'],scope,version=request.get('version'))

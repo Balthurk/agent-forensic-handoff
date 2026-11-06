@@ -1,38 +1,71 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { DatabaseSync } from "./sqlite-compat.js";
-import { ensureDir, stableStringify } from "./util.js";
+import { DatabaseSync, encodeValue } from "./common-store.js";
+import { stableStringify } from "./util.js";
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 export class CaseDatabase {
-  constructor(filePath, { readOnly = false } = {}) {
-    ensureDir(path.dirname(filePath));
+  constructor(filePath, { readOnly = false, create = !readOnly } = {}) {
     this.path = filePath;
-    this.db = new DatabaseSync(filePath, { readOnly });
+    this.db = new DatabaseSync(filePath, { family: 'case', readOnly, create });
     this.statementCache = new Map();
     this.sessionValueCache = new Map();
     this.actorValueCache = new Map();
-    this.db.exec("PRAGMA foreign_keys = ON");
+    this.pendingWrites = null;
+    this.pendingWriteBytes = 0;
     if (!readOnly) {
-      this.db.exec("PRAGMA journal_mode = MEMORY; PRAGMA synchronous = NORMAL; PRAGMA temp_store = MEMORY; PRAGMA cache_size = -32768");
-      this.db.exec(fs.readFileSync(path.join(MODULE_DIR, "schema.sql"), "utf8"));
+      try { this.db.exec(fs.readFileSync(path.join(MODULE_DIR, "../python/orbita_store/schemas/case.sql"), "utf8")); }
+      catch (error) { this.db.close(); throw error; }
     }
   }
 
   close() {
+    this.discardWrites();
     this.statementCache.clear();
     this.db.close();
   }
-  begin() { this.db.exec("BEGIN IMMEDIATE"); }
-  commit() { this.db.exec("COMMIT"); }
-  rollback() { try { this.db.exec("ROLLBACK"); } catch {} }
+  begin() { this.sessionValueCache.clear(); this.actorValueCache.clear(); this.db.exec("BEGIN IMMEDIATE"); }
+  beginAtomicBatch() { this.sessionValueCache.clear(); this.actorValueCache.clear(); this.db.beginAtomicBatch(); this.pendingWrites = []; this.pendingWriteBytes = 0; }
+  beginConsistentWrite() { this.sessionValueCache.clear(); this.actorValueCache.clear(); this.db.beginConsistentWrite(); }
+  commit() { this.flushWrites(); this.db.exec("COMMIT"); this.discardWrites(); }
+  rollback() { this.discardWrites(); this.sessionValueCache.clear(); this.actorValueCache.clear(); try { this.db.exec("ROLLBACK"); } catch {} }
+
+  discardWrites() { this.pendingWrites = null; this.pendingWriteBytes = 0; }
+
+  flushWrites() {
+    if (!this.pendingWrites?.length) return;
+    const writes = this.pendingWrites;
+    // Remove before sending: an unknown outcome must never be replayed.
+    this.pendingWrites = []; this.pendingWriteBytes = 0;
+    this.db.runAtomicWrites(writes);
+  }
+
+  write(sql, params = {}) {
+    if (this.pendingWrites === null) { this.run(sql, params); return; }
+    try {
+      this.db.assertOpen();
+      // Copy values now, including mutable byte views, before returning.
+      const write = { sql: String(sql), params: encodeValue(params) };
+      const bytes = Buffer.byteLength(JSON.stringify(write));
+      if (bytes > 1024 * 1024) { this.flushWrites(); this.run(write.sql, write.params); return; }
+      if (this.pendingWrites.length >= 128 || this.pendingWriteBytes + bytes > 1024 * 1024) this.flushWrites();
+      this.pendingWrites.push(write); this.pendingWriteBytes += bytes;
+    } catch (error) { this.db.failAtomicBatch(); throw error; }
+  }
 
   statement(sql) {
+    this.flushWrites();
     let statement = this.statementCache.get(sql);
     if (!statement) {
-      statement = this.db.prepare(sql);
+      const raw = this.db.prepare(sql);
+      statement = {
+        run: (...args) => { this.flushWrites(); return raw.run(...args); },
+        get: (...args) => { this.flushWrites(); return raw.get(...args); },
+        all: (...args) => { this.flushWrites(); return raw.all(...args); },
+        setReadBigInts: value => { raw.setReadBigInts(value); return statement; },
+      };
       this.statementCache.set(sql, statement);
     }
     return statement;
@@ -41,9 +74,11 @@ export class CaseDatabase {
   run(sql, params = {}) { return this.statement(sql).run(params); }
   get(sql, params = {}) { return this.statement(sql).get(params); }
   all(sql, params = {}) { return this.statement(sql).all(params); }
+  tableColumns(name){this.flushWrites();return this.db.tableColumns(name);}
+  logicalManifest(){this.flushWrites();return this.db.logicalManifest();}
 
   insertRun(run) {
-    this.run(`INSERT INTO ingest_run
+    this.write(`INSERT INTO ingest_run
       (id, schema_version, tool_version, config_json, source_snapshot_hash, started_at, status)
       VALUES ($id, $schemaVersion, $toolVersion, $config, $sourceHash, $startedAt, $status)`, {
       id: run.id, schemaVersion: run.schemaVersion, toolVersion: run.toolVersion,
@@ -53,7 +88,7 @@ export class CaseDatabase {
   }
 
   finishRun(id, values) {
-    this.run(`UPDATE ingest_run SET completed_at=$completedAt, status=$status,
+    this.write(`UPDATE ingest_run SET completed_at=$completedAt, status=$status,
       record_count=$records, parsed_count=$parsed, unparsed_count=$unparsed,
       warning_count=$warnings WHERE id=$id`, {
       id, completedAt: values.completedAt, status: values.status,
@@ -63,7 +98,7 @@ export class CaseDatabase {
   }
 
   insertSource(source) {
-    this.run(`INSERT OR REPLACE INTO source
+    this.write(`INSERT OR REPLACE INTO source
       (id,harness,native_uri,source_kind,raw_sha256,canonical_sha256,byte_length,
        canonical_byte_length,compression,schema_hint,availability,evidence_path)
       VALUES ($id,$harness,$uri,$kind,$rawHash,$canonicalHash,$bytes,$canonicalBytes,
@@ -77,12 +112,12 @@ export class CaseDatabase {
   }
 
   updateCanonicalSource(id, hash, bytes, evidencePath) {
-    this.run(`UPDATE source SET canonical_sha256=$hash, canonical_byte_length=$bytes,
+    this.write(`UPDATE source SET canonical_sha256=$hash, canonical_byte_length=$bytes,
       evidence_path=$path WHERE id=$id`, { id, hash, bytes, path: evidencePath });
   }
 
   insertRecord(record) {
-    this.run(`INSERT INTO source_record
+    this.write(`INSERT INTO source_record
       (source_id,ordinal,byte_offset,byte_length,sha256,record_type,parse_status,parse_error)
       VALUES ($sourceId,$ordinal,$offset,$length,$hash,$type,$status,$error)`, {
       sourceId: record.sourceId, ordinal: record.ordinal, offset: record.byteOffset,
@@ -96,7 +131,7 @@ export class CaseDatabase {
     const signature = stableStringify({ ...session, metadata });
     if (this.sessionValueCache.get(session.id) === signature) return;
     this.sessionValueCache.set(session.id, signature);
-    this.run(`INSERT INTO session
+    this.write(`INSERT INTO session
       (id,native_id,harness,source_id,parent_native_id,cwd,started_at,ended_at,title,harness_version,model,metadata_json)
       VALUES ($id,$nativeId,$harness,$sourceId,$parent,$cwd,$started,$ended,$title,$version,$model,$metadata)
       ON CONFLICT(id) DO UPDATE SET
@@ -119,7 +154,7 @@ export class CaseDatabase {
   }
 
   insertSessionEdge(edge) {
-    this.run(`INSERT OR IGNORE INTO session_edge
+    this.write(`INSERT OR IGNORE INTO session_edge
       (parent_session_id,child_session_id,edge_type,grade,rule_id,epistemic_status,evidence_event_id,metadata_json)
       VALUES ($parent,$child,$type,$grade,$rule,$epistemic,$event,$metadata)`, {
       parent: edge.parent, child: edge.child, type: edge.type,
@@ -130,7 +165,7 @@ export class CaseDatabase {
   }
 
   insertEventEdge(edge) {
-    this.run(`INSERT OR IGNORE INTO event_edge
+    this.write(`INSERT OR IGNORE INTO event_edge
       (from_event_id,to_event_id,edge_type,grade,rule_id,epistemic_status,evidence_event_id,metadata_json)
       VALUES ($from,$to,$type,$grade,$rule,$epistemic,$event,$metadata)`, {
       from: edge.from, to: edge.to, type: edge.type, grade: edge.grade,
@@ -140,7 +175,7 @@ export class CaseDatabase {
   }
 
   insertEntityEdge(edge) {
-    this.run(`INSERT OR IGNORE INTO entity_edge
+    this.write(`INSERT OR IGNORE INTO entity_edge
       (from_node_id,to_node_id,from_node_kind,to_node_kind,edge_type,grade,rule_id,
        epistemic_status,evidence_event_id,metadata_json)
       VALUES ($from,$to,$fromKind,$toKind,$type,$grade,$rule,$epistemic,$event,$metadata)`, {
@@ -154,7 +189,7 @@ export class CaseDatabase {
   upsertEntityNode(node) {
     const existing = this.get("SELECT id, mention_count, first_seen_at, first_ordinal FROM entity_node WHERE id=$id", { id: node.id });
     if (!existing) {
-      this.run(`INSERT INTO entity_node
+      this.write(`INSERT INTO entity_node
         (id, canonical_name, entity_kind, summary, first_seen_at, last_seen_at, first_ordinal, last_ordinal,
          mention_count, validity_status, attributes_json, epistemic_status)
         VALUES ($id, $name, $kind, $summary, $firstSeen, $lastSeen, $firstOrd, $lastOrd,
@@ -172,7 +207,7 @@ export class CaseDatabase {
         attrs: typeof node.attributes === "string" ? node.attributes : stableStringify(node.attributes ?? {}),
         epistemic: node.epistemic ?? "DIRECT_EVIDENCE",
       });
-      this.run(`INSERT INTO entity_fts(entity_id, canonical_name, entity_kind, summary)
+      this.write(`INSERT INTO entity_fts(entity_id, canonical_name, entity_kind, summary)
         VALUES ($id, $name, $kind, $summary)`, {
         id: node.id,
         name: node.canonicalName,
@@ -181,7 +216,7 @@ export class CaseDatabase {
       });
     } else {
       const nextMentions = Number(existing.mention_count || 1) + (node.incrementMention === false ? 0 : 1);
-      this.run(`UPDATE entity_node SET
+      this.write(`UPDATE entity_node SET
         summary = COALESCE($summary, entity_node.summary),
         first_seen_at = CASE WHEN entity_node.first_seen_at IS NULL THEN $lastSeen WHEN $lastSeen IS NOT NULL AND $lastSeen < entity_node.first_seen_at THEN $lastSeen ELSE entity_node.first_seen_at END,
         last_seen_at = COALESCE($lastSeen, entity_node.last_seen_at),
@@ -203,7 +238,7 @@ export class CaseDatabase {
   }
 
   insertEntityMention(mention) {
-    this.run(`INSERT OR IGNORE INTO entity_mention
+    this.write(`INSERT OR IGNORE INTO entity_mention
       (entity_id, event_id, session_id, record_ordinal, observed_at, role)
       VALUES ($entityId, $eventId, $sessionId, $ordinal, $observedAt, $role)`, {
       entityId: mention.entityId,
@@ -216,7 +251,7 @@ export class CaseDatabase {
   }
 
   insertTemporalFact(fact) {
-    this.run(`INSERT INTO temporal_fact
+    this.write(`INSERT INTO temporal_fact
       (id, subject_id, subject_kind, predicate, object_id, object_kind, fact_text, value_json,
        valid_at, invalid_at, created_at, expired_at, valid_from_ordinal, invalid_at_ordinal,
        validity_status, epistemic_status, derivation_rule, source_event_id,
@@ -246,7 +281,7 @@ export class CaseDatabase {
       supersededByFact: fact.supersededByFactId ?? null,
       refs: typeof fact.refs === "string" ? fact.refs : stableStringify(fact.refs ?? []),
     });
-    this.run(`INSERT INTO fact_fts(fact_id, predicate, fact_text, validity_status)
+    this.write(`INSERT INTO fact_fts(fact_id, predicate, fact_text, validity_status)
       VALUES ($id, $predicate, $factText, $validityStatus)`, {
       id: fact.id,
       predicate: fact.predicate,
@@ -256,7 +291,7 @@ export class CaseDatabase {
   }
 
   invalidateTemporalFact(factId, { invalidAt = null, expiredAt = null, invalidAtOrdinal = null, validityStatus = "SUPERSEDED", invalidatedByEventId = null, supersededByFactId = null }) {
-    this.run(`UPDATE temporal_fact SET
+    this.write(`UPDATE temporal_fact SET
       invalid_at = COALESCE(invalid_at, $invalidAt),
       expired_at = COALESCE(expired_at, $expiredAt),
       invalid_at_ordinal = COALESCE(invalid_at_ordinal, $invalidAtOrd),
@@ -278,7 +313,7 @@ export class CaseDatabase {
     const signature = stableStringify(actor);
     if (this.actorValueCache.get(actor.id) === signature) return;
     this.actorValueCache.set(actor.id, signature);
-    this.run(`INSERT INTO actor
+    this.write(`INSERT INTO actor
       (id,kind,native_id,role,display_name,aliases_json,epistemic_status)
       VALUES ($id,$kind,$nativeId,$role,$display,$aliases,$epistemic)
       ON CONFLICT(id) DO UPDATE SET role=COALESCE(excluded.role,actor.role),
@@ -290,7 +325,7 @@ export class CaseDatabase {
   }
 
   insertEvent(event) {
-    this.run(`INSERT INTO event
+    this.write(`INSERT INTO event
       (id,session_id,source_id,record_ordinal,subordinal,observed_at,time_precision,
        actor_id,kind,subtype,phase,status,native_id,call_id,turn_id,parent_event_id,
        canonical,duplicate_of,input_preview,output_preview,input_blob_sha256,
@@ -310,14 +345,14 @@ export class CaseDatabase {
       inputBlob: event.inputBlobSha256 ?? null, outputBlob: event.outputBlobSha256 ?? null,
       metadata: stableStringify(event.metadata ?? {}), epistemic: event.epistemic,
     });
-    this.run(`INSERT INTO event_fts(event_id,kind,input_preview,output_preview)
+    this.write(`INSERT INTO event_fts(event_id,kind,input_preview,output_preview)
       VALUES ($id,$kind,$input,$output)`, {
       id: event.id, kind: event.kind, input: event.inputPreview ?? "", output: event.outputPreview ?? "",
     });
   }
 
   insertEvidenceRef(ref) {
-    this.run(`INSERT INTO evidence_ref
+    this.write(`INSERT INTO evidence_ref
       (id,event_id,source_id,record_ordinal,json_pointer,byte_offset,byte_length,
        record_sha256,uri,availability)
       VALUES ($id,$event,$source,$ordinal,$pointer,$offset,$length,$hash,$uri,$availability)`, {
@@ -329,7 +364,7 @@ export class CaseDatabase {
   }
 
   insertWarning(warning) {
-    this.run(`INSERT INTO parse_warning
+    this.write(`INSERT INTO parse_warning
       (id,source_id,record_ordinal,code,message,evidence_ref_id)
       VALUES ($id,$source,$ordinal,$code,$message,$ref)`, {
       id: warning.id, source: warning.sourceId ?? null, ordinal: warning.recordOrdinal ?? null,
@@ -338,13 +373,13 @@ export class CaseDatabase {
   }
 
   insertSecretFinding(finding) {
-    this.run(`INSERT OR IGNORE INTO secret_finding
+    this.write(`INSERT OR IGNORE INTO secret_finding
       (id,source_id,event_id,kind,fingerprint,projection)
       VALUES ($id,$source,$event,$kind,$fingerprint,$projection)`, finding);
   }
 
   insertContentBlob(blob) {
-    this.run(`INSERT OR IGNORE INTO content_blob
+    this.write(`INSERT OR IGNORE INTO content_blob
       (sha256,byte_length,extension,storage,inline_data,evidence_path)
       VALUES ($sha,$bytes,$extension,$storage,$data,$path)`, {
       sha: blob.sha256, bytes: blob.byteLength, extension: blob.extension,
@@ -353,7 +388,7 @@ export class CaseDatabase {
   }
 
   upsertTool(tool) {
-    this.run(`INSERT INTO tool_execution
+    this.write(`INSERT INTO tool_execution
       (id,session_id,actor_id,tool_name,command_text,working_directory,call_event_id,
        result_event_id,started_at,ended_at,status,exit_code,duration_ms,input_blob_sha256,
        output_blob_sha256,semantic_extract,invocation_fingerprint)
@@ -369,7 +404,7 @@ export class CaseDatabase {
   }
 
   upsertArtifact(artifact) {
-    this.run(`INSERT INTO artifact
+    this.write(`INSERT INTO artifact
       (id,logical_path,kind,workspace_root,current_path,current_status,current_sha256,first_seen_at,last_seen_at)
       VALUES ($id,$logicalPath,$kind,$workspaceRoot,$currentPath,$currentStatus,$currentSha,$firstSeen,$lastSeen)
       ON CONFLICT(id) DO UPDATE SET current_path=COALESCE(excluded.current_path,artifact.current_path),
@@ -378,7 +413,7 @@ export class CaseDatabase {
   }
 
   insertArtifactRevision(revision) {
-    this.run(`INSERT OR IGNORE INTO artifact_revision
+    this.write(`INSERT OR IGNORE INTO artifact_revision
       (id,artifact_id,producer_event_id,predecessor_revision_id,operation,content_sha256,
        diff_blob_sha256,observed_at,status,evidence_ref_id)
       VALUES ($id,$artifactId,$producerEventId,$predecessor,$operation,$contentSha,$diffSha,
@@ -386,14 +421,14 @@ export class CaseDatabase {
   }
 
   insertClaim(claim) {
-    this.run(`INSERT OR REPLACE INTO claim
+    this.write(`INSERT OR REPLACE INTO claim
       (id,subject,predicate,object_json,epistemic_status,derivation_rule,
        contradiction_set,source_event_id,evidence_refs_json,current)
       VALUES ($id,$subject,$predicate,$object,$epistemic,$rule,$contradiction,$event,$refs,$current)`, claim);
   }
 
   insertDecision(decision) {
-    this.run(`INSERT OR REPLACE INTO decision_record
+    this.write(`INSERT OR REPLACE INTO decision_record
       (id,problem,alternatives_json,decision_text,rationale,consequences_json,status,
        source_event_id,epistemic_status,decision_kind,valid_at,invalid_at,
        valid_from_ordinal,invalid_at_ordinal,validity_status,known_facts_json,
@@ -425,7 +460,7 @@ export class CaseDatabase {
   }
 
   insertTemporalSealLog(entry) {
-    this.run(`INSERT INTO temporal_seal_log
+    this.write(`INSERT INTO temporal_seal_log
       (fact_id, pre_temporal_identity, pre_graph_identity, post_temporal_identity, post_graph_identity, post_metrics_json, created_at)
       VALUES ($factId, $preTemporal, $preGraph, $postTemporal, $postGraph, $postMetrics, $createdAt)`, {
       factId: entry.factId,
@@ -439,7 +474,7 @@ export class CaseDatabase {
   }
 
   insertContinuationOption(option) {
-    this.run(`INSERT OR REPLACE INTO continuation_option
+    this.write(`INSERT OR REPLACE INTO continuation_option
       (id,rank,strategy,title,description,rationale,preconditions_json,
        active_constraints_json,avoided_dead_ends_json,supporting_event_ids_json,
        evidence_refs_json,epistemic_status,recommended)
@@ -462,30 +497,30 @@ export class CaseDatabase {
   }
 
   insertTask(task) {
-    this.run(`INSERT OR REPLACE INTO task
+    this.write(`INSERT OR REPLACE INTO task
       (id,text,state,priority,requested_event_id,last_event_id,verification_id,epistemic_status)
       VALUES ($id,$text,$state,$priority,$requestedEvent,$lastEvent,$verification,$epistemic)`, task);
   }
 
   insertValidation(validation) {
-    this.run(`INSERT OR REPLACE INTO validation
+    this.write(`INSERT OR REPLACE INTO validation
       (id,target,level,method,command_text,observed_result,observed_at,freshness_sha256,status,evidence_event_id)
       VALUES ($id,$target,$level,$method,$command,$result,$observedAt,$freshness,$status,$event)`, validation);
   }
 
   insertSnapshot(snapshot) {
-    this.run(`INSERT OR REPLACE INTO state_snapshot
+    this.write(`INSERT OR REPLACE INTO state_snapshot
       (id,workspace_root,observed_at,git_head,git_branch,git_status,metadata_json,sha256)
       VALUES ($id,$root,$observedAt,$head,$branch,$status,$metadata,$sha)`, snapshot);
   }
 
   insertHydrationPack(pack) {
-    this.run(`INSERT OR REPLACE INTO hydration_pack
+    this.write(`INSERT OR REPLACE INTO hydration_pack
       (id,case_hash,token_budget,token_estimate,content_sha256,created_at,generator_version,included_event_ids_json)
       VALUES ($id,$caseHash,$budget,$estimate,$contentSha,$createdAt,$version,$events)`, pack);
   }
 }
 
 export function openCase(caseDir, options = {}) {
-  return new CaseDatabase(path.join(caseDir, "case.sqlite"), options);
+  return new CaseDatabase(path.join(caseDir, "case.pgstore"), options);
 }

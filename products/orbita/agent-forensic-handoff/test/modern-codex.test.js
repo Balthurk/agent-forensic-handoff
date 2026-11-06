@@ -1,3 +1,4 @@
+import {nativeTemporary,caseRoot} from "./common-case-fixtures.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -7,15 +8,14 @@ import { DatabaseSync } from "../src/sqlite-compat.js";
 import { fileURLToPath } from "node:url";
 import { auditSession, readHotContext, verifyCaseIntegrity } from "../src/index.js";
 import { CaseDatabase } from "../src/database.js";
-import { walkFiles } from "../src/util.js";
+import { walkStoredFiles as walkFiles } from "./common-case-fixtures.js";
+import {DatabaseSync as CommonDatabaseSync} from "../src/common-store.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const modern = path.join(here, "fixtures", "codex", "modern.jsonl");
 
 function temporary(t, prefix) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  return root;
+  return nativeTemporary(t,prefix);
 }
 
 test("modern Codex records produce salient context, artifacts, validations, and no compatibility warnings", async (t) => {
@@ -23,7 +23,7 @@ test("modern Codex records produce salient context, artifacts, validations, and 
   const workspace = path.join(root, "workspace");
   fs.mkdirSync(path.join(workspace, "src"), { recursive: true });
   fs.writeFileSync(path.join(workspace, "src", "modern.js"), "modern artifact\n");
-  const result = await auditSession(modern, { harness: "codex", caseDir: path.join(root, "case"), workspace, includeChildren: false });
+  const result = await auditSession(modern, { harness: "codex", caseDir: caseRoot(root), workspace, includeChildren: false });
   assert.equal(result.metrics.sourceRecords, 14);
   assert.equal(result.metrics.warnings, 0);
   assert.equal(result.metrics.artifacts, 1);
@@ -35,7 +35,7 @@ test("modern Codex records produce salient context, artifacts, validations, and 
   assert.match(hot, /12 passed/i);
   assert.doesNotMatch(hot, /catalog only/);
 
-  const db = new CaseDatabase(path.join(result.caseDir, "case.sqlite"), { readOnly: true });
+  const db = new CaseDatabase(path.join(result.caseDir, "case.pgstore"), { readOnly: true });
   try {
     assert.equal(db.get("SELECT COUNT(*) n FROM task").n, 1);
     assert.equal(db.get("SELECT logical_path FROM artifact").logical_path, "src/modern.js");
@@ -72,9 +72,9 @@ test("directly observed successful create_thread closes over the exact child onl
   const insert = state.prepare("INSERT INTO threads VALUES (?,?,?)");
   insert.run(parentId, parentPath, 1); insert.run(childId, childPath, 2); insert.run(unrelatedId, unrelatedPath, 3); state.close();
 
-  const result = await auditSession(parentId, { codexHome, out: path.join(root, "afh"), workspace: root, includeChildren: true });
+  const result = await auditSession(parentId, { codexHome, out: caseRoot(root,"afh"), workspace: root, includeChildren: true });
   assert.equal(result.metrics.sources, 2);
-  const db = new CaseDatabase(path.join(result.caseDir, "case.sqlite"), { readOnly: true });
+  const db = new CaseDatabase(path.join(result.caseDir, "case.pgstore"), { readOnly: true });
   try {
     assert.equal(db.get("SELECT COUNT(*) n FROM session WHERE native_id=$id", { id: unrelatedId }).n, 0);
     const edge = db.get("SELECT * FROM session_edge WHERE child_session_id=$id", { id: `ses:codex:${childId}` });
@@ -86,7 +86,7 @@ test("credential scanner ignores type annotations but still redacts assigned val
   const root = temporary(t, "afh-secret-context-");
   const source = path.join(root, "source.jsonl");
   fs.writeFileSync(source, `${JSON.stringify({ session_id: "secret-context", role: "user", content: "signature(password: SecretChars); password: actualSecret123" })}\n`);
-  const result = await auditSession(source, { harness: "generic", caseDir: path.join(root, "case"), workspace: root, includeChildren: false });
+  const result = await auditSession(source, { harness: "generic", caseDir: caseRoot(root), workspace: root, includeChildren: false });
   const hot = readHotContext(result.caseDir);
   assert.match(hot, /password: SecretChars/);
   assert.doesNotMatch(hot, /actualSecret123/);
@@ -95,9 +95,9 @@ test("credential scanner ignores type annotations but still redacts assigned val
 
 test("case verifier fails closed after an inline blob is tampered", async (t) => {
   const root = temporary(t, "afh-integrity-");
-  const result = await auditSession(modern, { harness: "codex", caseDir: path.join(root, "case"), workspace: root, includeChildren: false });
+  const result = await auditSession(modern, { harness: "codex", caseDir: caseRoot(root), workspace: root, includeChildren: false });
   assert.equal((await verifyCaseIntegrity(result.caseDir)).passed, true);
-  const db = new DatabaseSync(path.join(result.caseDir, "case.sqlite"));
+  const db = new CommonDatabaseSync(path.join(result.caseDir, "case.pgstore"),{family:"case"});
   db.prepare("UPDATE content_blob SET inline_data=? WHERE storage='SQLITE' AND sha256=(SELECT sha256 FROM content_blob WHERE storage='SQLITE' LIMIT 1)").run(Buffer.from("tampered"));
   db.close();
   const verification = await verifyCaseIntegrity(result.caseDir);
@@ -110,7 +110,7 @@ test("acquisition freezes an append-only source at its initial byte boundary", a
   const source = path.join(root, "growing.jsonl");
   const initialRecords = Array.from({ length: 10_000 }, (_, index) => JSON.stringify({ session_id: "growing", role: "user", content: `initial-${index}` }));
   fs.writeFileSync(source, `${initialRecords.join("\n")}\n`);
-  const promise = auditSession(source, { harness: "generic", caseDir: path.join(root, "case"), workspace: root, includeChildren: false });
+  const promise = auditSession(source, { harness: "generic", caseDir: caseRoot(root), workspace: root, includeChildren: false });
   await new Promise((resolve) => setTimeout(resolve, 1));
   fs.appendFileSync(source, `${JSON.stringify({ session_id: "growing", role: "user", content: "late-append" })}\n`);
   const result = await promise;

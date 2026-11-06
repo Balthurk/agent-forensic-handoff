@@ -220,7 +220,7 @@ export function composeContinuationOptions(db) {
 }
 
 export function getContinuationOptions(caseDir) {
-  const db = new CaseDatabase(path.join(path.resolve(caseDir), "case.sqlite"), { readOnly: true });
+  const db = new CaseDatabase(path.join(path.resolve(caseDir), "case.pgstore"), { readOnly: true });
   try {
     return db.all("SELECT * FROM continuation_option ORDER BY rank ASC").map((row) => ({
       ...row,

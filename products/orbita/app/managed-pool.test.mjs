@@ -1,4 +1,7 @@
 import test from 'node:test';
+import files from '../agent-forensic-handoff/src/common-files.js';
+import {closeCommonStore} from '../agent-forensic-handoff/src/common-store.js';
+test.after(()=>closeCommonStore());
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -13,7 +16,8 @@ import {terminateOwned} from './owned-process.mjs';
 const password='synthetic-worker-pool-only';
 const policy=()=>({basis:'Synthetic source permission for worker regression',purpose:'Isolated worker lifecycle checks',rightsUntil:new Date(Date.now()+86400000).toISOString(),retainUntil:new Date(Date.now()+172800000).toISOString()});
 async function fixture(count=6){
- const root=fs.mkdtempSync(path.join(process.env.AFH_TEST_ROOT||'C:/T','a11-')),store=new AccessStore(root,{create:true}),owner=store.createAccount('owner',password,{admin:true});
+ files.mkdirSync(process.env.ORBITA_POSTGRES_TEST_ROOT,{recursive:true});
+ const root=files.mkdtempSync(path.join(process.env.ORBITA_POSTGRES_TEST_ROOT,'a11-')),store=new AccessStore(root,{create:true}),owner=store.createAccount('owner',password,{admin:true});
  const spaces=Array.from({length:count},(_,i)=>{const w=store.createWorkspace(owner.id,{name:'Synthetic space '+i,policy:policy()});return {...w,token:store.issue(owner.id,{workspace:w.id}).token};});store.close();
  const app=createAccessServer({root,port:0});await new Promise((r,j)=>{app.server.once('error',j);app.server.listen(0,'127.0.0.1',r);});const base='http://127.0.0.1:'+app.server.address().port;
  const call=async(i,route='/api/bootstrap',body)=>{const r=await fetch(base+route,{method:body?'POST':'GET',headers:{connection:'close',authorization:'Bearer '+spaces[i].token,...(body?{'content-type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,value:await r.json()};};
@@ -47,7 +51,7 @@ function partialUpload(f,i){
  return {req,result,finish(){req.end(JSON.stringify({filename:'upload-'+i+'.md',content:'# Actual upload '+i+'\nOnly workspace '+i,metadata:{title:'Upload '+i}}).slice(1));}};
 }
 function preload(f){
- const prior=process.env.NODE_OPTIONS,priorDir=process.env.ORBITA_ACTIVITY_FIXTURE_DIR,dir=path.join(f.root,'activity-barriers');fs.mkdirSync(dir);
+ const prior=process.env.NODE_OPTIONS,priorDir=process.env.ORBITA_ACTIVITY_FIXTURE_DIR,dir=fs.mkdtempSync(path.join(process.env.ORBITA_POSTGRES_TEST_RECEIPTS,'activity-barriers-'));
  process.env.NODE_OPTIONS=(prior?prior+' ':'')+'--import='+new URL('./managed-activity-fixture.mjs',import.meta.url).href;process.env.ORBITA_ACTIVITY_FIXTURE_DIR=dir;
  return {file(i,name){return path.join(dir,f.spaces[i].id,name);},release(i,kind){fs.writeFileSync(this.file(i,kind+'-release'),'release real operation');},restore(){if(prior===undefined)delete process.env.NODE_OPTIONS;else process.env.NODE_OPTIONS=prior;if(priorDir===undefined)delete process.env.ORBITA_ACTIVITY_FIXTURE_DIR;else process.env.ORBITA_ACTIVITY_FIXTURE_DIR=priorDir;}};
 }

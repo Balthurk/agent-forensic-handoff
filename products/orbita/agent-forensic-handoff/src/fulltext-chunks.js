@@ -1,4 +1,4 @@
-import fs from 'node:fs';
+import fs from './common-files.js';
 import path from 'node:path';
 import {CaseDatabase} from './database.js';
 import {sha256,stableStringify} from './util.js';
@@ -22,7 +22,7 @@ export function fullTextRows(caseDir){
  return identity.representations.filter(r=>['active','native'].includes(r.scope)&&!r.representation_only&&!r.identity_conflict&&r.text);
 }
 export function collectFullTextChunks(caseDir,options){
- const rows=fullTextRows(caseDir),db=new CaseDatabase(path.join(caseDir,'case.sqlite'),{readOnly:true});
+ const rows=fullTextRows(caseDir),db=new CaseDatabase(path.join(caseDir,'case.pgstore'),{readOnly:true});
  try{
   const events=new Map(db.all('SELECT e.*,a.kind actor_kind FROM event e LEFT JOIN actor a ON a.id=e.actor_id').map(e=>[e.id,e]));
   const chunks=[];

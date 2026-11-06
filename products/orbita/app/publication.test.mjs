@@ -1,5 +1,5 @@
-import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import path from 'node:path';
-const root=fs.mkdtempSync('C:/T/afh-publication-test-');process.env.AFH_COSMOS_DATA=root;
+import test from 'node:test';import assert from 'node:assert/strict';import fs from '../agent-forensic-handoff/src/common-files.js';import {commonFixture} from './common-test-scope.mjs';import path from 'node:path';
+const root=commonFixture('afh-publication-test-');process.env.AFH_COSMOS_DATA=root;
 const {addSource}=await import('./corpus.mjs');const {verifiedSources,knowledgeOperation}=await import('./knowledge.mjs');const {publishPending}=await import('./publication.mjs');
 test('atomic record outbox, stale fence, durable publication before ack and replay exactly once',async()=>{
  const item=await addSource({filename:'pub.json',content:JSON.stringify({id:'pub',title:'pub',current_node:'u',mapping:{u:{id:'u',parent:null,children:[],message:{id:'u',author:{role:'user'},content:{content_type:'text',parts:['No autorizo borrar originales. Sólo propongo revisar.']}}}}})});const ids=[item.id],context=await verifiedSources(ids),s=context.sources[0];

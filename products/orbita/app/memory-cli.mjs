@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import {routingOperation} from './routing.mjs';
 import {explorer} from './explorer.mjs';
 import {identityOperation} from './identities.mjs';
+import {closeCommonStore} from '../agent-forensic-handoff/src/common-store.js';
 import {retrievePackage,coverage,indexConversations,loadTaxonomy,SEMANTIC_TYPES,createProposal,listProposals,closeMemory} from './memory.mjs';
 import {knowledgeOperation,extractKnowledge,reviewKnowledge} from './knowledge.mjs';
 import {importDocument,documentStatus,reconcileDocuments} from './documents.mjs';
@@ -43,4 +44,4 @@ try{
  else if(command==='knowledge')result=await knowledgeOperation(request.op,request.conversationIds,request.input||{});
  else throw new Error('Usage: node app/memory-cli.mjs query|index|propose|extract|review|knowledge|document|plan|plan-run|plan-status request.json; coverage|taxonomy|proposals|documents');
  process.stdout.write(JSON.stringify(result)+'\n');
-}catch(error){console.error(error.message);process.exitCode=1;}finally{await closeMemory();}
+}catch(error){console.error(error.message);process.exitCode=1;}finally{try{await closeMemory();}finally{closeCommonStore();}}

@@ -1,5 +1,6 @@
 import fs from "node:fs";
-import os from "node:os";
+import common from './common-files.js';
+import {benchmarkLocations} from './common-benchmark.js';
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { auditSession } from "./audit.js";
@@ -11,7 +12,7 @@ const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_ROOT = path.resolve(MODULE_DIR, "..", "test", "fixtures");
 
 export async function runBenchmark(options = {}) {
-  const root = options.output ? path.resolve(options.output) : fs.mkdtempSync(path.join(os.tmpdir(), "afh-benchmark-"));
+  const {root,caseRoot}=benchmarkLocations(options,'deterministic');
   ensureDir(root);
   const fixtures = [
     { harness: "codex", transcript: path.join(FIXTURE_ROOT, "codex", "basic.jsonl"), truth: path.join(FIXTURE_ROOT, "codex", "truth.json") },
@@ -20,12 +21,12 @@ export async function runBenchmark(options = {}) {
     { harness: "generic", transcript: path.join(FIXTURE_ROOT, "generic", "mixed.jsonl"), truth: path.join(FIXTURE_ROOT, "generic", "truth.json") },
   ];
   const reports = [];
-  for (const fixture of fixtures) reports.push(await evaluateFixture(root, fixture));
+  for (const fixture of fixtures) reports.push(await evaluateFixture(root, caseRoot, fixture));
   const requestedGiantRecords = Number(options.giantRecords || 10_000);
   if (!Number.isSafeInteger(requestedGiantRecords) || requestedGiantRecords < 1 || requestedGiantRecords > 5_000_000) {
     throw new Error("giantRecords must be an integer between 1 and 5,000,000");
   }
-  const giant = await evaluateGiant(root, Math.max(100, requestedGiantRecords));
+  const giant = await evaluateGiant(root, caseRoot, Math.max(100, requestedGiantRecords));
   const aggregate = aggregateReports(reports);
   const gates = {
     parseAccounting: aggregate.parseAccounting === 1,
@@ -59,19 +60,19 @@ export async function runBenchmark(options = {}) {
   return result;
 }
 
-async function evaluateFixture(root, fixture) {
+async function evaluateFixture(root, caseRoot, fixture) {
   const truth = readJson(fixture.truth);
   const fixtureRoot = ensureDir(path.join(root, truth.name));
   const workspace = ensureDir(path.join(fixtureRoot, "workspace"));
   prepareWorkspace(truth.name, workspace);
-  const caseDir = path.join(fixtureRoot, "case");
+  const caseDir = path.join(caseRoot, truth.name, "case");
   const first = await auditSession(fixture.transcript, {
     harness: fixture.harness, caseDir, workspace, verificationLevel: "V0", tokenBudget: 6000, includeChildren: false,
   });
   const second = await auditSession(fixture.transcript, {
     harness: fixture.harness, caseDir, workspace, verificationLevel: "V0", tokenBudget: 6000, includeChildren: false,
   });
-  const db = new CaseDatabase(path.join(caseDir, "case.sqlite"), { readOnly: true });
+  const db = new CaseDatabase(path.join(caseDir, "case.pgstore"), { readOnly: true });
   try {
     const critical = truth.critical;
     const actualKinds = new Set(db.all("SELECT DISTINCT kind FROM event WHERE canonical=1").map((row) => row.kind));
@@ -107,7 +108,7 @@ async function evaluateFixture(root, fixture) {
       const refs = JSON.parse(claim.evidence_refs_json || "[]");
       return !refs.length || refs.some((uri) => !db.get("SELECT id FROM evidence_ref WHERE uri=$uri", { uri }));
     }).length;
-    const hot = fs.readFileSync(path.join(caseDir, "hot-context.md"), "utf8");
+    const hot = common.readFileSync(path.join(caseDir, "hot-context.md"), "utf8");
     const hotHits = critical.hotTerms.filter((term) => hot.toLowerCase().includes(term.toLowerCase())).length;
     const rawBytes = fs.statSync(fixture.transcript).size;
     const scoredExpected = new Set([...critical.eventKinds, ...critical.actorKinds]);
@@ -146,7 +147,7 @@ function prepareWorkspace(name, workspace) {
   }
 }
 
-async function evaluateGiant(root, count) {
+async function evaluateGiant(root, caseRoot, count) {
   const fixtureRoot = ensureDir(path.join(root, "giant"));
   const source = path.join(fixtureRoot, "giant.jsonl");
   const fd = fs.openSync(source, "w");
@@ -156,9 +157,9 @@ async function evaluateGiant(root, count) {
     for (let i = 0; i < count; i += 1) fs.writeSync(fd, `${JSON.stringify({ timestamp: new Date(Date.UTC(2026, 0, 4, 0, 0, 2) + i).toISOString(), type: "event_msg", payload: { type: "token_count", info: { total_token_usage: i } } })}\n`);
   } finally { fs.closeSync(fd); }
   const started = performance.now();
-  const result = await auditSession(source, { harness: "codex", caseDir: path.join(fixtureRoot, "case"), workspace: fixtureRoot, includeChildren: false, tokenBudget: 2000 });
+  const result = await auditSession(source, { harness: "codex", caseDir: path.join(caseRoot, "giant", "case"), workspace: fixtureRoot, includeChildren: false, tokenBudget: 2000 });
   const elapsedMs = Math.round(performance.now() - started);
-  const hot = fs.readFileSync(path.join(result.caseDir, "hot-context.md"), "utf8");
+  const hot = common.readFileSync(path.join(result.caseDir, "hot-context.md"), "utf8");
   const sourceTokenEstimate = Math.ceil(fs.statSync(source).size / 4);
   return {
     requestedNoiseRecords: count,

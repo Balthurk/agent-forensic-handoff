@@ -133,7 +133,7 @@ function lexicalCandidates(caseDir, query, limit, filters) {
   }
   const ftsQuery = buildFtsMatchQuery(query, "AND");
   if (!ftsQuery) return [];
-  const db = new CaseDatabase(path.join(caseDir, "case.sqlite"), { readOnly: true });
+  const db = new CaseDatabase(path.join(caseDir, "case.pgstore"), { readOnly: true });
   try {
     const maxOrd = maxOrdinalFromFilters(filters);
     const raw = db.all(
@@ -193,7 +193,7 @@ function filterAndAnnotateTemporal(caseDir, events, filters) {
   if (filters.session && String(filters.session).startsWith("UNRESOLVED_SESSION:")) {
     return [];
   }
-  const db = new CaseDatabase(path.join(caseDir, "case.sqlite"), { readOnly: true });
+  const db = new CaseDatabase(path.join(caseDir, "case.pgstore"), { readOnly: true });
   try {
     const eventValidityMap = buildEventValidityMap(db, filters.biTemporalCut);
     const out = [];
@@ -268,7 +268,7 @@ export function searchTemporalGraph(caseDir, query, filters = {}, limit = 25) {
   const ftsQuery = buildFtsMatchQuery(query, "OR");
   if (!ftsQuery) return { entities: [], facts: [] };
 
-  const db = new CaseDatabase(path.join(caseDir, "case.sqlite"), { readOnly: true });
+  const db = new CaseDatabase(path.join(caseDir, "case.pgstore"), { readOnly: true });
   try {
     const hasEntityFts = db.get("SELECT 1 ok FROM sqlite_master WHERE type='table' AND name='entity_fts'");
     const hasFactFts = db.get("SELECT 1 ok FROM sqlite_master WHERE type='table' AND name='fact_fts'");
@@ -379,7 +379,7 @@ function applyReranker(caseDir, candidates, { rerank = "rrf", limit = 25, center
     return candidates.slice(0, limit);
   }
 
-  const db = new CaseDatabase(path.join(caseDir, "case.sqlite"), { readOnly: true });
+  const db = new CaseDatabase(path.join(caseDir, "case.pgstore"), { readOnly: true });
   try {
     if (rerank === "mentions") {
       const mentionWeightStmt = db.statement(`
@@ -549,7 +549,7 @@ function fuseHybrid(caseDir, lexicalResults, semanticResults, { limit, graphHops
 }
 
 function expandGraph(caseDir, candidates, hops, maxNodes, filters) {
-  const db = new CaseDatabase(path.join(caseDir, "case.sqlite"), { readOnly: true });
+  const db = new CaseDatabase(path.join(caseDir, "case.pgstore"), { readOnly: true });
   try {
     const edges = loadGraphEdges(db);
     const eventValidityMap = buildEventValidityMap(db, filters?.biTemporalCut);
@@ -613,7 +613,7 @@ function assessRetrieval(caseDir, results, additionalGaps = []) {
   if (Number(manifest.metrics?.unparsedRecords || 0) > 0) gaps.push(`${manifest.metrics.unparsedRecords} unparsed record(s) exist`);
   if (Number(manifest.metrics?.warnings || 0) > 0) gaps.push(`${manifest.metrics.warnings} parser/source warning(s) exist`);
   for (const warning of manifest.sourceResolutionWarnings || []) gaps.push(`Source/session coverage warning: ${warning}`);
-  const db = new CaseDatabase(path.join(caseDir, "case.sqlite"), { readOnly: true });
+  const db = new CaseDatabase(path.join(caseDir, "case.pgstore"), { readOnly: true });
   try {
     const unavailableRefs = Number(db.get("SELECT COUNT(*) n FROM evidence_ref WHERE availability<>'AVAILABLE'")?.n ?? 0);
     if (unavailableRefs) gaps.push(`${unavailableRefs} evidence reference(s) are unavailable`);
@@ -687,7 +687,7 @@ function normalizeFilters(caseDir, options) {
   if(options.scope!=null && !["active","all"].includes(options.scope))throw new Error("Unsupported scope");
   let session = options.session || null;
   let biTemporalCut = null;
-  const db = new CaseDatabase(path.join(caseDir, "case.sqlite"), { readOnly: true });
+  const db = new CaseDatabase(path.join(caseDir, "case.pgstore"), { readOnly: true });
   try {
     if (session) {
       const row = db.get("SELECT id FROM session WHERE id=$id OR native_id=$id ORDER BY CASE WHEN id=$id THEN 0 ELSE 1 END LIMIT 1", { id: session });

@@ -1,3 +1,5 @@
+from common_test_fixture import WorkspaceFixture, connect_semantic, corrupt_path, temporary_corruption
+from psycopg import IntegrityError
 """A12 candidate discovery; semantic similarity never admits support or authority."""
 import copy
 import hashlib

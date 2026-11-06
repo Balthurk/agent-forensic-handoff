@@ -1,38 +1,53 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
+import fs from '../agent-forensic-handoff/src/common-files.js';
+import native from 'node:fs';
+import {commonFixture} from './common-test-scope.mjs';
+import {nativeFixture} from './common-test-fixtures.mjs';
+import {fileURLToPath} from 'node:url';
 import os from 'node:os';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {spawn,spawnSync} from 'node:child_process';
 
 const corpus=process.env.ORBITA_CORPUS_UNDER_TEST||new URL('./corpus.mjs',import.meta.url).href;
-const python=process.env.AFH_VOLUME_PYTHON||process.env.AFH_SQLITE_PYTHON||'python';
+const python=process.env.ORBITA_POSTGRES_PYTHON,pythonRoot=fileURLToPath(new URL('../agent-forensic-handoff/python',import.meta.url));
 function fixture(t){
- const root=fs.mkdtempSync(path.join(os.tmpdir(),'orbita-library-noop-'));
+ const root=commonFixture('orbita-library-noop-');
  const data=path.join(root,'data');fs.mkdirSync(data);
  const items=[{id:'existing',title:'Texto sintético café 漢字',path:path.join(data,'cases','existing')}];
  const file=path.join(data,'library.json');fs.writeFileSync(file,JSON.stringify(items,null,2));
- const worker=path.join(root,'writer.mjs');
- fs.writeFileSync(worker,`import fs from 'node:fs';import {registerLibraryItems} from ${JSON.stringify(corpus)};
+ const worker=path.join(nativeFixture('library-noop-worker'),'writer.mjs');
+ native.writeFileSync(worker,`import {closeCommonStore} from ${JSON.stringify(new URL('../agent-forensic-handoff/src/common-store.js',import.meta.url).href)};import {registerLibraryItems} from ${JSON.stringify(corpus)};
 const items=JSON.parse(process.argv[2]);
-try{registerLibraryItems(items);console.log(JSON.stringify({status:'PASS'}));}catch(e){console.error(e.code||e.message);process.exitCode=1;}`);
+try{registerLibraryItems(items);console.log(JSON.stringify({status:'PASS'}));}catch(e){console.error(e.code||e.message);process.exitCode=1;}finally{closeCommonStore();}`);
  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  return {root,data,items,file,worker,env:{...process.env,AFH_COSMOS_DATA:data,AFH_COSMOS_EMPTY_LIBRARY:'1'}};
 }
 function run(f,items){return spawnSync(process.execPath,[f.worker,JSON.stringify(items)],{env:f.env,encoding:'utf8',windowsHide:true,timeout:15000});}
-async function holdWindowsReader(f){
- const code=`import ctypes as c,ctypes.wintypes as w,sys
-k=c.WinDLL('kernel32',use_last_error=True)
-k.CreateFileW.argtypes=[w.LPCWSTR,w.DWORD,w.DWORD,c.c_void_p,w.DWORD,w.DWORD,w.HANDLE];k.CreateFileW.restype=w.HANDLE
-k.CloseHandle.argtypes=[w.HANDLE]
-h=k.CreateFileW(sys.argv[1],0x80000000,3,None,3,0x80,None)
-assert h not in (None,c.c_void_p(-1).value),c.get_last_error()
+async function holdCommonReader(f,{blockReplacement=false}={}){
+ const code=`import sys
+sys.path.insert(0,sys.argv[1])
+from orbita_store.config import read_config,binding_for
+from orbita_store.objects import ObjectStore
+from orbita_store.pool import close_idle
+config=read_config();binding,key=binding_for(sys.argv[2],config)
+store=ObjectStore(config,binding);reader=None
 try:
+ if sys.argv[3]=='lock':
+  store.raw.execute('BEGIN')
+  assert store.raw.execute('SELECT path FROM orbita_common.entries WHERE path=%s FOR UPDATE',(key,)).fetchone()[0]==key
+ else:
+  reader=store.open_read(key);original=reader.read()
  print('READY',flush=True);sys.stdin.read(1)
-finally:k.CloseHandle(h)
+ if reader is not None:
+  reader.seek(0);assert reader.read()==original
+finally:
+ if reader is not None:reader.close()
+ else:store.raw.execute('ROLLBACK')
+ store.close();close_idle()
 `;
- const child=spawn(python,['-X','utf8','-B','-c',code,f.file],{windowsHide:true,stdio:['pipe','pipe','pipe']});
+ const child=spawn(python,['-I','-X','utf8','-B','-c',code,pythonRoot,f.file,blockReplacement?'lock':'pin'],{env:f.env,windowsHide:true,stdio:['pipe','pipe','pipe']});
  let stderr='';child.stderr.on('data',d=>stderr+=d);
  const exited=new Promise(resolve=>child.once('exit',(code,signal)=>resolve({code,signal})));
  try{
@@ -46,12 +61,12 @@ finally:k.CloseHandle(h)
  return async()=>{child.stdin.end('x');const end=await exited;assert.equal(end.code,0,stderr);};
 }
 
-test('library identical reconciliation performs no replacement under a real Windows reader',{timeout:25000},async t=>{
+test('library identical reconciliation preserves the exact object under a real PostgreSQL pinned reader',{timeout:25000},async t=>{
  const f=fixture(t),before=fs.readFileSync(f.file),stat=fs.statSync(f.file,{bigint:true});
- const release=process.platform==='win32'?await holdWindowsReader(f):async()=>{};
+ const release=await holdCommonReader(f);
  try{const result=run(f,f.items);assert.equal(result.status,0,result.stderr);}finally{await release();}
  assert.deepEqual(fs.readFileSync(f.file),before);
- assert.equal(fs.statSync(f.file,{bigint:true}).mtimeNs,stat.mtimeNs);
+ const after=fs.statSync(f.file);assert.equal(after.revision,stat.revision);assert.equal(after.objectId,stat.objectId);assert.equal(after.sha256,stat.sha256);assert.equal(after.mtimeMs,stat.mtimeMs);
  assert.deepEqual(fs.readdirSync(f.data).filter(n=>n.endsWith('.tmp')),[]);
 });
 
@@ -76,9 +91,9 @@ test('library concurrent distinct writers preserve both committed entries',{time
  assert.deepEqual(new Map(result.map(item=>[item.id,item])),new Map([...f.items,a,b].map(item=>[item.id,item])));
 });
 
-if(process.platform==='win32')test('library blocked real replacement reports failure and preserves the committed file',{timeout:25000},async t=>{
- const f=fixture(t),before=fs.readFileSync(f.file),release=await holdWindowsReader(f);
- try{const result=run(f,[{id:'new',title:'Must not silently disappear'}]);assert.notEqual(result.status,0);assert.match(result.stderr,/EPERM|EACCES|EBUSY/);}finally{await release();}
+test('library a real PostgreSQL row lock rejects replacement and preserves the committed object',{timeout:25000},async t=>{
+ const f=fixture(t),before=fs.readFileSync(f.file),release=await holdCommonReader(f,{blockReplacement:true});
+ try{const result=run(f,[{id:'new',title:'Must not silently disappear'}]);assert.notEqual(result.status,0);assert.match(result.stderr,/55P03/);}finally{await release();}
  assert.deepEqual(fs.readFileSync(f.file),before);
  const retried=run(f,[{id:'new',title:'Must not silently disappear'}]);assert.equal(retried.status,0,retried.stderr);
  assert.equal(JSON.parse(fs.readFileSync(f.file)).length,2);

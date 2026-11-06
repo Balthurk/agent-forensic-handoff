@@ -1,8 +1,10 @@
-import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import path from 'node:path';import os from 'node:os';
-const root=fs.mkdtempSync(path.join(process.env.AFH_TEST_ROOT||os.tmpdir(),'afh-app-tests-'));process.env.AFH_COSMOS_DATA=root;
+import test from 'node:test';import assert from 'node:assert/strict';import fs from '../agent-forensic-handoff/src/common-files.js';import native from 'node:fs';import {commonFixture} from './common-test-scope.mjs';import {nativeFixture} from './common-test-fixtures.mjs';import {spawnSync} from 'node:child_process';import {fileURLToPath} from 'node:url';import path from 'node:path';import os from 'node:os';
+import {DatabaseSync} from '../agent-forensic-handoff/src/common-store.js';
+const parent=commonFixture('afh-app-tests-'),root=path.join(parent,'data'),input=nativeFixture('p1-original');process.env.AFH_COSMOS_DATA=root;
 const original=process.env.AFH_P1_REAL_FIXTURE?path.resolve(process.env.AFH_P1_REAL_FIXTURE):new URL('./data/cases/diagnostico',import.meta.url);
-fs.cpSync(original,path.join(root,'cases','real'),{recursive:true,filter:s=>!s.includes('projections')});
-fs.writeFileSync(path.join(root,'library.json'),JSON.stringify([{id:'real',title:'Frozen shared conversation',path:path.join(root,'cases','real')}]));
+native.cpSync(original,path.join(input,'cases','real'),{recursive:true,filter:s=>!s.includes('projections')});
+native.writeFileSync(path.join(input,'library.json'),JSON.stringify([{id:'real',title:'Frozen shared conversation',path:path.join(input,'cases','real')}]));
+const imported=spawnSync(process.env.ORBITA_POSTGRES_PYTHON,['-I','-X','utf8','-B',fileURLToPath(new URL('../agent-forensic-handoff/python/import_test_legacy.py',import.meta.url)),input,root,path.join(parent,'import-stage')],{env:process.env,encoding:'utf8',windowsHide:true,timeout:120000});assert.equal(imported.status,0,imported.stdout+imported.stderr);assert.equal(JSON.parse(imported.stdout).status,'PASS_EXPLICIT_IMPORT');
 const memory=await import('./memory.mjs'),corpus=await import('./corpus.mjs');
 test('P1 real conversation: full evidence, honest missing vector, proposals, source mutation and cache',async t=>{
  t.after(()=>memory.closeMemory());
@@ -17,9 +19,9 @@ test('P1 real conversation: full evidence, honest missing vector, proposals, sou
  const vector=await memory.retrievePackage('How should regressions be checked between successive features?',['real'],{mode:'semantic'});
  assert.equal(vector.state,'ok');assert.ok(vector.evidence.length);assert.equal(vector.backends.find(b=>b.channel==='lexical_full_text').status,'not_requested');assert.equal(vector.backends.find(b=>b.channel==='semantic_full_text').status,'ok');
  assert.equal(indexed.semantic.representation,'full_source_text');assert.equal(indexed.semantic.sourceCodepoints,indexed.semantic.coveredCodepoints);assert.equal(indexed.semantic.truncatedChunks,0);
- const projection=path.join(root,'cases/real/projections',indexed.semantic.projectionId,'semantic.sqlite'),vectorBytes=fs.readFileSync(projection);fs.appendFileSync(projection,'tamper');
+ const projection=path.join(root,'cases/real/projections',indexed.semantic.projectionId,'semantic.pgstore'),vectorDB=new DatabaseSync(projection,{family:'vector'}),vectorRow=vectorDB.prepare('SELECT rowid,vector FROM semantic_embedding ORDER BY rowid LIMIT 1').get(),vectorBytes=Buffer.from(vectorRow.vector),corruptedVector=Buffer.from(vectorBytes);corruptedVector[0]^=1;vectorDB.prepare('UPDATE semantic_embedding SET vector=? WHERE rowid=?').run(corruptedVector,vectorRow.rowid);
  try{const degraded=await memory.retrievePackage('AssetGuard',['real'],{mode:'hybrid'});assert.equal(degraded.state,'degraded');assert.ok(degraded.evidence.length);assert.equal((await memory.retrievePackage('AssetGuard',['real'],{mode:'semantic'})).state,'unavailable');}
- finally{fs.writeFileSync(projection,vectorBytes);}
+ finally{try{vectorDB.prepare('UPDATE semantic_embedding SET vector=? WHERE rowid=?').run(vectorBytes,vectorRow.rowid);}finally{vectorDB.close();}}
  corpus.library.push({...corpus.library[0],id:'duplicate-import'});
  fs.writeFileSync(path.join(root,'library.json'),JSON.stringify(corpus.library)); // durable catalog fixture, as required across processes
  const empty=await memory.retrievePackage('nonexistent_unique_831736',['real','duplicate-import'],{mode:'lexical',profile:'exact'});assert.equal(empty.state,'no_match');assert.equal(empty.abstention,true);

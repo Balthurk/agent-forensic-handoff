@@ -1,6 +1,7 @@
 // F27: classify the requested knowledge, never the truth of the answer.
 // Sidecar only: no query rewrite, source filter, evidence budget or model switch.
-import fs from 'node:fs';
+import native from 'node:fs';
+import fs from '../agent-forensic-handoff/src/common-files.js';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {DATA} from './corpus.mjs';
@@ -9,7 +10,7 @@ import {infer,MODELS} from './llm.mjs';
 import {RequestDeadline,cancellationPoint} from './deadline.mjs';
 import {jevStatus,classifyJev,JEV_MODEL} from './jev.mjs';
 export const VERSION='orbita.query-routing.v1';
-const catalog=JSON.parse(fs.readFileSync(new URL('../agent-forensic-handoff/schemas/tsm-catalog.v1.json',import.meta.url),'utf8'));
+const catalog=JSON.parse(native.readFileSync(new URL('../agent-forensic-handoff/schemas/tsm-catalog.v1.json',import.meta.url),'utf8'));
 const families=['descriptive','normative','procedural','deliberative','interpretive','evaluative','prospective'];
 export const OPTIONS=Object.freeze(families.map(name=>{const n=catalog.nodes.find(n=>n.id==='tsm:'+name);if(n?.parent_id!=='tsm:memory')throw new Error('ROUTING_TAXONOMY_PARENT');return Object.freeze({id:n.id,parent:n.parent_id,label:n.preferred_label.es,definition:n.definition});}));
 export const RESOLUTIONS=['resolved','unknown','ambiguous','insufficient_context','unrepresented'];

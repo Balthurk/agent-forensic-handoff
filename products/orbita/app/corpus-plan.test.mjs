@@ -1,6 +1,7 @@
-import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import path from 'node:path';
+import test from 'node:test';import assert from 'node:assert/strict';import fs from '../agent-forensic-handoff/src/common-files.js';import path from 'node:path';
 import {draftForInput} from './corpus-plan-fixture.mjs';
-const root=fs.mkdtempSync('C:/T/orbita-corpus-plan-test-');process.env.AFH_COSMOS_DATA=root;
+fs.mkdirSync(process.env.ORBITA_POSTGRES_TEST_ROOT,{recursive:true});
+const root=fs.mkdtempSync(process.env.ORBITA_POSTGRES_TEST_ROOT+'/orbita-corpus-plan-test-');process.env.AFH_COSMOS_DATA=root;
 const {importDocument}=await import('./documents.mjs');const {createCorpusPlan,corpusPlanStatus,runCorpusPlan}=await import('./corpus-plan.mjs');const {knowledgeOperation}=await import('./knowledge.mjs');const {coverage,closeMemory}=await import('./memory.mjs');
 let first,firstItem,calls=0;
 const inferDraft=async prompt=>{calls++;return {value:draftForInput(prompt),model:'gpt-6.1-sol',modelObserved:'controlled-fixture',elapsedMs:1,usage:null,receipt:'fixture-not-provider'};};

@@ -1,5 +1,5 @@
-import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import path from 'node:path';import {spawnSync} from 'node:child_process';import {fileURLToPath} from 'node:url';
-const root=fs.mkdtempSync(path.join(process.env.AFH_TEST_ROOT||'C:/T','afh-learning-'));process.env.AFH_COSMOS_DATA=root;process.env.AFH_COSMOS_EMPTY_LIBRARY='1';
+import test from 'node:test';import assert from 'node:assert/strict';import fs from '../agent-forensic-handoff/src/common-files.js';import {commonFixture} from './common-test-scope.mjs';import path from 'node:path';import {spawnSync} from 'node:child_process';import {fileURLToPath} from 'node:url';
+const root=commonFixture('afh-learning-');process.env.AFH_COSMOS_DATA=root;process.env.AFH_COSMOS_EMPTY_LIBRARY='1';
 const {addSource,library,loadCase}=await import('./corpus.mjs');const {learningOperation:op,learningSources}=await import('./learning.mjs');const {knowledgeOperation,verifiedSources,knowledgeCoverage}=await import('./knowledge.mjs');const {retrievePackage,closeMemory}=await import('./memory.mjs');
 async function add(id,text){return addSource({filename:id+'.json',content:JSON.stringify({id,title:id,current_node:'u',mapping:{u:{id:'u',parent:null,children:[],message:{id:'u',author:{role:'user'},content:{content_type:'text',parts:[text]}}}}})});}
 const here=path.dirname(fileURLToPath(import.meta.url));
@@ -21,7 +21,7 @@ test('F25 records, retries, concurrent correction, fresh process, full restore, 
  const query={op:'learning.query',input:{conversationIds:ids,question:'permisos CSV'}};
  function fresh(data,request=query){const p=spawnSync(process.execPath,[path.join(here,'incremental-cli.mjs')],{env:{...process.env,AFH_COSMOS_DATA:data},input:JSON.stringify(request),encoding:'utf8',timeout:30000,windowsHide:true});assert.equal(p.status,0,p.stdout+p.stderr);return JSON.parse(p.stdout).result;}
  const reopened=fresh(root);assert.equal(reopened.items.length,1);assert.equal(reopened.items[0].record.version,2);assert.equal(reopened.items[0].record.payload.learning_episode.episode.counterexamples.length,1);assert.equal(reopened.bytes,Buffer.byteLength(JSON.stringify(reopened)));assert.ok(reopened.bytes<=100000);
- const restored=root+'-restore';fs.cpSync(root,restored,{recursive:true});assert.deepEqual(fresh(restored),reopened);
+ const restored=root+'-restore';fs.cloneTreeSync(root,restored);assert.deepEqual(fresh(restored),reopened);
  const history=fresh(restored,{op:'learning.history',input:{conversationIds:ids,id:'csv-lock'}});assert.equal(history.length,2);assert.deepEqual(history[0],first);
  assert.equal((await op('query',{conversationIds:[a.id],question:'CSV'})).status,'partial_selection');
  const controller=new AbortController();controller.abort(new Error('TEST_CANCEL'));await assert.rejects(op('query',{conversationIds:ids,question:'CSV'},{signal:controller.signal}),/TEST_CANCEL/);

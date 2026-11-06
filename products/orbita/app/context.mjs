@@ -1,7 +1,6 @@
-import fs from 'node:fs';import path from 'node:path';import {createHash,createHmac,randomBytes,timingSafeEqual} from 'node:crypto';import {DatabaseSync} from 'node:sqlite';
+import fs from '../agent-forensic-handoff/src/common-files.js';import path from 'node:path';import {createHash,createHmac,randomBytes,timingSafeEqual} from 'node:crypto';import {DatabaseSync} from '../agent-forensic-handoff/src/common-store.js';
 import {DATA,library,refreshLibrary,loadCase} from './corpus.mjs';
 import {knowledgeOperation} from './knowledge.mjs';import {cancellationPoint} from './deadline.mjs';
-import {semanticStorageState} from './semantic-storage.mjs';
 import {contextNeeds,publicContextUnit} from '../agent-forensic-handoff/src/context-package.js';
 import {dependencyClosure,wireBytes} from '../agent-forensic-handoff/src/memory-package.js';
 const ROOT=path.join(DATA,'context-queries');
@@ -11,13 +10,11 @@ const measured=value=>{value.bytes=0;for(let i=0;i<10;i++){const n=wireBytes(val
 export async function contextState(ids,{signal,excludeStores=[]}={}) {
  await cancellationPoint(signal);refreshLibrary();const selection=[...new Set(ids)].sort(),sources=[],selectedRepresentations=new Set();
  for(const id of selection){await cancellationPoint(signal);const item=library.find(x=>x.id===id);demand(item,'CONTEXT_SOURCE_NOT_FOUND');const c=await loadCase(item);for(const m of c.messages)selectedRepresentations.add(m.representationId);sources.push({id,revision:c.manifest.caseHash,currentRevision:item.currentRevision!==false,document:item.document??null});}
- const remote=await semanticStorageState(DATA);
- if(remote&&!remote.legacyCompatible){const stores=remote.stores.filter(([folder])=>!excludeStores.includes(folder));return {selection,sources,fingerprint:sha({sources,backend:'semantic-revision-v1',namespace:remote.namespace,stores})};}
  const stores=[];
  for(const folder of ['','collectives','decisions','supports','identities','retrospectives','intelligence','causal']){
   if(excludeStores.includes(folder))continue;
-  await cancellationPoint(signal);const file=path.join(DATA,'semantic',folder,'records.sqlite3');if(!fs.existsSync(file)){if(!['identities','retrospectives','intelligence','causal'].includes(folder))stores.push([folder,[]]);continue;}
-  const db=new DatabaseSync(file,{readOnly:true});try{
+  await cancellationPoint(signal);const file=path.join(DATA,'semantic',folder,'records.pgstore');if(!fs.existsSync(file)){if(!['identities','retrospectives','intelligence','causal'].includes(folder))stores.push([folder,[]]);continue;}
+  const db=new DatabaseSync(file,{family:'semantic',readOnly:true});try{
    let rows=db.prepare('SELECT record_id,scope,version,recorded_at,payload,payload_sha256,request_id,request_sha256 FROM record_versions ORDER BY record_id,version LIMIT 10001').all();demand(rows.length<=10000,'CONTEXT_STATE_ROW_BUDGET');
    if(['retrospectives','intelligence','causal'].includes(folder))rows=rows.filter(r=>JSON.parse(r.payload).source_refs.some(ref=>selectedRepresentations.has(ref.id)));
    const admissions=db.prepare('SELECT * FROM semantic_support_admissions ORDER BY record_id,version,receipt_sha256 LIMIT 10001').all();demand(admissions.length<=10000,'CONTEXT_REVIEW_ROW_BUDGET');if(!['identities','retrospectives','intelligence','causal'].includes(folder)||rows.length)stores.push([folder,sha(rows),sha(admissions)]);

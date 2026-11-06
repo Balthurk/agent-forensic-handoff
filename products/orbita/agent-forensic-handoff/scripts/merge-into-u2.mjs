@@ -465,6 +465,15 @@ function mergeCliJs(u2CliText, candidateCliText) {
     if (incomingEnd < 0 || existingEnd < 0) throw new Error(`Cannot parse ${name} CLI block for integration`);
     merged = merged.slice(0, existingStart) + candidateCliText.slice(incomingStart, incomingEnd + 1) + merged.slice(existingEnd + 1);
   }
+  merged=mergeMissingImports(candidateCliText,merged);
+  for(const name of ['hydrate','doctor','benchmark','retrieval-benchmark']){
+    const marker=`  if (command === "${name}"`,incomingStart=candidateCliText.indexOf(marker),existingStart=merged.indexOf(marker);
+    if(incomingStart<0||existingStart<0)throw new Error(`Cannot locate ${name} CLI block for integration`);
+    const incomingOpen=candidateCliText.indexOf('{',incomingStart),existingOpen=merged.indexOf('{',existingStart);
+    const incomingEnd=findMatchingDelimiter(candidateCliText,incomingOpen,'{','}'),existingEnd=findMatchingDelimiter(merged,existingOpen,'{','}');
+    if(incomingEnd<0||existingEnd<0)throw new Error(`Cannot parse ${name} CLI block for integration`);
+    merged=merged.slice(0,existingStart)+candidateCliText.slice(incomingStart,incomingEnd+1)+merged.slice(existingEnd+1);
+  }
   const commonStart=candidateCliText.indexOf("  if(command==='evidence-open')");
   const commonEnd=candidateCliText.indexOf('  if (command === "audit"',commonStart);
   if(commonStart>=0&&!merged.includes("if(command==='evidence-open')")) {
@@ -740,6 +749,21 @@ function applyMergeToRoot(workRoot, { dryRun = false, log = () => {} } = {}) {
     ["test/chatgpt-share.test.js", "test/chatgpt-share.test.js"],
     ["test/merge-recovery.test.js", "test/merge-recovery.test.js"],
   ];
+  // Ship the common runtime along with its consumers. Extra U2 functions are
+  // still merged below; no Python environment or operational data is copied.
+  const special=new Set(['schema.sql','database.js','constants.js','cli.js','index.js']);
+  const selected=new Set(directModules.map(([source])=>source));
+  for(const name of fs.readdirSync(path.join(sourceRoot,'src'))){
+    const rel='src/'+name;
+    if(name.endsWith('.js')&&!special.has(name)&&!selected.has(rel))directModules.push([rel,rel]);
+  }
+  for(const rel of vendorFiles(path.join(sourceRoot,'python'))){
+    if(!rel.split('/').some(part=>part==='__pycache__'||part.startsWith('test_'))&&/\.(py|sql|json|txt)$/.test(rel))directModules.push(['python/'+rel,'python/'+rel]);
+  }
+  const existingBin=path.join(workRoot,'bin','afh.js');
+  if(fs.existsSync(existingBin))assertValidJsSyntax(existingBin);
+  // This entrypoint drains its PostgreSQL bridge even on CLI failure.
+  directModules.push(['bin/afh.js','bin/afh.js']);
 
   for (const [relSrc, relDst] of directModules) {
     const srcPath = path.join(sourceRoot, relSrc);
@@ -811,6 +835,8 @@ export function integrateIntoU2(
     log = (msg) => process.stdout.write(`${msg}\n`),
     copyFileFn = null,
     failAfterCopies = null,
+    cleanSourceRoot = null,
+    stagingParent = os.tmpdir(),
   } = {},
 ) {
   const resolvedTarget = targetRoot ? path.resolve(targetRoot) : null;
@@ -826,14 +852,14 @@ export function integrateIntoU2(
   // Auto-recover if a previous hard crash left an uncommitted .afh-merge-backup
   recoverInterruptedU2Merge(resolvedTarget, { log });
 
-  const stagingRoot = fs.mkdtempSync(path.join(os.tmpdir(), "afh-u2-stage-"));
+  const stagingBase=path.resolve(stagingParent);
+  fs.mkdirSync(stagingBase,{recursive:true});
+  const stagingRoot = fs.mkdtempSync(path.join(stagingBase, "afh-u2-stage-"));
+  let completed=false;
   try {
     copyTreeFiltered(resolvedTarget, stagingRoot);
 
-    const cleanCandidates = [
-      path.resolve(resolvedTarget, "..", "local_u2"),
-      "C:\\Skill AHF\\agent-forensic-handoff\\u2-candidate-20260924-r2",
-    ];
+    const cleanCandidates = cleanSourceRoot?[path.resolve(cleanSourceRoot)]:[];
     const cleanU2Source = cleanCandidates.find((cand) => {
       try {
         return cand !== resolvedTarget && fs.existsSync(path.join(cand, "src", "temporal.js"));
@@ -931,9 +957,16 @@ export function integrateIntoU2(
       fs.rmSync(backupDir, { recursive: true, force: true });
     } catch {}
     log(`Committed validated integration to ${resolvedTarget} (${copiedCount} files)`);
+    completed=true;
     return { sourceRoot, targetRoot: resolvedTarget, dryRun: false, committedFiles: copiedCount };
   } finally {
-    fs.rmSync(stagingRoot, { recursive: true, force: true });
+    // Failed staged code remains reviewable. Only our successful, verified
+    // staging child can be retired; never a caller-selected target or link.
+    if(completed){
+      const resolved=path.resolve(stagingRoot),relative=path.relative(stagingBase,resolved);
+      if(relative.startsWith('..')||path.isAbsolute(relative)||!relative||fs.lstatSync(resolved).isSymbolicLink())throw new Error('Unsafe staging cleanup path');
+      fs.rmSync(resolved, { recursive: true, force: true });
+    }
   }
 }
 

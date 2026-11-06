@@ -1,11 +1,11 @@
-import fs from 'node:fs';
+import fs from '../agent-forensic-handoff/src/common-files.js';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {DATA,registerLibraryItems,refreshLibrary,loadCase} from './corpus.mjs';
 import {auditSession} from '../agent-forensic-handoff/src/audit.js';
 import {verifyCaseIntegrity} from '../agent-forensic-handoff/src/integrity.js';
 import {documentHash,decodeDocument,documentBlocks,attachDocumentEvidence} from '../agent-forensic-handoff/src/document-evidence.js';
-import {openDB,transaction,writeDurable,now,checkpoint} from './durable.mjs';
+import {openDB,transaction,writeDurable,now,checkpoint} from './common-durable.mjs';
 
 export const DOCUMENT_EXTENSIONS=['.txt','.md','.markdown','.rst','.json','.jsonl','.ndjson','.yaml','.yml','.csv'];
 const demand=(v,m)=>{if(!v)throw new Error(m);};
@@ -16,7 +16,7 @@ function exactInstant(value){
  const [y,month,day,hour,minute,second]=m.slice(1).map(Number),leap=y%4===0&&(y%100!==0||y%400===0);
  return month>=1&&month<=12&&day>=1&&day<=[31,leap?29:28,31,30,31,30,31,31,30,31,30,31][month-1]&&hour<24&&minute<60&&second<60;
 }
-function open(){const db=openDB(path.join(DATA,'documents.sqlite'));db.exec('CREATE TABLE IF NOT EXISTS documents(id TEXT PRIMARY KEY,revision INTEGER NOT NULL,case_id TEXT NOT NULL); CREATE TABLE IF NOT EXISTS document_versions(document_id TEXT,revision INTEGER,case_id TEXT UNIQUE,item TEXT,PRIMARY KEY(document_id,revision)); CREATE TABLE IF NOT EXISTS document_writers(id TEXT PRIMARY KEY,owner TEXT,pid INTEGER);');return db;}
+function open(){const db=openDB(path.join(DATA,'documents.pgstore'),'documents');db.exec('CREATE TABLE IF NOT EXISTS documents(id TEXT PRIMARY KEY,revision INTEGER NOT NULL,case_id TEXT NOT NULL); CREATE TABLE IF NOT EXISTS document_versions(document_id TEXT,revision INTEGER,case_id TEXT UNIQUE,item TEXT,PRIMARY KEY(document_id,revision)); CREATE TABLE IF NOT EXISTS document_writers(id TEXT PRIMARY KEY,owner TEXT,pid INTEGER);');return db;}
 function alive(pid){try{process.kill(pid,0);return true;}catch(e){return e.code!=='ESRCH';}}
 function metadata(input,filename){
  demand(!input||typeof input==='object'&&!Array.isArray(input),'DOCUMENT_METADATA_OBJECT');
@@ -31,7 +31,7 @@ function metadata(input,filename){
 }
 export function documentStatus(){const db=open();try{return {documents:db.prepare('SELECT * FROM documents ORDER BY id').all(),versions:db.prepare('SELECT document_id,revision,case_id,item FROM document_versions ORDER BY document_id,revision').all().map(r=>({...r,item:JSON.parse(r.item)})),limits:'Metadata is a local declaration. Latest stored revision does not certify truth or applicability.'};}finally{db.close();}}
 export function reconcileDocuments(){
- if(!fs.existsSync(path.join(DATA,'documents.sqlite')))return {published:0};const db=open();
+ if(!fs.existsSync(path.join(DATA,'documents.pgstore')))return {published:0};const db=open();
  try{return transaction(db,()=>{const rows=db.prepare('SELECT v.item,v.revision,d.revision head FROM document_versions v JOIN documents d ON d.id=v.document_id').all();
   const items=rows.map(r=>({...JSON.parse(r.item),currentRevision:r.revision===r.head}));
   if(items.length)registerLibraryItems(items);return {published:items.length};
@@ -61,13 +61,12 @@ export async function importDocument({filename,content,contentBase64,documentId,
   if(extension==='.json'){try{JSON.parse(text);header.syntax='json_syntax_valid_no_schema_claim';}catch{header.syntax='invalid_json_preserved_as_text';}}
   const caseId='document-'+documentHash(JSON.stringify(header)),caseDir=path.join(DATA,'cases',caseId),blocks=documentBlocks(bytes,id);
   if(!fs.existsSync(caseDir)){
-   // Keep the temporary database path short on Windows. Appending a UUID to
-   // the full content ID can leave no room for SQLite's journal suffix inside
-   // a managed workspace. The final content-addressed case ID is unchanged.
+   // The unpublished common-store subtree has its own identity; publication
+   // preserves the final content-addressed case identifier.
    const staging=path.join(DATA,'cases','.document-staging-'+randomUUID()),inputDir=path.join(DATA,'document-inputs',randomUUID()),input=path.join(inputDir,caseId+'.jsonl');
    const records=[{type:'afh.document.header',session_id:id,document:header},...blocks.map(b=>({type:'afh.document.block',session_id:id,id:b.id,start:b.start,end:b.end,text:b.text}))];
    writeDurable(input,records.map(r=>JSON.stringify(r)).join('\n')+'\n');
-   try{await auditSession(input,{caseDir:staging,harness:'document'});attachDocumentEvidence(staging,{bytes,header,blocks});
+   try{await auditSession(input,{caseDir:staging,harness:'document',inputStorage:'postgresql-common'});attachDocumentEvidence(staging,{bytes,header,blocks});
     const check=await verifyCaseIntegrity(staging,{verifyProjections:false});demand(check.passed,'DOCUMENT_CASE_INTEGRITY:'+check.findings.filter(f=>!f.ok).map(f=>f.detail).join(';'));
     checkpoint('document-before-case-publish');fs.renameSync(staging,caseDir);checkpoint('document-after-case-publish');
    }finally{if(fs.existsSync(input))fs.unlinkSync(input);if(fs.existsSync(inputDir)&&fs.readdirSync(inputDir).length===0)fs.rmdirSync(inputDir);}

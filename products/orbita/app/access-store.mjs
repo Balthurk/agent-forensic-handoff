@@ -1,6 +1,6 @@
-import fs from 'node:fs';
+import fs from '../agent-forensic-handoff/src/common-files.js';
 import path from 'node:path';
-import {DatabaseSync} from 'node:sqlite';
+import {DatabaseSync} from '../agent-forensic-handoff/src/common-store.js';
 import {createHash,randomBytes,randomUUID,scryptSync,timingSafeEqual} from 'node:crypto';
 import {plainPath} from './store-access.mjs';
 
@@ -17,11 +17,11 @@ export const ROLES=['reader','editor','owner'];
 // never roll back accounts, membership revocations or purge tombstones.
 export class AccessStore{
  constructor(root,{create=false,clock=()=>Date.now()}={}){
-  this.root=plainPath(root);this.clock=clock;const file=path.join(this.root,'access.sqlite');
+  this.root=plainPath(root);this.clock=clock;const file=path.join(this.root,'access.pgstore');
   demand(create||fs.existsSync(file),'ACCESS_NOT_INITIALIZED',503);
   fs.mkdirSync(this.root,{recursive:true});plainPath(file);
   if(fs.existsSync(file))demand(fs.lstatSync(file).isFile()&&fs.statSync(file).nlink===1,'ACCESS_CONTROL_ALIAS');
-  this.db=new DatabaseSync(file);this.db.exec(`PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
+  this.db=new DatabaseSync(file,{family:'access',create});try{this.db.exec(`
    CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,name TEXT UNIQUE,salt TEXT,password TEXT,enabled INTEGER,admin INTEGER,epoch INTEGER);
    CREATE TABLE IF NOT EXISTS sessions(hash TEXT PRIMARY KEY,user TEXT,epoch INTEGER,expires INTEGER,last_seen INTEGER,kind TEXT,workspace TEXT);
    CREATE TABLE IF NOT EXISTS workspaces(id TEXT PRIMARY KEY,revision INTEGER,payload TEXT);
@@ -30,6 +30,8 @@ export class AccessStore{
    CREATE TABLE IF NOT EXISTS attempts(name TEXT PRIMARY KEY,count INTEGER,until_at INTEGER);
    CREATE TABLE IF NOT EXISTS archives(id TEXT PRIMARY KEY,workspace TEXT,payload TEXT);
    CREATE TABLE IF NOT EXISTS plans(id TEXT PRIMARY KEY,workspace TEXT,payload TEXT);`);
+   this.control=this.db.registerManagedControl();
+  }catch(error){this.db.close();throw error;}
  }
  close(){this.db.close();}
  tx(fn){this.db.exec('BEGIN IMMEDIATE');try{const r=fn();this.db.exec('COMMIT');return r;}catch(e){this.db.exec('ROLLBACK');throw e;}}
@@ -74,9 +76,13 @@ export class AccessStore{
  createWorkspace(user,{name,policy}){
   this.user(user);demand(typeof name==='string'&&name.trim()&&name.length<=120,'ACCESS_WORKSPACE_NAME');policy=this.validatePolicy(policy);
   const id='ws-'+randomUUID(),w={id,name:name.trim(),owner:user,revision:1,status:'active',policy,legalHold:false,externalCopies:[],createdAt:this.now()};
-  const dir=this.workspaceRoot(id);demand(!fs.existsSync(dir),'ACCESS_WORKSPACE_EXISTS');fs.mkdirSync(path.join(dir,'data'),{recursive:true});fs.writeFileSync(path.join(dir,'data','library.json'),'[]',{flag:'wx'});
-  this.tx(()=>{this.db.prepare('INSERT INTO workspaces VALUES(?,?,?)').run(id,1,JSON.stringify(w));this.db.prepare('INSERT INTO members VALUES(?,?,?,1)').run(id,user,'owner');this.audit(user,'workspace_created',id);});return w;
+  this.workspaceRoot(id);
+  this.tx(()=>{this.db.prepare('INSERT INTO workspaces VALUES(?,?,?)').run(id,1,JSON.stringify(w));this.db.prepare('INSERT INTO members VALUES(?,?,?,1)').run(id,user,'owner');this.audit(user,'workspace_created',id);this.db.provisionManaged(id);});return w;
  }
+ managedState(id){this.workspaceRoot(id);return this.db.managedState(id);}
+ workerConfiguration(id){this.active(this.workspace(id));return this.db.managedWorkerConfiguration(id);}
+ purgeContent(id){this.workspaceRoot(id);return this.db.purgeManaged(id);}
+ drainContent(id){this.workspaceRoot(id);return this.db.drainManaged(id);}
  workspaceRoot(id){demand(typeof id==='string'&&/^ws-[a-f0-9-]{36}$/.test(id),'ACCESS_WORKSPACE_ID');const parent=plainPath(path.join(this.root,'spaces')),dest=plainPath(path.join(parent,id));demand(path.dirname(dest)===parent,'ACCESS_PATH_ESCAPE');return dest;}
  workspace(id){this.workspaceRoot(id);const row=this.db.prepare('SELECT payload FROM workspaces WHERE id=?').get(id);demand(row,'ACCESS_DENIED',403);return JSON.parse(row.payload);}
  save(w,action,actor,detail={}){const revision=w.revision,next={...w,revision:revision+1};this.tx(()=>{demand(this.db.prepare('UPDATE workspaces SET payload=?,revision=? WHERE id=? AND revision=?').run(JSON.stringify(next),next.revision,w.id,revision).changes===1,'ACCESS_REVISION_CONFLICT',409);this.audit(actor,action,w.id,detail);});return next;}
@@ -84,11 +90,11 @@ export class AccessStore{
  authorizeUser(user,id,role='reader',{maintenance=false}={}){
   this.user(user);const w=this.workspace(id),m=this.db.prepare('SELECT * FROM members WHERE workspace=? AND user=?').get(id,user);
   demand(m&&ROLES.indexOf(m.role)>=ROLES.indexOf(role)&&w.status!=='purged','ACCESS_DENIED',403);if(!maintenance)this.active(w);
-  return {workspace:w,role:m.role,membershipRevision:m.revision,user};
+  return {workspace:w,role:m.role,membershipRevision:m.revision,workerEpoch:this.managedState(id).epoch,user};
  }
  authorize(secret,id,role='reader',options){const s=this.session(secret);demand(s.kind!=='agent'||s.workspace===id,'ACCESS_DENIED',403);return {...this.authorizeUser(s.user,id,role,options),session:s};}
  fence(secret,access,role='reader'){
-  const current=this.authorize(secret,access.workspace.id,role);demand(current.workspace.revision===access.workspace.revision&&current.membershipRevision===access.membershipRevision,'ACCESS_CHANGED_DURING_REQUEST',409);return current;
+  const current=this.authorize(secret,access.workspace.id,role);demand(current.workspace.revision===access.workspace.revision&&current.membershipRevision===access.membershipRevision&&current.workerEpoch===access.workerEpoch,'ACCESS_CHANGED_DURING_REQUEST',409);return current;
  }
  list(user){this.user(user);return this.db.prepare('SELECT w.payload,m.role FROM workspaces w JOIN members m ON m.workspace=w.id WHERE m.user=?').all(user).map(r=>{const w=JSON.parse(r.payload);let available=true,reason=null;try{this.active(w);}catch(e){available=false;reason=e.message;}return {...w,role:r.role,available,reason};});}
  members(user,id){this.authorizeUser(user,id,'owner',{maintenance:true});return this.db.prepare('SELECT u.id,u.name,m.role,m.revision FROM members m JOIN users u ON u.id=m.user WHERE m.workspace=?').all(id);}
