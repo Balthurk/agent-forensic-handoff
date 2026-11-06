@@ -12,6 +12,7 @@ from orbita_store.service_backup import capture
 from pg01_graph_restore_layout import CASSANDRA,JANUS,TABLES,available_physical,topology,ttl_horizon
 from pg01_graph_restore_memory import MemoryWatch,PROGRAM as MEMORY_PROGRAM
 from pg01_graph_content_catalog import full_graph,same_cells
+from pg01_graph_expiry import project_native_cells,compare_at_restore
 from pg01_restored_graph_http import Janus,SCRIPTS
 from pg01_graph_runtime import PROGRAM as RUNTIME_PROGRAM,parse_probe,equivalent
 
@@ -19,7 +20,8 @@ ROOT=Path(__file__).resolve().parent
 sha=lambda p:hashlib.sha256(Path(p).read_bytes()).hexdigest()
 NATIVE_COMMAND="import hashlib,json,os,signal,subprocess,sys,time\na=json.loads(sys.argv[1]);limit=int(sys.argv[2]);begin=time.monotonic();expired=False;p=subprocess.Popen(a,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)\ntry:\n out,err=p.communicate(timeout=limit)\nexcept subprocess.TimeoutExpired:\n expired=True;os.killpg(p.pid,signal.SIGKILL);out,err=p.communicate()\nprint(json.dumps(dict(exit=p.returncode,timedOut=expired,seconds=time.monotonic()-begin,stdout=out[:65536].decode(errors='replace'),stderr=err[:65536].decode(errors='replace'),stdoutBytes=len(out),stderrBytes=len(err),stdoutSha256=hashlib.sha256(out).hexdigest(),stderrSha256=hashlib.sha256(err).hexdigest())))\n"
 
-def restore(directory,*,key_file,private_directory,node,max_seconds=21600,progress=lambda event,**fields:None):
+def restore(directory,*,key_file,private_directory,node,max_seconds=21600,progress=lambda event,**fields:None,expiry_mode='strict'):
+    require(expiry_mode in ('strict','at-restore'),'GRAPH_RESTORE_EXPIRY_MODE')
     require(1<=max_seconds<=21600,'GRAPH_RESTORE_DEADLINE')
     require(Path(private_directory).is_absolute(),'GRAPH_RESTORE_ABSOLUTE_PRIVATE_DIRECTORY')
     private=plain_local_path(private_directory);require(private.is_dir() and not any(private.iterdir()),'GRAPH_RESTORE_NEW_PRIVATE_DIRECTORY')
@@ -27,7 +29,7 @@ def restore(directory,*,key_file,private_directory,node,max_seconds=21600,progre
     require(available_physical()>=8*1024**3,'GRAPH_RESTORE_INITIAL_HOST_CAPACITY')
     require(shutil.disk_usage(private).free>=60*1024**3,'GRAPH_RESTORE_DISK_RESERVE')
     start=time.monotonic();deadline=start+max_seconds;rid=str(uuid.uuid4());prefix='orbita-graph-restore-'+rid
-    key=private_key(key_file);owned=[];networks=[];volumes=[];watch=None;watch_receipt=None;error=None;metadata=None;result={};locked=threading.RLock();aborted=threading.Event();backup_id=None
+    key=private_key(key_file);owned=[];networks=[];volumes=[];watch=None;watch_receipt=None;error=None;metadata=None;result={};locked=threading.RLock();aborted=threading.Event();backup_id=None;expiry_projection=None
     def call(command,seconds=30,**kw):
         require(not aborted.is_set(),'GRAPH_RESTORE_RESOURCE_ABORT')
         if watch:watch.check()
@@ -126,7 +128,13 @@ def restore(directory,*,key_file,private_directory,node,max_seconds=21600,progre
             require(metadata['backupId']==backup_id and metadata['instanceId']==manifest['instanceId'],'GRAPH_ARCHIVE_METADATA_IDENTITY')
             require(metadata['snapshotFiles']['sha256']==manifest['inventorySha256'] and metadata['beforeCatalog']['logicalSha256']==manifest['nativeLogicalSha256'] and metadata['completeGraph']['sha256']==manifest['graphSha256'],'GRAPH_ARCHIVE_METADATA_BINDING')
             require(metadata.get('runtimeConfiguration',{}).get('sha256')==manifest.get('runtimeConfigurationSha256') and manifest.get('runtimeConfigurationSha256') is not None,'GRAPH_ARCHIVE_RUNTIME_BINDING')
-            same_cells(metadata['beforeCatalog'],metadata['afterCatalog']);ttl_horizon(metadata,deadline-time.monotonic())
+            same_cells(metadata['beforeCatalog'],metadata['afterCatalog'])
+            expected_cells=metadata['beforeCatalog']
+            if expiry_mode=='strict':
+                ttl_horizon(metadata,deadline-time.monotonic())
+            else:
+                expected_cells,expiry_projection=project_native_cells(metadata['beforeCatalog'],metadata['afterCatalog'],observed_at=time.time(),remaining_seconds=deadline-time.monotonic())
+                durable_json(private/'EXPIRY-PROJECTION.json',expiry_projection,exclusive=True)
             images={value['Id']:value for value in json.loads(call(['docker','image','inspect',CASSANDRA,JANUS]))}
             layout=topology(metadata,images,prefix);durable_json(private/'RESTORE-LAYOUT.json',layout,exclusive=True)
             progress('both_members_authenticated_metadata_complete_before_target_creation',backupId=backup_id)
@@ -175,7 +183,8 @@ def restore(directory,*,key_file,private_directory,node,max_seconds=21600,progre
                     progress('native_sstables_loaded',sourceNode=source_node,table=table,sstables=len(files))
             raw=call(['docker','exec','-i','--env','PYTHONDONTWRITEBYTECODE=1',nodes[0]['containerId'],'python3','-',prefix+'-before-janus'],seconds=240,input_bytes=(ROOT/'pg01_cassandra_catalog_probe.py').read_bytes(),limit=64*1024**2)
             restored_cells=json.loads(raw);durable_json(private/'restored-cells-before-janus.json',restored_cells,exclusive=True)
-            native_parity=same_cells(metadata['beforeCatalog'],restored_cells);durable_json(private/'native-cell-parity.json',native_parity,exclusive=True)
+            native_parity=same_cells(expected_cells,restored_cells) if expiry_mode=='strict' else compare_at_restore(expected_cells,restored_cells,expiry_projection)
+            durable_json(private/'native-cell-parity.json',native_parity,exclusive=True)
             progress('every_native_cell_and_expiry_verified_before_janus_registration',rows=restored_cells['rows'],typedBytes=restored_cells['typedBytes'])
             janus=[];endpoints=[]
             api_info=next(n for n in networks if n['id']==api)
@@ -208,10 +217,12 @@ def restore(directory,*,key_file,private_directory,node,max_seconds=21600,progre
             verifier=create(prefix+'-staged-final',CASSANDRA,'staged-verifier',['-B','-c',verify_code],mounts=[dict(volume=stage_volume,destination='/staging',readWrite=False)])
             staged=json.loads(call(['docker','start','--attach',verifier['containerId']],seconds=120));require(staged['files']==metadata['snapshotFiles']['inventory']['fileCount'],'GRAPH_STAGED_FILE_COUNT')
             require(not inspect(verifier)['State']['Running'],'GRAPH_STAGED_VERIFIER_NOT_CLOSED')
-            result=dict(status='PASS_INDEPENDENT_NATIVE_GRAPH_RESTORE',backupId=backup_id,restoreId=rid,nativeCellsEqualBeforeJanus=True,fullBothGraphReadersEqual=True,
+            result=dict(status='PASS_INDEPENDENT_NATIVE_GRAPH_RESTORE' if expiry_mode=='strict' else 'PASS_INDEPENDENT_TEMPORAL_NATIVE_GRAPH_RESTORE',backupId=backup_id,restoreId=rid,nativeCellsEqualBeforeJanus=expiry_projection is None or expiry_projection['expiredCells']==0,fullBothGraphReadersEqual=True,
                         graphSha256=graph['sha256'],nativeLogicalSha256=restored_cells['logicalSha256'],rows=restored_cells['rows'],vertices=graph['readers'][0]['logical']['vertices'],
                         edges=graph['readers'][0]['logical']['edges'],stagedFilesUnchanged=staged,originalAccessRequired=False,
                         janusRegistration='Native cells were compared before either new Janus process started. New runtime instance registrations after that cut are expected and are not silently omitted from native equivalence.')
+            if expiry_projection is not None:
+                result.update(nativeCellsEqualAtRestoreBeforeJanus=True,expiredCellsExactlyAbsent=expiry_projection['expiredCells'],expiryProjectionSha256=sha(private/'EXPIRY-PROJECTION.json'),nativeCellParity=native_parity)
     except BaseException as caught:
         error=type(caught).__name__+((': '+str(caught)) if isinstance(caught,(AssertionError,StoreError)) else '')
     finally:
@@ -233,9 +244,11 @@ def restore(directory,*,key_file,private_directory,node,max_seconds=21600,progre
                 except BaseException:error=(error or '')+' OWNED_MEMORY_PROBE_CLOSURE_FAILED'
         if watch_receipt and watch_receipt['status']!='PASS_OBSERVED_RESERVE':error=(error or '')+' MEMORY_RESERVE_FAILED'
         if any(v['oomKilled'] for v in closed):error=(error or '')+' OWNED_CONTAINER_OOM_KILLED'
-        if error:result.update(status='FAIL_PRESERVED',nativeCellsEqualBeforeJanus=False,fullBothGraphReadersEqual=False)
+        if error:
+            result.update(status='FAIL_PRESERVED',nativeCellsEqualBeforeJanus=False,fullBothGraphReadersEqual=False)
+            if expiry_mode=='at-restore':result['nativeCellsEqualAtRestoreBeforeJanus']=False
         result.update(seconds=round(time.monotonic()-start,3),error=error,restoreId=rid,backupId=backup_id,ownedContainers=owned,ownedNetworks=networks,ownedVolumes=volumes,
                       closures=closed,memory=({k:v for k,v in watch_receipt.items() if k!='samples'} if watch_receipt else None),
-                      sourceServicesAccessed=False,sourceServicesStopped=False,failedArtifactsRetained=True,humanAcceptance=False)
+                      sourceServicesAccessed=False,sourceServicesStopped=False,failedArtifactsRetained=True,humanAcceptance=False,expiryMode=expiry_mode)
         durable_json(private/'RESTORE-RESULT.json',result,exclusive=True)
     return result

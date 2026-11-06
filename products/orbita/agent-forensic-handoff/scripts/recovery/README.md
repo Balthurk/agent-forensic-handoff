@@ -53,6 +53,23 @@ y las expiraciones antes de arrancar JanusGraph. Después compara todas las
 propiedades y relaciones mediante ambos lectores nuevos. Los puertos originales
 no se usan para reconstruir ni para alimentar esas comparaciones.
 
+El modo predeterminado es `--graph-expiry-mode strict`: exige que todas las
+celdas archivadas sigan vigentes durante el plazo restante más una hora.
+Para comprobar un archivo cuyos TTL ya han vencido se debe seleccionar
+explícitamente `--graph-expiry-mode at-restore`. Después de autenticar ambos
+miembros, este modo registra cada identidad inequívocamente caducada y exige su
+ausencia exacta. Conserva todas las demás celdas, esquema, tiempos de escritura
+e intervalos originales de expiración. Rechaza intervalos ambiguos o caducidades
+que puedan ocurrir dentro del plazo restante más una hora. Nunca reinicia TTL
+ni cambia el reloj o el archivo.
+
+El modo temporal sigue exigiendo el mismo grafo completo por ambos lectores.
+Produce `EXPIRY-PROJECTION.json` con la clasificación y los digests de los
+catálogos capturado y esperado. Su estado de éxito es
+`PASS_INDEPENDENT_TEMPORAL_NATIVE_GRAPH_RESTORE`; los datos ya caducados se
+declaran ausentes, no recuperados. El modo estricto conserva su estado de éxito
+anterior. Esta opción no se admite para PostgreSQL.
+
 ## PostgreSQL histórico
 
 ```powershell

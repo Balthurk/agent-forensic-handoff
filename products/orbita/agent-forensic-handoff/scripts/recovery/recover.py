@@ -15,6 +15,7 @@ def main(argv=None):
     parser.add_argument('--private-directory', type=Path, required=True)
     parser.add_argument('--node', type=Path, required=True)
     parser.add_argument('--max-seconds', type=int, default=21600)
+    parser.add_argument('--graph-expiry-mode', choices=('strict', 'at-restore'), help='Graph only: strict (default), or exact native content at the real restore time.')
     parser.add_argument('--catalog-file', type=Path)
     parser.add_argument('--operator-file', type=Path)
     parser.add_argument('--memory-mib', type=int, choices=(512, 2048), default=512)
@@ -23,6 +24,8 @@ def main(argv=None):
         parser.error('This qualification profile requires Windows and Python 3.12 or later.')
     if not 1 <= args.max_seconds <= 21600:
         parser.error('--max-seconds must be between 1 and 21600.')
+    if args.kind == 'postgres' and args.graph_expiry_mode is not None:
+        parser.error('--graph-expiry-mode is available only for graph recovery.')
     if args.kind == 'postgres' and (args.catalog_file is None or args.operator_file is None):
         parser.error('PostgreSQL recovery requires --catalog-file and --operator-file.')
     if args.kind == 'graph' and (args.catalog_file is not None or args.operator_file is not None):
@@ -50,8 +53,9 @@ def main(argv=None):
         common = dict(key_file=args.key_file, private_directory=args.private_directory, node=args.node, max_seconds=args.max_seconds)
         if args.kind == 'graph':
             from pg01_graph_native_restore import restore
-            result = restore(args.archive, **common)
-            expected = 'PASS_INDEPENDENT_NATIVE_GRAPH_RESTORE'
+            expiry_mode = args.graph_expiry_mode or 'strict'
+            result = restore(args.archive, expiry_mode=expiry_mode, **common)
+            expected = 'PASS_INDEPENDENT_NATIVE_GRAPH_RESTORE' if expiry_mode == 'strict' else 'PASS_INDEPENDENT_TEMPORAL_NATIVE_GRAPH_RESTORE'
         else:
             from pg01_legacy_pg_restore import restore
             result = restore(args.archive, catalog_file=args.catalog_file, operator_file=args.operator_file, memory_mib=args.memory_mib, **common)
