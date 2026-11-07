@@ -1,5 +1,5 @@
 import {selectedConversationIds} from './p1-web.mjs';
-const panel=document.createElement('details');panel.className='retrieval-settings learning-controls';
+const panel=document.createElement('details');panel.id='learningPanel';panel.className='retrieval-settings learning-controls';
 panel.innerHTML=`<summary>Aprendizajes · fallos, reparaciones y límites</summary>
 <p>Encuentra precedentes en las conversaciones seleccionadas. Cada aprendizaje conserva sus condiciones y contraejemplos; debes valorar su aplicación al caso actual.</p>
 <label>Qué quieres resolver<input id="learningQuestion" placeholder="Por ejemplo: guardar un CSV bloqueado"></label>

@@ -28,3 +28,9 @@
 /* Managed permission gates survive modules resetting their busy/disabled state. */
 html[data-access-mode="managed"]:not([data-access-ready]) [data-access-action],
 [data-access-denied="true"] { display: none !important; }
+
+/* I06: complete originals and explicit omitted-source access. */
+.source-omissions{margin-top:1rem;padding-top:1rem;border-top:1px solid #ffffff20}.source-omissions article{padding:.75rem 0;border-bottom:1px solid #ffffff14}.source-omissions button{max-width:100%;text-align:left}.source-navigator,.source-navigator form{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem}.source-navigator{justify-content:space-between;margin:1rem 0}.source-navigator input{width:6rem}.source-reading-note{padding:.75rem;border-left:3px solid #b6a0e2}.source-full-text{max-height:55vh;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}.source-full-text:focus-visible,.source-navigator button:focus-visible{outline:2px solid #c6b5ff;outline-offset:3px}
+
+/* I06: grouped controls retain their original nodes and permissions. */
+.task-navigation{display:grid;gap:.5rem;margin:1rem 0}.task-navigation>details{border:1px solid #ffffff1c;border-radius:12px;background:#ffffff03}.task-navigation summary{padding:.7rem .8rem;cursor:pointer;color:#d7cce9;font-size:.82rem;font-weight:600}.navigation-actions{display:grid;gap:.3rem;padding:0 .5rem .5rem}.navigation-actions .add-source{margin:0;width:100%;text-align:left;padding:.6rem .7rem;min-height:38px}.navigation-selection{font-size:.75rem;padding:.55rem;border:1px solid #ffffff24;border-radius:9px;background:transparent;color:#cfc0e5;text-align:left}.task-navigation summary:focus-visible,.task-navigation button:focus-visible{outline:2px solid #c6b5ff;outline-offset:2px}

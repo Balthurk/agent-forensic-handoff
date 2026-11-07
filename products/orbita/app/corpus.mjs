@@ -104,7 +104,17 @@ export async function retrieve(question,ids,extraTerms=[]){
  if(!chosen.length)for(const item of selected){const c=await loadCase(item);for(const m of c.messages.filter(m=>m.role==='user'||m.channel==='final').slice(-6))add({...m,text:[...m.text].slice(0,3600).join(''),start:0,end:Math.min([...m.text].length,3600),score:0});}
  return chosen.map((x,i)=>{const item=selected.find(y=>y.id===x.conversationId);readEvidence(item.path,x.uri);return{...x,rangeUnit:'unicode_codepoints',evidenceId:`E${i+1}`};});
 }
-export async function getEvidence(conversationId,eventId){const item=library.find(x=>x.id===conversationId);if(!item)throw new Error('Conversación desconocida');const c=await loadCase(item),m=c.messages.find(x=>x.id===eventId);if(!m)throw new Error('Evento desconocido');const raw=readEvidence(item.path,m.uri);const common=m.representationId?await readUnifiedEvidence(item.path,m.representationId):null;return{...m,raw:raw.text,identity:common,verified:true};}
+export async function getEvidence(conversationId,eventId,{revision,position}={}){
+ const item=library.find(x=>x.id===conversationId);if(!item)throw new Error('Conversación desconocida');
+ const c=await loadCase(item);
+ if(revision!==undefined&&revision!==c.manifest.caseHash)throw new Error('SOURCE_REVISION_CHANGED: vuelve a recuperar el contexto para abrir este corte.');
+ if(position!==undefined&&(eventId||!Number.isSafeInteger(position)||position<1||position>c.messages.length))throw new Error('SOURCE_POSITION: elige un registro de este original.');
+ const index=position===undefined?c.messages.findIndex(x=>x.id===eventId):position-1,m=c.messages[index];
+ if(!m)throw new Error('Evento desconocido');
+ const raw=readEvidence(item.path,m.uri),common=m.representationId?await readUnifiedEvidence(item.path,m.representationId):null;
+ const locator=x=>x?{id:x.id,record_ordinal:x.record_ordinal}:null;
+ return{...m,raw:raw.text,identity:common,verified:true,revision:c.manifest.caseHash,navigation:{position:index+1,total:c.messages.length,previous:locator(c.messages[index-1]),next:locator(c.messages[index+1])}};
+}
 export function validateAnswer(answer,evidence){
  if(!answer||!Array.isArray(answer.claims)||!answer.claims.length)throw new Error('Respuesta sin afirmaciones verificables');
  const spaces=s=>String(s).replace(/\s+/g,' ').trim();

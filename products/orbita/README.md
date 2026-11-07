@@ -1,3 +1,15 @@
+# I06: fuentes largas y acciones agrupadas
+
+Esta rama contiene la candidata I06, pendiente de su acumulada completa y sello. A13 conserva las omisiones de mensajes enteros y permite recorrer los originales completos con su revisión exacta. A15 agrupa los controles existentes y conserva selección, foco y permisos personales y gestionados.
+
+Las pruebas focales A13 pasaron 26/26; la interfaz real personal y gestionada comprobó lectura, navegación, descarga literal, teclado y permisos con datos sintéticos. Estos resultados no sustituyen la acumulada ni constituyen aceptación humana.
+
+PG01 está cerrado funcionalmente sobre FINAL4. F36 sigue íntegro y pendiente como deuda de escala por decisión explícita del usuario; no se presenta como PASS. El fallo histórico 22 procesos/60 segundos se conserva y el perfil aprobado de cualificación es local serial con todas las pruebas y sus plazos internos.
+
+La guía heredada y los comandos reproducibles se conservan a continuación; sus recibos y cifras corresponden al corte PG01 descrito.
+
+---
+
 # Órbita — PostgreSQL común
 
 PG01 migra la persistencia operativa a una única base PostgreSQL. Los espacios,

@@ -1,4 +1,4 @@
-const trigger=document.createElement('button');trigger.className='add-source';trigger.type='button';trigger.textContent='◇ Respaldo y recuperación';document.querySelector('#addSource').after(trigger);
+const trigger=document.createElement('button');trigger.dataset.navigationAction='recovery';trigger.className='add-source';trigger.type='button';trigger.textContent='◇ Respaldo y recuperación';document.querySelector('#addSource').after(trigger);
 const details=document.createElement('dialog');details.className='source-dialog';
 details.innerHTML=`<button type="button" class="close" id="recoveryClose" aria-label="Cerrar recuperación">×</button><h2>Respaldo y recuperación</h2>
 <p>Conserva originales, versiones, decisiones, índices y trabajos. Durante la copia se pausa el acceso al almacén.</p>
