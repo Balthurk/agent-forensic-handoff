@@ -127,6 +127,30 @@ def physical_member(service,operator,path,*,node,key,backup_id,instance_id,deadl
             require(db.execute('SELECT count(*) FROM pg_stat_activity WHERE application_name=%s',(tag,)).fetchone()[0]==0,'SERVICE_BACKUP_BACKEND_NOT_CLOSED')
 
 
+def await_catalog_reader_closed(db, identity, *, deadline):
+    """Confirm server-side exit of our closed reader, never drain other clients.
+
+    libpq close can return before PostgreSQL removes its backend. The identity
+    was read from that live connection, before closing it. A reused PID or any
+    other client remains a failure. This consumes the existing operation budget.
+    The caller still runs the unchanged strict no_clients check afterwards.
+    """
+    deadline=min(deadline,time.monotonic()+5)
+    previous=db.execute('SHOW statement_timeout').fetchone()[0]
+    while True:
+        remaining=deadline-time.monotonic()
+        require(remaining>0,'SERVICE_READER_CLOSE_DEADLINE')
+        db.execute("SELECT set_config('statement_timeout',%s,true)",(str(max(1,int(remaining*1000)))+'ms',))
+        db.execute('SELECT pg_stat_clear_snapshot()')
+        rows=db.execute("SELECT pid,backend_start FROM pg_stat_activity WHERE backend_type='client backend' AND pid<>pg_backend_pid()").fetchall()
+        require(time.monotonic()<deadline,'SERVICE_READER_CLOSE_DEADLINE')
+        require(not rows or rows==[identity],'SERVICE_CLIENTS_ACTIVE')
+        if not rows:
+            db.execute("SELECT set_config('statement_timeout',%s,true)",(previous,))
+            return
+        time.sleep(min(.01,max(0,deadline-time.monotonic())))
+
+
 def backup(operator,*,container_id,destination,key_file,intent,node,max_seconds=21600,progress=lambda event:None):
     require(1<=max_seconds<=21600,'SERVICE_DEADLINE_BUDGET')
     deadline=time.monotonic()+max_seconds;destination=plain_local_path(destination);key_file=plain_local_path(key_file);intent=plain_local_path(intent)
@@ -168,6 +192,8 @@ def backup(operator,*,container_id,destination,key_file,intent,node,max_seconds=
             fresh.execute("SET timezone='UTC'");fresh.execute("SET statement_timeout='600s'")
             after=catalog_state(fresh,key=key,schema_bytes=fresh_schema,runtime_login=original_role['login'],deadline=deadline)
             require(before==after,'SERVICE_SOURCE_CHANGED_DURING_BACKUP')
+            reader_identity=fresh.execute('SELECT pid,backend_start FROM pg_stat_activity WHERE pid=pg_backend_pid()').fetchone()
+        await_catalog_reader_closed(db,reader_identity,deadline=deadline)
         maintenance.verify_role();no_clients(db)
         require(describe_service(container_id,operator,deadline=deadline)==service,'SERVICE_CONTAINER_CHANGED')
         db.commit()

@@ -2805,9 +2805,9 @@
     },
     {
       "path": "agent-forensic-handoff/python/orbita_store/service_backup.py",
-      "sourceSha256": "29918950c1412e5ebe620beba5af01c83772365a47a411ca735b896c4181575c",
-      "publishedCandidateSha256": "29918950c1412e5ebe620beba5af01c83772365a47a411ca735b896c4181575c",
-      "bytes": 25469,
+      "sourceSha256": "e632cba590253e525049b6f65a84559e4760a6370378b6d9d4873600b61ced96",
+      "publishedCandidateSha256": "e632cba590253e525049b6f65a84559e4760a6370378b6d9d4873600b61ced96",
+      "bytes": 27040,
       "transformation": null
     },
     {
@@ -3242,6 +3242,13 @@
       "sourceSha256": "44a9120518bb65c2890b53656ccd73a2f8c8ad1f80d18ca6cb8a546076741472",
       "publishedCandidateSha256": "44a9120518bb65c2890b53656ccd73a2f8c8ad1f80d18ca6cb8a546076741472",
       "bytes": 30184,
+      "transformation": null
+    },
+    {
+      "path": "agent-forensic-handoff/python/test_service_reader_close.py",
+      "sourceSha256": "469d4bf63679a36fa0e2ea6d4bfd94d16c13d74eda233aab050ccb0ceb0d4a05",
+      "publishedCandidateSha256": "469d4bf63679a36fa0e2ea6d4bfd94d16c13d74eda233aab050ccb0ceb0d4a05",
+      "bytes": 4400,
       "transformation": null
     },
     {
