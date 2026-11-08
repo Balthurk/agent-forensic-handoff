@@ -1,12 +1,16 @@
-# I08: espera de respaldo y diagnóstico de cierre
+# I08: recuperación con espera visible y diagnóstico de cierre
 
-Esta candidata I08 está pendiente de la acumulada completa y del sello. El respaldo espera de forma acotada a que terminen solicitudes, trabajos y reevaluaciones ya admitidos. La interfaz muestra la espera y permite cancelarla antes del corte exclusivo. Las importaciones registradas en PostgreSQL se identifican sin inventar una fecha o un número de archivos restaurados.
+I08 entrega A08/C01 sobre las fuentes probadas de `e74ddee743dc5dc1ee0c41daaf867cae94d0b6dc`. La recuperación cierra la admisión de nuevos trabajos, espera las solicitudes y tareas ya admitidas con un límite propio y permite cancelar antes del corte exclusivo. La exclusión final del motor se conserva, incluidos otros procesos. La interfaz identifica la importación registrada en PostgreSQL sin inventar una fecha ni un número de archivos restaurados.
 
-Pasaron las pruebas focales de transporte, trabajos, cancelación, reintento y cierre, y la interfaz real personal y gestionada con datos sintéticos. C01 no reprodujo una fuga en el camino actual ante pérdida del padre o EOF: se conserva el cierre global y no se añade un watchdog. La causa específica del fallo nativo histórico sigue sin establecerse. El intento focal GREEN4 conserva FAIL por una ruta inexistente del runner; sólo se reutilizan sus cuatro archivos completos, con alcance y hashes explícitos.
+Acumulada completa desde descarga independiente: 1251 PASS, una omisión Windows heredada y cero fallos; 155 archivos y 106 comandos seriales, con todos los plazos internos. La raíz pasó 292 pruebas y una omisión; sus totales se solapan y no se suman. Las tres pruebas Node nuevas contienen 17 comprobaciones. Los wrappers heredados del protocolo y del inventario conservan sus diez y cinco controles nativos sin doble cómputo.
 
-Se conservan todas las pruebas y sus plazos internos. Estas comprobaciones no sustituyen la acumulada ni constituyen aceptación humana. PG01 sigue cerrado funcionalmente; F36 permanece pendiente por decisión explícita, sin PASS, y el fallo original de 22 procesos/60 segundos sigue registrado. La cualificación acordada ejecuta todos los archivos localmente en serie.
+La interfaz personal mostró espera y cancelación antes de una copia real de 25 archivos y su restauración. La espera se observó con una barrera de transporte de prueba sobre el servidor real. En modo gestionado, el propietario respaldó y restauró 97 archivos y conservó sus cuatro fuentes; se comprobaron la restricción del lector y el aislamiento del espacio vacío. Son observaciones técnicas con datos sintéticos, sin aceptación humana.
 
-La entrega I07 y las guías que siguen son antecedentes con sus propios cortes y recibos.
+C01 comprobó la pérdida del servidor propio en frío y tras indexar, así como EOF limpio y una petición truncada sobre un bridge Python real, con nuevos consumidores y cierres independientes Windows/SQL. No se añadió un watchdog ni se alteró el cierre global. La causa específica de los fallos históricos nativos sigue sin estar establecida. GREEN4 conserva su resultado FAIL por una ruta inexistente del runner; sus 23 comprobaciones completadas sólo son evidencia parcial. La acumulada final es completa e independiente.
+
+PG01 permanece cerrado funcionalmente; su recuperación operativa se reutiliza por igualdad de esquema, respaldo y cifrado. F36 sigue íntegro y pendiente por decisión explícita, sin PASS. El fallo histórico de 22 procesos/60 segundos se conserva. I09 e I10 están pendientes.
+
+`QUALIFICATION-I08.json` delimita esta entrega. I07 y los antecedentes conservados debajo mantienen sus propios recibos y alcance.
 
 ---
 

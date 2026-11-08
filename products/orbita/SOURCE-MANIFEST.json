@@ -1,14 +1,15 @@
 {
   "schema": "orbita-source-manifest-1",
   "increment": "I08",
-  "status": "FROZEN_CANDIDATE_PENDING_FULL_CUMULATIVE",
+  "status": "I08_SCOPED_TECHNICAL_SEALED_REMOTE_REBUILT",
   "files": [
     {
       "path": "README.md",
       "sourceSha256": "1756debaefe84a827579a0075a811a6298388a3a87c6e92098dc111a18fa57e5",
-      "publishedCandidateSha256": "1756debaefe84a827579a0075a811a6298388a3a87c6e92098dc111a18fa57e5",
-      "bytes": 13085,
-      "transformation": "I08_status_prefix_preserving_qualified_parent_guide"
+      "publishedCandidateSha256": "3388c685a102ad481292ccd98d6d00f0d97561f9bb7298ca276c2ac4d2c672ec",
+      "bytes": 14032,
+      "transformation": "Reviewed I08 closure documentation; executable source bytes unchanged",
+      "testedProductSha256": "1756debaefe84a827579a0075a811a6298388a3a87c6e92098dc111a18fa57e5"
     },
     {
       "path": "agent-forensic-handoff/.github/workflows/ci.yml",
@@ -5886,6 +5887,13 @@
       "onlyByteChange": true
     }
   ],
-  "qualificationScope": "A08/C01 focal and real personal/managed UI only. I08 full cumulative and seal pending. Parent qualifications remain historical. F36 explicitly deferred, not PASS. No human acceptance.",
-  "humanAcceptance": false
+  "qualificationScope": "I08 A08 recovery admission and C01 scoped lifecycle diagnosis; complete remote serial cumulative and real synthetic personal/managed backup and restore. Historical lifecycle cause not established. F36 explicitly pending. No human acceptance.",
+  "humanAcceptance": false,
+  "qualification": "QUALIFICATION-I08.json",
+  "testedProductCommit": "e74ddee743dc5dc1ee0c41daaf867cae94d0b6dc",
+  "candidateSealSha256": "c4b210312117bef8ee1623665f7579151793b505d71432c50b3ba6b956dfb440",
+  "closureDocumentationChanges": [
+    "README.md"
+  ],
+  "testedSourceFilesUnchangedAtClosure": 837
 }

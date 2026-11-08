@@ -1,0 +1,80 @@
+{
+  "schema": "orbita.public.qualification.v1",
+  "at": "2026-11-08T18:18:24.627274+00:00",
+  "status": "PASS_SCOPED_TECHNICAL_I08",
+  "testedProductCommit": "e74ddee743dc5dc1ee0c41daaf867cae94d0b6dc",
+  "candidateSealSha256": "c4b210312117bef8ee1623665f7579151793b505d71432c50b3ba6b956dfb440",
+  "publishedSourceFiles": 838,
+  "localSourceFiles": 840,
+  "testedSourceFilesUnchangedAtClosure": 837,
+  "closureDocumentationChanges": [
+    "README.md"
+  ],
+  "executableSourcesChangedAtClosure": false,
+  "sourceBytesUnchangedDuringTests": true,
+  "lifecycleDiagnosis": "Scoped current-backend evidence; historical native failure causes NOT_ESTABLISHED; no watchdog or global teardown change",
+  "preservedFailedAttempt": "A08-GREEN4 remains FAIL; completed23checks are scoped partial evidence only",
+  "independentHTTPSReconstruction": true,
+  "freshNodeDependencies": true,
+  "pythonDependenciesChecked": true,
+  "freshPythonEnvironment": false,
+  "productMetrics": {
+    "tests": 1252,
+    "passed": 1251,
+    "failed": 0,
+    "skipped": 1,
+    "profile": "local-serial",
+    "seconds": 6231.140999999974
+  },
+  "discoveredFiles": {
+    "core": 29,
+    "app": 76,
+    "python": 50
+  },
+  "commands": 106,
+  "newNodeFiles": 3,
+  "newNodeChecks": 17,
+  "nestedNativeChecks": {
+    "protocol": 10,
+    "inventory": 5
+  },
+  "nestedCountsNotAddedToOuterTotals": true,
+  "rootMetrics": {
+    "passed": 292,
+    "skipped": 1,
+    "failed": 0,
+    "overlapWithProduct": true
+  },
+  "nativeUI": {
+    "personal": true,
+    "managed": true,
+    "importProvenanceWithoutInventedMetadata": true,
+    "waitingAndCancellationBeforeExclusiveCut": true,
+    "personalBackupAndRestoreFiles": 25,
+    "managedBackupAndRestoreFiles": 97,
+    "retainedManagedSources": 4,
+    "readerBackupControlHidden": true,
+    "workspaceIsolation": true,
+    "keyboardDialogReturn": true,
+    "limitation": "Synthetic technical observation using actual backup/restore. Personal waiting uses a test-only transport barrier on the real server. No human acceptance."
+  },
+  "operationalRecovery": {
+    "mode": "Reused PG01 operational recovery; SQL schemas, backup/recovery and encryption unchanged. New admission exercised with actual personal and managed backup/restore.",
+    "newOperationalExecution": false
+  },
+  "externalJanus": "NOT_QUALIFIED",
+  "f36": {
+    "status": "DEFERRED_EXPLICITLY_NOT_QUALIFIED",
+    "fullF36Passed": false
+  },
+  "original22x60": "FAIL_PRESERVED",
+  "allExistingTestsRetained": true,
+  "internalDeadlinesUnchanged": true,
+  "privateEvidencePublished": false,
+  "humanAcceptance": false,
+  "productivePromotion": false,
+  "remainingIncrements": [
+    "I09",
+    "I10"
+  ]
+}
