@@ -1,15 +1,14 @@
 {
   "schema": "orbita-source-manifest-1",
-  "increment": "I08",
-  "status": "I08_SCOPED_TECHNICAL_SEALED_REMOTE_REBUILT",
+  "increment": "I09",
+  "status": "MEASURED_NO_ADOPTION_PENDING_REMOTE_VERIFICATION_AND_SEAL",
   "files": [
     {
       "path": "README.md",
-      "sourceSha256": "1756debaefe84a827579a0075a811a6298388a3a87c6e92098dc111a18fa57e5",
-      "publishedCandidateSha256": "3388c685a102ad481292ccd98d6d00f0d97561f9bb7298ca276c2ac4d2c672ec",
-      "bytes": 14032,
-      "transformation": "Reviewed I08 closure documentation; executable source bytes unchanged",
-      "testedProductSha256": "1756debaefe84a827579a0075a811a6298388a3a87c6e92098dc111a18fa57e5"
+      "sourceSha256": "0d544309dccd907b6cd8ad6d55f2746f8b1f9f4818271b84101549b25cf3e205",
+      "publishedCandidateSha256": "0d544309dccd907b6cd8ad6d55f2746f8b1f9f4818271b84101549b25cf3e205",
+      "bytes": 15755,
+      "transformation": "I09 experiment status prefix preserving qualified I08 guide"
     },
     {
       "path": "agent-forensic-handoff/.github/workflows/ci.yml",
@@ -3323,6 +3322,13 @@
       "transformation": null
     },
     {
+      "path": "agent-forensic-handoff/scripts/qualification/measure_i09_fts.py",
+      "sourceSha256": "f95f7b8d8d0f453aea45a4a79a0ba26a81495606b8966215c1c7f862f8add1b5",
+      "publishedCandidateSha256": "f95f7b8d8d0f453aea45a4a79a0ba26a81495606b8966215c1c7f862f8add1b5",
+      "bytes": 11006,
+      "transformation": null
+    },
+    {
       "path": "agent-forensic-handoff/scripts/recovery/README.md",
       "sourceSha256": "13e5e90ff0458993a2ee9e567a7c3479c610006577b3bae1f0dee69eb9c83b0a",
       "publishedCandidateSha256": "13e5e90ff0458993a2ee9e567a7c3479c610006577b3bae1f0dee69eb9c83b0a",
@@ -5887,13 +5893,6 @@
       "onlyByteChange": true
     }
   ],
-  "qualificationScope": "I08 A08 recovery admission and C01 scoped lifecycle diagnosis; complete remote serial cumulative and real synthetic personal/managed backup and restore. Historical lifecycle cause not established. F36 explicitly pending. No human acceptance.",
-  "humanAcceptance": false,
-  "qualification": "QUALIFICATION-I08.json",
-  "testedProductCommit": "e74ddee743dc5dc1ee0c41daaf867cae94d0b6dc",
-  "candidateSealSha256": "c4b210312117bef8ee1623665f7579151793b505d71432c50b3ba6b956dfb440",
-  "closureDocumentationChanges": [
-    "README.md"
-  ],
-  "testedSourceFilesUnchangedAtClosure": 837
+  "qualificationScope": "C04 measured investigation;840 inherited source bytes unchanged; no runtime optimization or schema migration. Exact inherited cumulative reuse pending remote verification. F36 deferred; no human acceptance.",
+  "humanAcceptance": false
 }

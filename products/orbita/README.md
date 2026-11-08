@@ -1,3 +1,15 @@
+# I09: búsqueda FTS medida, sin adoptar una preselección incompatible
+
+I09 ha medido dos preselecciones GIN con tsvector simple, texto original y texto preprocesado con Unicode61, seguidas del comprobador exacto. La primera pierde coincidencias en 6 de 19 consultas de paridad; la segunda en 2. El preprocesado sigue perdiendo un token con Unicode de uso privado y otro de 4096 caracteres. El refinamiento no recupera filas excluidas previamente.
+
+Se conservan el buscador actual, todas las pruebas, los límites y el esquema. Los diez oráculos FTS actuales pasaron, incluidos Unicode, sintaxis admitida, transacciones, aislamiento y publicación/replay. Con 10000 filas sintéticas, la mediana de una búsqueda selectiva pasó de 1.449 s a 0.023 s en la variante preprocesada; ese beneficio no compensa la pérdida de equivalencia. La consulta amplia midió 1.469 s y 1.156 s. Las mediciones de inserción en tablas TEMP omiten los controles operativos y no representan una mejora equivalente de la publicación del producto.
+
+El experimento reproducible está en `agent-forensic-handoff/scripts/qualification/measure_i09_fts.py`. No lo importa la aplicación. Esta candidata conserva los 840 archivos heredados y los 155 archivos de regresión; la acumulada I08 de 1251 PASS y una omisión es evidencia elegible por igualdad de bytes, no una nueva ejecución I09. Todavía faltan la comprobación del experimento desde reconstrucción remota y el sello de I09.
+
+La decisión se limita a las dos alternativas evaluadas; no demuestra que todo índice GIN posible sea incompatible. F36 sigue pendiente por decisión explícita, sin PASS. No hay aceptación humana ni promoción productiva. I10 permanece pendiente.
+
+---
+
 # I08: recuperación con espera visible y diagnóstico de cierre
 
 I08 entrega A08/C01 sobre las fuentes probadas de `e74ddee743dc5dc1ee0c41daaf867cae94d0b6dc`. La recuperación cierra la admisión de nuevos trabajos, espera las solicitudes y tareas ya admitidas con un límite propio y permite cancelar antes del corte exclusivo. La exclusión final del motor se conserva, incluidos otros procesos. La interfaz identifica la importación registrada en PostgreSQL sin inventar una fecha ni un número de archivos restaurados.
