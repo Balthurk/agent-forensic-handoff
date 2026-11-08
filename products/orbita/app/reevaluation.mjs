@@ -125,10 +125,18 @@ export async function drainReevaluations({limit=8,automaticOnly=true,signal}={},
  }
  return {results,errors,remaining:readyJobs(automaticOnly).length,limit};
 }
-let automaticScheduled=false,automaticRequested=false,automaticPaused=false,automaticResuming=false;
-export function pauseAutomaticReevaluations(value){if(value&&(automaticScheduled||automaticResuming))throw new Error('RECOVERY_AUTOMATIC_WORK_BUSY');automaticPaused=value;}
+let automaticScheduled=false,automaticRequested=false,automaticPaused=false,automaticResuming=0,recoveryPause=null;
+export function pauseAutomaticReevaluations(value){if(value&&(automaticScheduled||automaticResuming))throw new Error('RECOVERY_AUTOMATIC_WORK_BUSY');if(!value&&recoveryPause)throw new Error('RECOVERY_AUTOMATIC_ADMISSION_CLOSED');automaticPaused=value;}
+export function holdAutomaticReevaluations(){
+ if(recoveryPause)throw new Error('RECOVERY_AUTOMATIC_ADMISSION_CLOSED');
+ const token={},previous=automaticPaused;recoveryPause=token;automaticPaused=true;let released=false;
+ return Object.freeze({active:()=>Number(automaticScheduled)+automaticResuming,
+  release({resume=true}={}){if(released)return;if(recoveryPause!==token)throw new Error('RECOVERY_AUTOMATIC_PAUSE_OWNER');released=true;recoveryPause=null;automaticPaused=resume?previous:true;
+   if(!automaticPaused&&automaticRequested)queueMicrotask(scheduleAutomaticReevaluations);
+  }});
+}
 export function scheduleAutomaticReevaluations(){
- if(automaticPaused||!automaticAllowed(DATA))return;
+ if(automaticPaused){automaticRequested=true;return;}if(!automaticAllowed(DATA))return;
  automaticRequested=true;if(automaticScheduled)return;automaticScheduled=true;
  setImmediate(async()=>{
   let again=false;automaticRequested=false;
@@ -139,7 +147,7 @@ export function scheduleAutomaticReevaluations(){
   finally{automaticScheduled=false;if(again||automaticRequested)scheduleAutomaticReevaluations();}
  });
 }
-export async function resumeAutomaticReevaluations(){if(automaticPaused||!automaticAllowed(DATA)||!fs.existsSync(FILE))return {enqueued:[],errors:[]};automaticResuming=true;try{const result=await scanReevaluations();scheduleAutomaticReevaluations();return result;}finally{automaticResuming=false;}}
+export async function resumeAutomaticReevaluations(){if(automaticPaused||!automaticAllowed(DATA)||!fs.existsSync(FILE))return {enqueued:[],errors:[]};automaticResuming++;try{const result=await scanReevaluations();scheduleAutomaticReevaluations();return result;}finally{automaticResuming--;}}
 export async function reevaluationOperation(op,input={},options={}){
  if(op==='status')return reevaluationStatus();
  if(op==='watch')return registerWatch(input,options);

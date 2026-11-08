@@ -1,5 +1,6 @@
 import {bootstrapLibrary} from './library-catalogue.mjs';
 import {WorkerActivity} from './worker-activity.mjs';
+import {afterRecoveryDrain,recoveryWaitBudget} from './recovery-drain.mjs';
 import {graphOperation} from './graph-publication.mjs';
 import {causalOperation} from './causal.mjs';
 import {intelligenceOperation} from './decision-intelligence.mjs';
@@ -27,9 +28,9 @@ import {routingOperation,routingForAnswer,verifyRouting} from './routing.mjs';
 import {identityOperation} from './identities.mjs';
 import {supportOperation,supportSources} from './justifications.mjs';
 import {createBackup,restoreBackup,restoreState,activateRestore,disjoint} from './recovery.mjs';
-import {reevaluationOperation,resumeAutomaticReevaluations,pauseAutomaticReevaluations} from './reevaluation.mjs';
+import {reevaluationOperation,resumeAutomaticReevaluations,pauseAutomaticReevaluations,holdAutomaticReevaluations} from './reevaluation.mjs';
 const ROOT=path.dirname(fileURLToPath(import.meta.url)),jobs=new Map();let PORT=Number(process.env.AFH_COSMOS_PORT||4322),active=0,importing=false,semanticBusy=false,recoveryBusy=false,inFlight=0;
-const activity=new WorkerActivity(),callers=new Set();let shuttingDown=false,shutdownTask;
+const activity=new WorkerActivity(),recoveryActivity=new WorkerActivity(),callers=new Set();let shuttingDown=false,shutdownTask;
 if(process.env.AFH_MANAGED==='1')process.on('message',m=>{
  if(!/^[a-f0-9-]{36}$/.test(m?.nonce||''))return;
  if(m.type==='orbita-quiesce')process.send?.({type:'orbita-quiesced',nonce:m.nonce,idle:activity.quiesce(m.nonce)});
@@ -63,22 +64,35 @@ export async function answerQuestion({question,conversationIds,model='gpt-6.1-so
  await cancellationPoint(signal);budget.check();if(persist){fs.mkdirSync(path.join(DATA,'answers'),{recursive:true});fs.writeFileSync(path.join(DATA,'answers',receipt.id+'.json'),JSON.stringify(receipt,null,2));}return receipt;
  }finally{budget.close();}
 }
-const server=http.createServer(async(req,res)=>{const finishRequest=shuttingDown?null:activity.request(res);if(!finishRequest)return json(res,503,{error:'ACCESS_WORKER_QUIESCED'});inFlight++;const caller=new AbortController();callers.add(caller);const cancelCaller=()=>{if(!res.writableEnded)caller.abort(new Error('CALLER_DISCONNECTED'));};req.on('aborted',cancelCaller);res.on('close',cancelCaller);res.on('finish',()=>req.removeListener('aborted',cancelCaller));try{
+const server=http.createServer(async(req,res)=>{const finishRequest=shuttingDown?null:activity.request(res);if(!finishRequest)return json(res,503,{error:'ACCESS_WORKER_QUIESCED'});inFlight++;let finishDataRequest;const caller=new AbortController();callers.add(caller);const cancelCaller=()=>{if(!res.writableEnded)caller.abort(new Error('CALLER_DISCONNECTED'));};req.on('aborted',cancelCaller);res.on('close',cancelCaller);res.on('finish',()=>req.removeListener('aborted',cancelCaller));try{
  if(process.env.AFH_PRIVATE_TOKEN&&req.headers['x-orbita-worker']!==process.env.AFH_PRIVATE_TOKEN)return json(res,401,{error:'ACCESS_WORKER_AUTH_REQUIRED'});
  const host=req.headers.host;if(![`127.0.0.1:${PORT}`,`localhost:${PORT}`].includes(host)){json(res,403,{error:'Host no permitido'});return;}
  if(req.headers.origin&&!['http://127.0.0.1:'+PORT,'http://localhost:'+PORT].includes(req.headers.origin)){json(res,403,{error:'Origen no permitido'});return;}
  const u=new URL(req.url,'http://127.0.0.1:'+PORT);
  if(req.method==='GET'&&u.pathname==='/access'){const target=process.env.AFH_ACCESS_URL;if(target&&/^http:\/\/(127\.0\.0\.1|localhost):[0-9]+\/access$/.test(target)){res.writeHead(302,{'location':target,'cache-control':'no-store'});return res.end();}return json(res,200,{mode:'private',message:'El archivo personal permanece privado. Inicializa access-cli.mjs y arranca access-server.mjs para crear espacios autenticados.',feature:'F35'});}
- if(recoveryBusy&&u.pathname.startsWith('/api/')&&!u.pathname.startsWith('/api/jobs/')&&u.pathname!=='/api/recovery/status')return json(res,503,{error:'RECOVERY_IN_PROGRESS: memoria pausada durante el backup'});
+ if(recoveryBusy&&u.pathname.startsWith('/api/')&&!u.pathname.startsWith('/api/jobs/')&&!['/api/recovery','/api/recovery/status'].includes(u.pathname))return json(res,503,{error:'RECOVERY_IN_PROGRESS: memoria pausada durante el backup'});
+ if(u.pathname.startsWith('/api/')&&!u.pathname.startsWith('/api/jobs/')&&!['/api/recovery','/api/recovery/status'].includes(u.pathname))finishDataRequest=recoveryActivity.request(res);
  if(req.method==='GET'&&u.pathname==='/api/recovery/status')return json(res,200,{busy:recoveryBusy,restored:restoreState(DATA)});
  if(req.method==='POST'&&u.pathname==='/api/recovery/activate'){const state=activateRestore(DATA,await read(req));if(state.automaticWork)await resumeAutomaticReevaluations();return json(res,200,state);}
  if(req.method==='POST'&&u.pathname==='/api/recovery'){
   const b=await read(req);if(!['backup','restore'].includes(b.op))throw new Error('RECOVERY_UNKNOWN_OPERATION');if(b.op==='restore')disjoint(DATA,b.destination);
-  if(recoveryBusy||inFlight!==1||[...jobs.values()].some(j=>j.status==='running'))return json(res,409,{error:'RECOVERY_STORE_BUSY: espera a que terminen las operaciones'});
-  pauseAutomaticReevaluations(true);recoveryBusy=true;
-  const id=randomUUID(),job={id,status:'running',phase:'Verificando memoria completa'};jobs.set(id,job);
-  activity.background(()=>{const action=b.op==='backup'?createBackup({source:DATA,archive:b.archive,password:b.password,ownSession:true}):restoreBackup({archive:b.archive,destination:b.destination,password:b.password});
-   return action.then(result=>Object.assign(job,{status:'complete',result})).catch(e=>Object.assign(job,{status:'error',error:e.message})).finally(()=>{recoveryBusy=false;pauseAutomaticReevaluations(false);});});json(res,202,{id});return;
+  if(recoveryBusy)return json(res,409,{error:'RECOVERY_STORE_BUSY: otra recuperación está en curso'});
+  const waitTimeoutMs=recoveryWaitBudget(b.waitTimeoutMs),pause=holdAutomaticReevaluations();recoveryBusy=true;
+  const id=randomUUID(),job={id,kind:'recovery',status:'running',phase:'Esperando a que terminen las operaciones activas',controller:new AbortController(),cancellable:true};jobs.set(id,job);
+  activity.background(async()=>{
+   try{
+    const result=await afterRecoveryDrain({waitTimeoutMs,signal:job.controller.signal,
+     snapshot:()=>({http:recoveryActivity.http,background:Math.max(0,activity.jobs.size-1),automatic:pause.active()}),
+     onWaiting:pending=>{job.admission=pending;},
+     run:()=>{job.cancellable=false;job.admission={state:'active'};job.phase='Verificando memoria completa';
+      // The original exclusiveStore guard remains the final authority, including
+      // other processes and their sessions. A busy external store stays refused.
+      return b.op==='backup'?createBackup({source:DATA,archive:b.archive,password:b.password,ownSession:true}):restoreBackup({archive:b.archive,destination:b.destination,password:b.password});
+     }});
+    Object.assign(job,{status:'complete',result});
+   }catch(e){Object.assign(job,{status:job.controller.signal.aborted&&job.cancellable?'cancelled':'error',error:job.controller.signal.aborted&&job.cancellable?job.controller.signal.reason?.message||'CALLER_CANCELLED':e.message});}
+   finally{job.cancellable=false;recoveryBusy=false;pause.release({resume:!shuttingDown});}
+  });json(res,202,{id});return;
  }
 
  if(req.method==='POST'&&u.pathname==='/api/reevaluation'){
@@ -92,7 +106,7 @@ const server=http.createServer(async(req,res)=>{const finishRequest=shuttingDown
  if(req.method==='GET'&&u.pathname==='/api/federation/stores')return json(res,200,listStores());
  if(req.method==='POST'&&u.pathname==='/api/federation/stores')return json(res,200,registerStore(await read(req)));
  if(req.method==='POST'&&u.pathname==='/api/federation/retrieve')return json(res,200,await federatedRetrieve({...await read(req),signal:caller.signal}));
- if(req.method==='POST'&&/^\/api\/jobs\/[^/]+\/cancel$/.test(u.pathname)){const id=u.pathname.split('/')[3],job=jobs.get(id);if(!job)return json(res,404,{error:'Consulta no encontrada'});job.controller?.abort(new Error('CALLER_CANCELLED'));if(job.status==='running')job.status='cancelled';return json(res,200,{id,status:job.status});}
+ if(req.method==='POST'&&/^\/api\/jobs\/[^/]+\/cancel$/.test(u.pathname)){const id=u.pathname.split('/')[3],job=jobs.get(id);if(!job)return json(res,404,{error:'Consulta no encontrada'});if(job.kind==='recovery'&&job.status==='running'&&!job.cancellable)return json(res,409,{error:'RECOVERY_ALREADY_STARTED: espera a que termine la operación'});job.controller?.abort(new Error('CALLER_CANCELLED'));if(job.status==='running'&&job.kind!=='recovery')job.status='cancelled';return json(res,200,{id,status:job.kind==='recovery'&&job.status==='running'?'cancelling':job.status});}
 
  if(req.method==='GET'&&u.pathname==='/api/documents/original'){const original=await readDocumentOriginal(u.searchParams.get('id'));res.writeHead(200,{'content-type':'application/octet-stream','content-disposition':"attachment; filename*=UTF-8''"+encodeURIComponent(original.filename),'x-content-sha256':original.sha256,'cache-control':'no-store'});res.end(original.bytes);return;}
  if(req.method==='GET'&&u.pathname==='/api/documents'){reconcileDocuments();return json(res,200,documentStatus());}
@@ -150,9 +164,9 @@ const server=http.createServer(async(req,res)=>{const finishRequest=shuttingDown
  if(req.method==='POST'&&u.pathname==='/api/ask'){if(active>=2)return json(res,429,{error:'Hay dos consultas en curso; espera a que terminen.'});const body=await read(req),id=randomUUID(),job={id,status:'running',phase:'Preparando consulta'};jobs.set(id,job);active++;job.controller=new AbortController();activity.background(()=>answerQuestion({...body,signal:job.controller.signal},phase=>job.phase=phase).then(result=>{if(!job.controller.signal.aborted)Object.assign(job,{status:'complete',result});}).catch(e=>Object.assign(job,{status:job.controller.signal.aborted?'cancelled':'error',error:e.message})).finally(()=>active--));json(res,202,{id});return;}
  if(req.method==='POST'&&u.pathname==='/api/import'){if(importing)return json(res,409,{error:'Hay una importación en curso'});importing=true;try{const result=await addSource(await read(req));return json(res,200,{result,...await bootstrapLibrary({catalogue:u.searchParams.get('catalogue')==='1'})});}finally{importing=false;}}
  if(req.method==='GET'&&u.pathname==='/api/export'){const id=u.searchParams.get('id');if(!/^[a-f0-9-]{36}$/.test(id||''))throw new Error('ID inválido');const f=path.join(DATA,'answers',id+'.json');res.writeHead(200,{'content-type':'application/json','content-disposition':`attachment; filename="orbita-${id}.json"`});res.end(fs.readFileSync(f));return;}
- const assets={'/navigation-web.mjs':'navigation-web.mjs','/source-navigation.mjs':'source-navigation.mjs','/graph-publication-web.mjs':'graph-publication-web.mjs','/causal-web.mjs':'causal-web.mjs','/decision-intelligence-web.mjs':'decision-intelligence-web.mjs','/retrospectives-web.mjs':'retrospectives-web.mjs','/retrospectives.css':'retrospectives.css','/volume-web.mjs':'volume-web.mjs','/volume.css':'volume.css','/routing-web.mjs':'routing-web.mjs','/routing.css':'routing.css','/identities-web.mjs':'identities-web.mjs','/identities.css':'identities.css','/explorer-web.mjs':'explorer-web.mjs','/explorer-model.mjs':'explorer-model.mjs','/explorer.css':'explorer.css','/context-web.mjs':'context-web.mjs','/support-fields.mjs':'support-fields.mjs','/supports-web.mjs':'supports-web.mjs','/collective-fields.mjs':'collective-fields.mjs','/collectives-web.mjs':'collectives-web.mjs','/documents-web.mjs':'documents-web.mjs','/recovery-web.mjs':'recovery-web.mjs','/reevaluation-web.mjs':'reevaluation-web.mjs','/decisions-web.mjs':'decisions-web.mjs','/learning-web.mjs':'learning-web.mjs','/':'index.html','/app.js':'web.js','/p1-web.mjs':'p1-web.mjs','/semantic-web.mjs':'semantic-web.mjs','/incremental-web.mjs':'incremental-web.mjs','/style.css':'style.css'};if(req.method==='GET'&&assets[u.pathname]){const file=assets[u.pathname];res.writeHead(200,{'content-type':(file.endsWith('.js')||file.endsWith('.mjs'))?'text/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8','content-security-policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; frame-ancestors 'none'",'x-content-type-options':'nosniff'});res.end(nativeFiles.readFileSync(path.join(ROOT,'web',file)));return;}
+ const assets={'/navigation-web.mjs':'navigation-web.mjs','/source-navigation.mjs':'source-navigation.mjs','/graph-publication-web.mjs':'graph-publication-web.mjs','/causal-web.mjs':'causal-web.mjs','/decision-intelligence-web.mjs':'decision-intelligence-web.mjs','/retrospectives-web.mjs':'retrospectives-web.mjs','/retrospectives.css':'retrospectives.css','/volume-web.mjs':'volume-web.mjs','/volume.css':'volume.css','/routing-web.mjs':'routing-web.mjs','/routing.css':'routing.css','/identities-web.mjs':'identities-web.mjs','/identities.css':'identities.css','/explorer-web.mjs':'explorer-web.mjs','/explorer-model.mjs':'explorer-model.mjs','/explorer.css':'explorer.css','/context-web.mjs':'context-web.mjs','/support-fields.mjs':'support-fields.mjs','/supports-web.mjs':'supports-web.mjs','/collective-fields.mjs':'collective-fields.mjs','/collectives-web.mjs':'collectives-web.mjs','/documents-web.mjs':'documents-web.mjs','/recovery-display.mjs':'recovery-display.mjs','/recovery-web.mjs':'recovery-web.mjs','/reevaluation-web.mjs':'reevaluation-web.mjs','/decisions-web.mjs':'decisions-web.mjs','/learning-web.mjs':'learning-web.mjs','/':'index.html','/app.js':'web.js','/p1-web.mjs':'p1-web.mjs','/semantic-web.mjs':'semantic-web.mjs','/incremental-web.mjs':'incremental-web.mjs','/style.css':'style.css'};if(req.method==='GET'&&assets[u.pathname]){const file=assets[u.pathname];res.writeHead(200,{'content-type':(file.endsWith('.js')||file.endsWith('.mjs'))?'text/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8','content-security-policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; frame-ancestors 'none'",'x-content-type-options':'nosniff'});res.end(nativeFiles.readFileSync(path.join(ROOT,'web',file)));return;}
  json(res,404,{error:'No encontrado'});
- }catch(e){if(!res.destroyed&&!res.writableEnded)json(res,400,{error:e.message});}finally{callers.delete(caller);inFlight--;finishRequest();}});
+ }catch(e){if(!res.destroyed&&!res.writableEnded)json(res,400,{error:e.message});}finally{callers.delete(caller);inFlight--;finishDataRequest?.();finishRequest();}});
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){server.listen(PORT,'127.0.0.1',()=>{PORT=server.address().port;console.log(`ORBITA http://127.0.0.1:${PORT}`);process.send?.({type:'orbita-ready',port:PORT});if(process.env.AFH_MANAGED!=='1')resumeAutomaticReevaluations().catch(e=>console.error('REEVALUATION_RESUME_FAILED',e.message));});const shutdown=()=>closeServer().catch(e=>{console.error(e.message);process.exitCode=1;});for(const signal of ['SIGINT','SIGTERM'])process.once(signal,shutdown);if(process.env.AFH_MANAGED==='1')process.once('disconnect',shutdown);}
 export function closeServer(){
  if(shutdownTask)return shutdownTask;

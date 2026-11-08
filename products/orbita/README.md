@@ -1,3 +1,15 @@
+# I08: espera de respaldo y diagnóstico de cierre
+
+Esta candidata I08 está pendiente de la acumulada completa y del sello. El respaldo espera de forma acotada a que terminen solicitudes, trabajos y reevaluaciones ya admitidos. La interfaz muestra la espera y permite cancelarla antes del corte exclusivo. Las importaciones registradas en PostgreSQL se identifican sin inventar una fecha o un número de archivos restaurados.
+
+Pasaron las pruebas focales de transporte, trabajos, cancelación, reintento y cierre, y la interfaz real personal y gestionada con datos sintéticos. C01 no reprodujo una fuga en el camino actual ante pérdida del padre o EOF: se conserva el cierre global y no se añade un watchdog. La causa específica del fallo nativo histórico sigue sin establecerse. El intento focal GREEN4 conserva FAIL por una ruta inexistente del runner; sólo se reutilizan sus cuatro archivos completos, con alcance y hashes explícitos.
+
+Se conservan todas las pruebas y sus plazos internos. Estas comprobaciones no sustituyen la acumulada ni constituyen aceptación humana. PG01 sigue cerrado funcionalmente; F36 permanece pendiente por decisión explícita, sin PASS, y el fallo original de 22 procesos/60 segundos sigue registrado. La cualificación acordada ejecuta todos los archivos localmente en serie.
+
+La entrega I07 y las guías que siguen son antecedentes con sus propios cortes y recibos.
+
+---
+
 # I07: publicación concurrente e inventario de versiones
 
 I07 entrega A03/A14 sobre las fuentes probadas de `d66d1c0ebb340a9404a8c550eb43164421db1bbf` y el espejo PostgreSQL verificado aprobado en PG01. La publicación permite escribir N04 durante el trabajo del espejo, mantiene la exclusión entre publicadores y revalida plan, generación y permisos antes del selector final. Janus externo sigue sin cualificar.
