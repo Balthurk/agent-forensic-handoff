@@ -1,12 +1,12 @@
 # I06: fuentes largas y acciones agrupadas
 
-Esta rama contiene la candidata I06, pendiente de su acumulada completa y sello. A13 conserva las omisiones de mensajes enteros y permite recorrer los originales completos con su revisión exacta. A15 agrupa los controles existentes y conserva selección, foco y permisos personales y gestionados.
+I06 entrega A13/A15 sobre las fuentes probadas del commit `00249358d3daa91ddf0d47b36604efffae5c725c`. Las omisiones de mensajes enteros muestran su motivo y permiten abrir el original íntegro, recorrerlo y saltar a una posición conservando la revisión exacta. Los controles existentes se agrupan por fuentes/archivo, exploración y decisiones/aprendizaje, con selección, foco y permisos conservados.
 
-Las pruebas focales A13 pasaron 26/26; la interfaz real personal y gestionada comprobó lectura, navegación, descarga literal, teclado y permisos con datos sintéticos. Estos resultados no sustituyen la acumulada ni constituyen aceptación humana.
+La acumulada completa desde descarga independiente pasó 1232 pruebas y una omisión Windows heredada, con 150 archivos y 101 comandos seriales. La batería de raíz pasó 292 pruebas y una omisión; tiene solapamiento con la del producto y no se suman sus totales. Se conservaron todas las pruebas y plazos internos. Cinco pruebas nuevas y 26 focales; interfaz real personal y gestionada con originales sintéticos de 93.600 bytes, navegación, descarga literal, teclado y permisos. La comprobación de accesos no acredita cada operación interna ni aceptación humana.
 
-PG01 está cerrado funcionalmente sobre FINAL4. F36 sigue íntegro y pendiente como deuda de escala por decisión explícita del usuario; no se presenta como PASS. El fallo histórico 22 procesos/60 segundos se conserva y el perfil aprobado de cualificación es local serial con todas las pruebas y sus plazos internos.
+PG01 permanece cerrado funcionalmente y su recuperación operativa se reutiliza por igualdad de los componentes afectados. F36 sigue íntegro y pendiente como deuda de escala por decisión explícita; no se presenta como PASS. Se conserva el fallo histórico de 22 procesos/60 segundos. I07–I10 continúan pendientes.
 
-La guía heredada y los comandos reproducibles se conservan a continuación; sus recibos y cifras corresponden al corte PG01 descrito.
+`QUALIFICATION-I06.json` delimita la entrega. La guía heredada y los comandos reproducibles siguen debajo; sus cifras históricas corresponden al corte PG01 indicado.
 
 ---
 

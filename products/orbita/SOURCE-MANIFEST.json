@@ -1,14 +1,15 @@
 {
   "schema": "orbita-source-manifest-1",
   "increment": "I06",
-  "status": "FROZEN_CANDIDATE_PENDING_FULL_CUMULATIVE",
+  "status": "I06_SCOPED_TECHNICAL_SEALED_REMOTE_REBUILT",
   "files": [
     {
       "path": "README.md",
       "sourceSha256": "f8e71c427909b519a0bc475b631bfe6b6562f1ed66509d65ccb0d6384a07b193",
-      "publishedCandidateSha256": "f8e71c427909b519a0bc475b631bfe6b6562f1ed66509d65ccb0d6384a07b193",
-      "bytes": 9265,
-      "transformation": "I06_status_prefix_preserving_parent_guide"
+      "publishedCandidateSha256": "3c06ec6bb7b6e6360ff4b1180d19c344db52895f25a5059fa5b07f19100b1bfc",
+      "bytes": 9726,
+      "transformation": "Reviewed I06 closure documentation; executable source bytes unchanged",
+      "testedProductSha256": "f8e71c427909b519a0bc475b631bfe6b6562f1ed66509d65ccb0d6384a07b193"
     },
     {
       "path": "agent-forensic-handoff/.github/workflows/ci.yml",
@@ -5809,6 +5810,13 @@
       "onlyByteChange": true
     }
   ],
-  "qualificationScope": "I06 focal and real personal/managed UI only. Full cumulative and seal pending; PG01 F36 explicitly deferred, not PASS. No human acceptance.",
-  "humanAcceptance": false
+  "qualificationScope": "I06 A13/A15 scoped technical delivery; full remote serial cumulative and synthetic personal/managed UI. F36 explicitly pending, not PASS. No human acceptance.",
+  "humanAcceptance": false,
+  "qualification": "QUALIFICATION-I06.json",
+  "testedProductCommit": "00249358d3daa91ddf0d47b36604efffae5c725c",
+  "candidateSealSha256": "e0b072204f560f96f0634414462de6ee7cb1f9f3623a8ae09c0bf0021c261110",
+  "closureDocumentationChanges": [
+    "README.md"
+  ],
+  "testedSourceFilesUnchangedAtClosure": 826
 }

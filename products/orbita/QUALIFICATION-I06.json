@@ -1,0 +1,74 @@
+{
+  "schema": "orbita.public.qualification.v1",
+  "at": "2026-11-08T10:02:09.586262+00:00",
+  "status": "PASS_SCOPED_TECHNICAL_I06",
+  "testedProductCommit": "00249358d3daa91ddf0d47b36604efffae5c725c",
+  "candidateSealSha256": "e0b072204f560f96f0634414462de6ee7cb1f9f3623a8ae09c0bf0021c261110",
+  "publishedSourceFiles": 827,
+  "localSourceFiles": 829,
+  "sourceBytesUnchangedDuringTests": true,
+  "independentHTTPSReconstruction": true,
+  "freshNodeDependencies": true,
+  "pythonDependenciesChecked": true,
+  "freshPythonEnvironment": false,
+  "productMetrics": {
+    "tests": 1233,
+    "passed": 1232,
+    "failed": 0,
+    "skipped": 1,
+    "profile": "local-serial",
+    "seconds": 5874.860000000015
+  },
+  "discoveredFiles": {
+    "core": 29,
+    "app": 71,
+    "python": 50
+  },
+  "commands": 101,
+  "newTests": 5,
+  "focalPassed": 26,
+  "rootMetrics": {
+    "passed": 292,
+    "skipped": 1,
+    "failed": 0,
+    "overlapWithProduct": true
+  },
+  "nativeUI": {
+    "personal": true,
+    "managed": true,
+    "syntheticOriginalBytes": 93600,
+    "downloadByteExact": true,
+    "revisionBoundNavigation": true,
+    "explicitWholeRecordOmissions": true,
+    "keyboardFocus": true,
+    "selectionPreserved": true,
+    "readerEditorRestrictions": true,
+    "workspaceIsolation": true,
+    "limitation": "Entry points and retained handlers; not every operation within every feature. No human acceptance."
+  },
+  "operationalRecovery": {
+    "mode": "Reused sealed PG01 recovery; storage and recovery sources unchanged",
+    "newExecution": false
+  },
+  "f36": {
+    "status": "DEFERRED_EXPLICITLY_NOT_QUALIFIED",
+    "fullF36Passed": false
+  },
+  "original22x60": "FAIL_PRESERVED",
+  "allExistingTestsRetained": true,
+  "internalDeadlinesUnchanged": true,
+  "privateEvidencePublished": false,
+  "humanAcceptance": false,
+  "productivePromotion": false,
+  "remainingIncrements": [
+    "I07",
+    "I08",
+    "I09",
+    "I10"
+  ],
+  "testedSourceFilesUnchangedAtClosure": 826,
+  "closureDocumentationChanges": [
+    "README.md"
+  ],
+  "executableSourcesChangedAtClosure": false
+}
