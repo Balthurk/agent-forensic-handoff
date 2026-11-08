@@ -1,12 +1,16 @@
 # I07: publicación concurrente e inventario de versiones
 
-Esta candidata I07 está pendiente de la acumulada completa y del sello. A03 libera la transacción N04 durante el trabajo remoto del espejo y vuelve a comprobar plan, generación y permisos antes de cambiar el selector. A14 permite inspeccionar versiones conservadas, referencias y motivos de retención con límites explícitos; no autoriza ni ejecuta purga.
+I07 entrega A03/A14 sobre las fuentes probadas de `d66d1c0ebb340a9404a8c550eb43164421db1bbf` y el espejo PostgreSQL verificado aprobado en PG01. La publicación permite escribir N04 durante el trabajo del espejo, mantiene la exclusión entre publicadores y revalida plan, generación y permisos antes del selector final. Janus externo sigue sin cualificar.
 
-Han pasado los controles focales nuevos del protocolo y del inventario, los controles heredados del espejo y las políticas gestionadas, y la observación de la interfaz real personal y gestionada con datos sintéticos. Se conservan todos los tests y sus plazos internos. Estas comprobaciones no sustituyen la acumulada ni constituyen aceptación humana.
+El inventario muestra versiones accesibles, referencias, leases y razones para conservarlas. Distingue versiones seleccionadas, históricas, en curso y abortadas, y retiene lo desconocido. No autoriza ni ejecuta purga; sus contadores no son una verificación exhaustiva de los objetos.
 
-PG01 sigue cerrado funcionalmente. F36 está pendiente por decisión explícita del usuario, sin PASS; el fallo original de 22 procesos/60 segundos permanece registrado. La cualificación acordada ejecuta todos los archivos localmente en serie.
+Acumulada completa desde descarga independiente: 1234 PASS, una omisión Windows heredada y cero fallos; 152 archivos y 103 comandos seriales, con todos los plazos internos. La raíz pasó 292 pruebas y una omisión; los totales se solapan y no se suman. Los dos wrappers nuevos contienen diez controles del protocolo y cinco del inventario, sin doble cómputo. Las pruebas conservan concurrencia, pérdida de autoridad y lease, crashes, replay, lectores independientes y restauración real del grafo.
 
-La entrega I06 y la guía PG01 que siguen son antecedentes con sus propios cortes y recibos.
+La interfaz personal y gestionada mostró el inventario, sus motivos y originales con fuentes seleccionadas y teclado conservados en los flujos observados. Los lectores no ven el control de publicar y el espacio vacío no expone material del otro. La observación usa datos sintéticos y no constituye aceptación humana.
+
+PG01 permanece cerrado funcionalmente; su recuperación operativa se reutiliza por igualdad de esquema, respaldo y cifrado. F36 sigue íntegro y pendiente por decisión explícita, sin PASS. El fallo histórico 22 procesos/60 segundos se conserva. I08–I10 están pendientes.
+
+`QUALIFICATION-I07.json` delimita esta entrega. I06 y la guía PG01 conservadas debajo son antecedentes con sus propios recibos.
 
 ---
 

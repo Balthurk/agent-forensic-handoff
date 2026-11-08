@@ -1,0 +1,78 @@
+{
+  "schema": "orbita.public.qualification.v1",
+  "at": "2026-11-08T12:38:41.304235+00:00",
+  "status": "PASS_SCOPED_TECHNICAL_I07",
+  "testedProductCommit": "d66d1c0ebb340a9404a8c550eb43164421db1bbf",
+  "candidateSealSha256": "0df9eee7637ba99db010b369785a2dc53241f47db321a300782710ce36576071",
+  "publishedSourceFiles": 832,
+  "localSourceFiles": 834,
+  "testedSourceFilesUnchangedAtClosure": 831,
+  "closureDocumentationChanges": [
+    "README.md"
+  ],
+  "executableSourcesChangedAtClosure": false,
+  "sourceBytesUnchangedDuringTests": true,
+  "independentHTTPSReconstruction": true,
+  "freshNodeDependencies": true,
+  "pythonDependenciesChecked": true,
+  "freshPythonEnvironment": false,
+  "productMetrics": {
+    "tests": 1235,
+    "passed": 1234,
+    "failed": 0,
+    "skipped": 1,
+    "profile": "local-serial",
+    "seconds": 5993.375
+  },
+  "discoveredFiles": {
+    "core": 29,
+    "app": 73,
+    "python": 50
+  },
+  "commands": 103,
+  "newNodeTests": 2,
+  "nestedNativeChecks": {
+    "protocol": 10,
+    "inventory": 5
+  },
+  "nestedCountsNotAddedToOuterTotals": true,
+  "rootMetrics": {
+    "passed": 292,
+    "skipped": 1,
+    "failed": 0,
+    "overlapWithProduct": true
+  },
+  "nativeUI": {
+    "personal": true,
+    "managed": true,
+    "retainedGenerationInventory": true,
+    "retentionReasons": true,
+    "noPurge": true,
+    "originalRead": true,
+    "keyboardActivationAndDialogReturn": true,
+    "selectionPreserved": true,
+    "readerPublishControlHidden": true,
+    "workspaceIsolation": true,
+    "limitation": "Synthetic technical observation; not every asynchronous focus transition or feature operation. No human acceptance."
+  },
+  "operationalRecovery": {
+    "mode": "Reused PG01 operational recovery; SQL schemas, backup/recovery and encryption unchanged. New graph protocol exercised with real graph restore.",
+    "newOperationalExecution": false
+  },
+  "externalJanus": "NOT_QUALIFIED",
+  "f36": {
+    "status": "DEFERRED_EXPLICITLY_NOT_QUALIFIED",
+    "fullF36Passed": false
+  },
+  "original22x60": "FAIL_PRESERVED",
+  "allExistingTestsRetained": true,
+  "internalDeadlinesUnchanged": true,
+  "privateEvidencePublished": false,
+  "humanAcceptance": false,
+  "productivePromotion": false,
+  "remainingIncrements": [
+    "I08",
+    "I09",
+    "I10"
+  ]
+}

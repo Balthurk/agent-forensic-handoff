@@ -1,14 +1,15 @@
 {
   "schema": "orbita-source-manifest-1",
   "increment": "I07",
-  "status": "FROZEN_CANDIDATE_PENDING_FULL_CUMULATIVE",
+  "status": "I07_SCOPED_TECHNICAL_SEALED_REMOTE_REBUILT",
   "files": [
     {
       "path": "README.md",
       "sourceSha256": "0ac0977cd7e129e435871ef28f3a7d5973a2bff4280b5565be4534eac4748e26",
-      "publishedCandidateSha256": "0ac0977cd7e129e435871ef28f3a7d5973a2bff4280b5565be4534eac4748e26",
-      "bytes": 10848,
-      "transformation": "I07_status_prefix_preserving_qualified_parent_guide"
+      "publishedCandidateSha256": "88b48cd3470cbad551860e7dfaf122fb2e7491b86f7f58c0c8e4de15f67a4117",
+      "bytes": 11669,
+      "transformation": "Reviewed I07 closure documentation; executable source bytes unchanged",
+      "testedProductSha256": "0ac0977cd7e129e435871ef28f3a7d5973a2bff4280b5565be4534eac4748e26"
     },
     {
       "path": "agent-forensic-handoff/.github/workflows/ci.yml",
@@ -5844,6 +5845,13 @@
       "onlyByteChange": true
     }
   ],
-  "qualificationScope": "A03/A14 focal and real personal/managed UI only. I07 full cumulative and seal pending. Parent qualifications remain historical. F36 explicitly deferred, not PASS. No human acceptance.",
-  "humanAcceptance": false
+  "qualificationScope": "I07 A03/A14 on the approved PostgreSQL verified mirror; complete remote serial cumulative and synthetic personal/managed UI. External Janus not qualified. F36 explicitly pending. No human acceptance.",
+  "humanAcceptance": false,
+  "qualification": "QUALIFICATION-I07.json",
+  "testedProductCommit": "d66d1c0ebb340a9404a8c550eb43164421db1bbf",
+  "candidateSealSha256": "0df9eee7637ba99db010b369785a2dc53241f47db321a300782710ce36576071",
+  "closureDocumentationChanges": [
+    "README.md"
+  ],
+  "testedSourceFilesUnchangedAtClosure": 831
 }
