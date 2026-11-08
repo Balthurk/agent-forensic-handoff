@@ -1,3 +1,15 @@
+# I07: publicación concurrente e inventario de versiones
+
+Esta candidata I07 está pendiente de la acumulada completa y del sello. A03 libera la transacción N04 durante el trabajo remoto del espejo y vuelve a comprobar plan, generación y permisos antes de cambiar el selector. A14 permite inspeccionar versiones conservadas, referencias y motivos de retención con límites explícitos; no autoriza ni ejecuta purga.
+
+Han pasado los controles focales nuevos del protocolo y del inventario, los controles heredados del espejo y las políticas gestionadas, y la observación de la interfaz real personal y gestionada con datos sintéticos. Se conservan todos los tests y sus plazos internos. Estas comprobaciones no sustituyen la acumulada ni constituyen aceptación humana.
+
+PG01 sigue cerrado funcionalmente. F36 está pendiente por decisión explícita del usuario, sin PASS; el fallo original de 22 procesos/60 segundos permanece registrado. La cualificación acordada ejecuta todos los archivos localmente en serie.
+
+La entrega I06 y la guía PG01 que siguen son antecedentes con sus propios cortes y recibos.
+
+---
+
 # I06: fuentes largas y acciones agrupadas
 
 I06 entrega A13/A15 sobre las fuentes probadas del commit `00249358d3daa91ddf0d47b36604efffae5c725c`. Las omisiones de mensajes enteros muestran su motivo y permiten abrir el original íntegro, recorrerlo y saltar a una posición conservando la revisión exacta. Los controles existentes se agrupan por fuentes/archivo, exploración y decisiones/aprendizaje, con selección, foco y permisos conservados.

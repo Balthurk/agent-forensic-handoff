@@ -212,6 +212,9 @@ def selected(records,request):
 
 def dispatch_graph(records,request):
     op=request['op'];scope=request['scope']
+    if op=='graph_inventory':
+        from .graph_inventory import inventory
+        return inventory(records,request)
     if op=='graph_capabilities':
         return {'configured':True,'backend':'postgresql','readers':2,'verified':False,'default':'postgresql','automaticPromotion':False,'humanAcceptance':False}
     if request.get('backend')=='postgresql-verified':

@@ -1,15 +1,14 @@
 {
   "schema": "orbita-source-manifest-1",
-  "increment": "I06",
-  "status": "I06_SCOPED_TECHNICAL_SEALED_REMOTE_REBUILT",
+  "increment": "I07",
+  "status": "FROZEN_CANDIDATE_PENDING_FULL_CUMULATIVE",
   "files": [
     {
       "path": "README.md",
-      "sourceSha256": "f8e71c427909b519a0bc475b631bfe6b6562f1ed66509d65ccb0d6384a07b193",
-      "publishedCandidateSha256": "3c06ec6bb7b6e6360ff4b1180d19c344db52895f25a5059fa5b07f19100b1bfc",
-      "bytes": 9726,
-      "transformation": "Reviewed I06 closure documentation; executable source bytes unchanged",
-      "testedProductSha256": "f8e71c427909b519a0bc475b631bfe6b6562f1ed66509d65ccb0d6384a07b193"
+      "sourceSha256": "0ac0977cd7e129e435871ef28f3a7d5973a2bff4280b5565be4534eac4748e26",
+      "publishedCandidateSha256": "0ac0977cd7e129e435871ef28f3a7d5973a2bff4280b5565be4534eac4748e26",
+      "bytes": 10848,
+      "transformation": "I07_status_prefix_preserving_qualified_parent_guide"
     },
     {
       "path": "agent-forensic-handoff/.github/workflows/ci.yml",
@@ -327,6 +326,13 @@
       "transformation": null
     },
     {
+      "path": "agent-forensic-handoff/python/afh_semantic/graph_inventory.py",
+      "sourceSha256": "8672cd2f828381351fd7d7803d39c960eb47d563ea65cced0804677280fa2870",
+      "publishedCandidateSha256": "8672cd2f828381351fd7d7803d39c960eb47d563ea65cced0804677280fa2870",
+      "bytes": 9424,
+      "transformation": null
+    },
+    {
       "path": "agent-forensic-handoff/python/afh_semantic/graph_mirror.py",
       "sourceSha256": "3b9aafeb73b4c0fb4fb0d76e6414d3158329ddb467187ff92b5cac0d67a6225c",
       "publishedCandidateSha256": "3b9aafeb73b4c0fb4fb0d76e6414d3158329ddb467187ff92b5cac0d67a6225c",
@@ -335,16 +341,16 @@
     },
     {
       "path": "agent-forensic-handoff/python/afh_semantic/graph_mirror_publication.py",
-      "sourceSha256": "ec92659e095d6a248797aa115efe9eb1d85e1c1d7d238b5348c91dddf4355ebe",
-      "publishedCandidateSha256": "ec92659e095d6a248797aa115efe9eb1d85e1c1d7d238b5348c91dddf4355ebe",
-      "bytes": 9967,
+      "sourceSha256": "4098c3ce99c3bb4b5de3dc8b8f05b090f68e8c7c370298fedc9944c7c3d96c4d",
+      "publishedCandidateSha256": "4098c3ce99c3bb4b5de3dc8b8f05b090f68e8c7c370298fedc9944c7c3d96c4d",
+      "bytes": 12040,
       "transformation": null
     },
     {
       "path": "agent-forensic-handoff/python/afh_semantic/graph_publication.py",
-      "sourceSha256": "af46c2d40720932223b33f52be0716731a388db7ecdfbfcf02b187e07014a9b4",
-      "publishedCandidateSha256": "af46c2d40720932223b33f52be0716731a388db7ecdfbfcf02b187e07014a9b4",
-      "bytes": 20292,
+      "sourceSha256": "572fa763afe641dd50d06e92331a1b8cd513f21d2067902178db9f7012a3c19e",
+      "publishedCandidateSha256": "572fa763afe641dd50d06e92331a1b8cd513f21d2067902178db9f7012a3c19e",
+      "bytes": 20414,
       "transformation": null
     },
     {
@@ -356,9 +362,9 @@
     },
     {
       "path": "agent-forensic-handoff/python/afh_semantic/host.py",
-      "sourceSha256": "f4375e14ab1d20f314ee5a302109614328aa01a470161e99c4238a7217fe8274",
-      "publishedCandidateSha256": "f4375e14ab1d20f314ee5a302109614328aa01a470161e99c4238a7217fe8274",
-      "bytes": 36354,
+      "sourceSha256": "15aab232decfc6d9926f44745c1374e1f88825d8802c15f1d35dc457445081aa",
+      "publishedCandidateSha256": "15aab232decfc6d9926f44745c1374e1f88825d8802c15f1d35dc457445081aa",
+      "bytes": 36551,
       "transformation": null
     },
     {
@@ -4304,9 +4310,9 @@
     },
     {
       "path": "app/access-policy.mjs",
-      "sourceSha256": "be392788641a7cead87b0d74c16824a4dd9a91f7b122a9347a378cda90439af6",
-      "publishedCandidateSha256": "be392788641a7cead87b0d74c16824a4dd9a91f7b122a9347a378cda90439af6",
-      "bytes": 4146,
+      "sourceSha256": "2ecfa7fce43586db372b431849b196cdd53563955f84b881686d31d4b64108fa",
+      "publishedCandidateSha256": "2ecfa7fce43586db372b431849b196cdd53563955f84b881686d31d4b64108fa",
+      "bytes": 4158,
       "transformation": null
     },
     {
@@ -4737,6 +4743,13 @@
       "transformation": null
     },
     {
+      "path": "app/graph-inventory.test.mjs",
+      "sourceSha256": "6d414fed68f8bf655b6d33b4a0736335aeecafe9757bc7424e09c11af0587b89",
+      "publishedCandidateSha256": "6d414fed68f8bf655b6d33b4a0736335aeecafe9757bc7424e09c11af0587b89",
+      "bytes": 686,
+      "transformation": null
+    },
+    {
       "path": "app/graph-progress.mjs",
       "sourceSha256": "3adabb6fddf1d88cbf54703e3db64a2d8be53b9552481bd3383118c39c34a3bb",
       "publishedCandidateSha256": "3adabb6fddf1d88cbf54703e3db64a2d8be53b9552481bd3383118c39c34a3bb",
@@ -4751,10 +4764,17 @@
       "transformation": null
     },
     {
+      "path": "app/graph-publication-protocol.test.mjs",
+      "sourceSha256": "7b8e32ec4cc7a64f5f93f29f1127d152f1bf66688f6732cee0a3a2059359361d",
+      "publishedCandidateSha256": "7b8e32ec4cc7a64f5f93f29f1127d152f1bf66688f6732cee0a3a2059359361d",
+      "bytes": 700,
+      "transformation": null
+    },
+    {
       "path": "app/graph-publication.mjs",
-      "sourceSha256": "39f1e1b0c762778c354b980588581474d69df9035f7fe078aa256714815c0b18",
-      "publishedCandidateSha256": "39f1e1b0c762778c354b980588581474d69df9035f7fe078aa256714815c0b18",
-      "bytes": 315,
+      "sourceSha256": "e9dedd20c4339a89e304a133458d07e0ed95299e5aebcbfcddd00729118e8f80",
+      "publishedCandidateSha256": "e9dedd20c4339a89e304a133458d07e0ed95299e5aebcbfcddd00729118e8f80",
+      "bytes": 327,
       "transformation": null
     },
     {
@@ -5402,6 +5422,20 @@
       "transformation": null
     },
     {
+      "path": "app/test_graph_inventory.py",
+      "sourceSha256": "32b806a3dadfa10814b6eaf15b546ccccd08030460e1e1045f65db2dca2b3dea",
+      "publishedCandidateSha256": "32b806a3dadfa10814b6eaf15b546ccccd08030460e1e1045f65db2dca2b3dea",
+      "bytes": 7769,
+      "transformation": null
+    },
+    {
+      "path": "app/test_graph_publication_protocol.py",
+      "sourceSha256": "906f6db59c7548883e637f55671a6399cff3bc5f4ed88975aeaef8b934addbab",
+      "publishedCandidateSha256": "906f6db59c7548883e637f55671a6399cff3bc5f4ed88975aeaef8b934addbab",
+      "bytes": 10136,
+      "transformation": null
+    },
+    {
       "path": "app/test_janus_native.py",
       "sourceSha256": "5bc7af5600f89f18167ae70bbb2ed34ac2dd32c6db6b36ad6f41aa705fc2f713",
       "publishedCandidateSha256": "5bc7af5600f89f18167ae70bbb2ed34ac2dd32c6db6b36ad6f41aa705fc2f713",
@@ -5606,9 +5640,9 @@
     },
     {
       "path": "app/web/graph-publication-web.mjs",
-      "sourceSha256": "13dd7f18f6077eb4f3a10ba2855018e5882c64c514c980bfdf2cd904a5045537",
-      "publishedCandidateSha256": "13dd7f18f6077eb4f3a10ba2855018e5882c64c514c980bfdf2cd904a5045537",
-      "bytes": 7888,
+      "sourceSha256": "6ec1a70f4c052f81533e1eb6739ba8f0afe89887a570ef9ee6d9683e82cc2cca",
+      "publishedCandidateSha256": "6ec1a70f4c052f81533e1eb6739ba8f0afe89887a570ef9ee6d9683e82cc2cca",
+      "bytes": 10642,
       "transformation": null
     },
     {
@@ -5810,13 +5844,6 @@
       "onlyByteChange": true
     }
   ],
-  "qualificationScope": "I06 A13/A15 scoped technical delivery; full remote serial cumulative and synthetic personal/managed UI. F36 explicitly pending, not PASS. No human acceptance.",
-  "humanAcceptance": false,
-  "qualification": "QUALIFICATION-I06.json",
-  "testedProductCommit": "00249358d3daa91ddf0d47b36604efffae5c725c",
-  "candidateSealSha256": "e0b072204f560f96f0634414462de6ee7cb1f9f3623a8ae09c0bf0021c261110",
-  "closureDocumentationChanges": [
-    "README.md"
-  ],
-  "testedSourceFilesUnchangedAtClosure": 826
+  "qualificationScope": "A03/A14 focal and real personal/managed UI only. I07 full cumulative and seal pending. Parent qualifications remain historical. F36 explicitly deferred, not PASS. No human acceptance.",
+  "humanAcceptance": false
 }

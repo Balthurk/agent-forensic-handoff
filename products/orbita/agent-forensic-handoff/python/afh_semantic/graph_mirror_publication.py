@@ -1,9 +1,10 @@
 """Verified common PostgreSQL mirror; N04 and current sources remain authority."""
 import contextlib,datetime,json,os,threading,time,uuid
 from .common_backend import connect
-from .graph_publication import require,digest,latest,publish,selected,render,checkpoint,POLICY,graph_read_snapshot
+from .graph_publication import require,digest,latest,publish,selected,render,checkpoint,POLICY,graph_read_snapshot,plan
 from .graph_mirror import binding,CommonGraph
 from .knowledge_records import _json,RecordError
+from orbita_store.session import Session
 
 def now():return datetime.datetime.now(datetime.timezone.utc).isoformat()
 REMOTE_POLICY={**POLICY,'backend':'postgresql-verified-mirror','remoteBackendQualified':False,'commonMirrorVerified':True,'qualificationScope':'Current workspace capability; two independent PostgreSQL readers and bounded generation verified now'}
@@ -17,6 +18,20 @@ class Ledger:
         CREATE TABLE IF NOT EXISTS receipts(config TEXT,generation TEXT,fence INTEGER,payload TEXT,sha TEXT,PRIMARY KEY(config,generation,fence));
         CREATE TABLE IF NOT EXISTS selectors(config TEXT,scope TEXT,generation TEXT,fence INTEGER,sha TEXT,PRIMARY KEY(config,scope));''')
     def close(self):self.db.close()
+    @contextlib.contextmanager
+    def publication(self,scope):
+        # Serialize only mirror publishers. No N04 lock or data snapshot is held.
+        key='graph-publication:'+self.db.session.binding.workspace_id+':'+scope
+        self.db.raw.execute('SELECT pg_advisory_lock(hashtextextended(%s,0))',(key,))
+        releases=[]
+        try:yield releases
+        finally:
+            try:
+                for release in reversed(releases):release()
+            finally:
+                if self.db.in_transaction:self.db.rollback()
+                unlocked=self.db.raw.execute('SELECT pg_advisory_unlock(hashtextextended(%s,0))',(key,)).fetchone()[0]
+                require(unlocked,'G1_PUBLICATION_LOCK_RELEASE_UNVERIFIED')
     def claim(self,scope):return Claim(self,scope)
     def receipt(self,p,current=True,optional=False):
         row=self.db.execute('SELECT generation,fence,sha FROM selectors WHERE config=? AND scope=?',(self.config,p['scope'])).fetchone() if current else None
@@ -76,34 +91,56 @@ def capabilities(records):
     try:admitted=binding(records);return {'configured':True,'backend':'postgresql-verified','readers':2,'verified':False,'default':'postgresql','automaticPromotion':False,'humanAcceptance':False}
     except (RecordError,ValueError) as e:return {'configured':False,'backend':'postgresql-verified','reason':e.code if isinstance(e,RecordError) else 'G1_REMOTE_CONFIG_INVALID','verified':False,'default':'postgresql','automaticPromotion':False,'humanAcceptance':False}
 
+@contextlib.contextmanager
+def final_selection(records,ledger,p):
+    # Pin this workspace and its parent only during final selection using the
+    # existing admission protocol. Original sessions are NEVER reauthorized:
+    # their non-MVCC fences must still be current after acquiring these locks.
+    bound=records.db.session.binding
+    with Session(records.db.config,bound,read_only=True) as permit:
+        permit.raw.execute('BEGIN')
+        try:
+            permit.raw.execute('SELECT orbita_common.authorize_workspace(%s::uuid,%s,true)',(bound.workspace_id,bound.capability))
+            for db in (records.db,records.memory.db,ledger.db):
+                require(db.raw.execute('SELECT orbita_common.workspace_id()::text').fetchone()[0]==bound.workspace_id,'G1_REMOTE_AUTHORITY_CHANGED')
+            records.db.execute('BEGIN IMMEDIATE')
+            try:
+                current=latest(records,p['scope'])
+                require(current is not None and current['state']=='selected' and current['generation_id']==p['generation'],'G1_REMOTE_GENERATION_STALE')
+                require(plan(records,p['anchor'])==p,'G1_REMOTE_SOURCE_CHANGED')
+                yield
+            finally:records.db.rollback()
+        finally:permit.raw.rollback()
+
+
 def dispatch_verified(records,request):
     admission=binding(records);client=CommonGraph(admission);op=request['op'];require(op in ('graph_publish','graph_query','graph_original'),'UNKNOWN_GRAPH_OPERATION')
     if op=='graph_publish':
         local=publish(records,request['outboxId'],request['scope'])
         checkpoint('janus-after-n04')
-        # Cooperative N04 writers are fenced for the complete mirror selection.
-        records.db.execute('BEGIN IMMEDIATE');ledger=None;claim=None
+        ledger=None;claim=None
         try:
-            p,r,at=selected(records,dict(scope=request['scope'],generation=local['generation'],sourceCut=local['sourceCut']))
-            ledger=Ledger(records,admission,write=True);client.schema(create=True)
-            previous=ledger.db.execute('SELECT generation FROM selectors WHERE config=? AND scope=?',(ledger.config,p['scope'])).fetchone()
-            if previous and previous[0]==p['generation']:
-                receipt=ledger.receipt(p);observed=client.verify(p);require(observed==receipt['readbackHashes'],'G1_REMOTE_READBACK_MISMATCH')
-                return {**local,'backend':'postgresql-verified','policy':REMOTE_POLICY,'remoteReceipt':receipt,'replayed':True}
-            claim=ledger.claim(p['scope']);client.write(p);checkpoint('janus-after-objects');client.verify(p,marker=False);client.marker(p);observed=client.verify(p)
-            receipt={'schema':'orbita-common-graph-receipt-1','generation':p['generation'],'planHash':digest(p),'readbackHashes':observed,'config':admission['identity'],'fence':claim.fence,'verifiedAt':now(),'authority':'N04 and current original access; no factual approval'}
-            ledger.save(receipt,claim);checkpoint('janus-after-receipt')
-            from .graph_publication import plan
-            require(plan(records,request['outboxId'])==p,'G1_REMOTE_SOURCE_CHANGED')
-            require(latest(records,p['scope'])['generation_id']==p['generation'],'G1_REMOTE_GENERATION_STALE');ledger.select(p,receipt,claim);checkpoint('janus-after-selector')
-            return {**local,'backend':'postgresql-verified','policy':REMOTE_POLICY,'remoteReceipt':receipt,'replayed':False}
+            ledger=Ledger(records,admission,write=True)
+            with ledger.publication(request['scope']) as releases:
+                with graph_read_snapshot(records):
+                    p,r,at=selected(records,dict(scope=request['scope'],generation=local['generation'],sourceCut=local['sourceCut']))
+                # The plan is immutable; N04 and source snapshots have ended.
+                client.schema(create=True)
+                previous=ledger.db.execute('SELECT generation FROM selectors WHERE config=? AND scope=?',(ledger.config,p['scope'])).fetchone()
+                if previous and previous[0]==p['generation']:
+                    receipt=ledger.receipt(p);observed=client.verify(p);require(observed==receipt['readbackHashes'],'G1_REMOTE_READBACK_MISMATCH')
+                    with final_selection(records,ledger,p):
+                        require(ledger.receipt(p)==receipt,'G1_REMOTE_RECEIPT_CHANGED')
+                    return {**local,'backend':'postgresql-verified','policy':REMOTE_POLICY,'remoteReceipt':receipt,'replayed':True}
+                claim=ledger.claim(p['scope']);releases.append(claim.close)
+                client.write(p);checkpoint('janus-after-objects');client.verify(p,marker=False);client.marker(p);observed=client.verify(p)
+                receipt={'schema':'orbita-common-graph-receipt-1','generation':p['generation'],'planHash':digest(p),'readbackHashes':observed,'config':admission['identity'],'fence':claim.fence,'verifiedAt':now(),'authority':'N04 and current original access; no factual approval'}
+                ledger.save(receipt,claim);checkpoint('janus-after-receipt')
+                with final_selection(records,ledger,p):
+                    ledger.select(p,receipt,claim);checkpoint('janus-after-selector')
+                return {**local,'backend':'postgresql-verified','policy':REMOTE_POLICY,'remoteReceipt':receipt,'replayed':False}
         finally:
-            try:
-                if claim:claim.close()
-            finally:
-                try:
-                    if ledger:ledger.close()
-                finally:records.db.rollback()
+            if ledger:ledger.close()
     with contextlib.ExitStack() as stack:
         ledger=stack.enter_context(contextlib.closing(Ledger(records,admission)))
         client.schema()

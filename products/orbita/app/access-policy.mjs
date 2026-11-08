@@ -5,7 +5,7 @@ const reads=new Set(['/api/bootstrap','/api/documents','/api/documents/original'
 const posts=new Set(['/api/documents','/api/import','/api/turns','/api/index','/api/proposals','/api/semantic/extract','/api/semantic/review','/api/corpus-plan','/api/generations/replay']);
 const readerPosts=new Set(['/api/retrieve','/api/context/page','/api/explorer']);
 const operations={
- '/api/graph-publication':{read:['status','query','original','capabilities'],write:['publish']},
+ '/api/graph-publication':{read:['status','query','original','capabilities','inventory'],write:['publish']},
  '/api/causal':{read:['sources','source','get','history','query','page','original','snapshotItem'],write:['put']},
  '/api/decision-intelligence':{read:['sources','source','get','history','query','page','original','snapshotItem'],write:['put']},
  '/api/retrospectives':{read:['sources','source','get','history','query','page','original','snapshotItem'],write:['put']},

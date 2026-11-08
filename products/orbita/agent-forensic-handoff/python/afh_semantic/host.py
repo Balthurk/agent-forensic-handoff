@@ -380,7 +380,10 @@ def dispatch(request):
         try:return dispatch_learning(records,request)
         finally:records.close();memory.close()
     root=Path(request['root']).resolve();scope=request.get('scope','afh-corpus');request['scope']=scope
-    read_only=request['op'] in ('query','list','get','history','review_prepare','graph_query','graph_original','graph_status','graph_capabilities') and (root/'records.pgstore').exists()
+    if request['op']=='graph_inventory' and not (root/'records.pgstore').exists():
+        from .graph_inventory import empty_inventory
+        return empty_inventory(request)
+    read_only=request['op'] in ('query','list','get','history','review_prepare','graph_query','graph_original','graph_status','graph_capabilities','graph_inventory') and (root/'records.pgstore').exists()
     if not read_only:root.mkdir(parents=True,exist_ok=True)
     memory=AFHMemory(root,request.get('sources',[]),scope,register=request['op'] in ['sync','put','extract','reevaluation_prepare'],read_only=read_only)
     records=KnowledgeRecords(memory,root/'records.pgstore',read_only=read_only)
