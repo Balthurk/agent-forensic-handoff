@@ -1,15 +1,14 @@
 {
   "schema": "orbita-source-manifest-1",
-  "increment": "I09",
-  "status": "I09_SCOPED_TECHNICAL_SEALED_REMOTE_REBUILT",
+  "increment": "I10",
+  "status": "MEASURED_NO_ADOPTION_PENDING_REMOTE_VERIFICATION_AND_SEAL",
   "files": [
     {
       "path": "README.md",
-      "sourceSha256": "0d544309dccd907b6cd8ad6d55f2746f8b1f9f4818271b84101549b25cf3e205",
-      "publishedCandidateSha256": "8d812bff5c73adcf5751a01b73ca5ea35620a8fa3e291c6d7eb6fa82e7efda35",
-      "bytes": 16490,
-      "transformation": "Reviewed I09 closure documentation; executable source bytes unchanged",
-      "testedProductSha256": "0d544309dccd907b6cd8ad6d55f2746f8b1f9f4818271b84101549b25cf3e205"
+      "sourceSha256": "8e5180a78d66e0c623f0fc548b993743ed874af4b64d8155e8519442a9cccffb",
+      "publishedCandidateSha256": "8e5180a78d66e0c623f0fc548b993743ed874af4b64d8155e8519442a9cccffb",
+      "bytes": 18182,
+      "transformation": "I10 measured investigation prefix preserving qualified earlier guide"
     },
     {
       "path": "agent-forensic-handoff/.github/workflows/ci.yml",
@@ -3330,6 +3329,20 @@
       "transformation": null
     },
     {
+      "path": "agent-forensic-handoff/scripts/qualification/measure_i10_graph_history.py",
+      "sourceSha256": "6c17796c6f6f8a5c008f66270a4d2f477fb28c82e24e0c660d2b4dfa696700d7",
+      "publishedCandidateSha256": "6c17796c6f6f8a5c008f66270a4d2f477fb28c82e24e0c660d2b4dfa696700d7",
+      "bytes": 18706,
+      "transformation": null
+    },
+    {
+      "path": "agent-forensic-handoff/scripts/qualification/measure_i10_history_entrypoint.py",
+      "sourceSha256": "7d50fbc12e9e2268e2fb614b75936e80d7542bad976581c734d9e3b269488649",
+      "publishedCandidateSha256": "7d50fbc12e9e2268e2fb614b75936e80d7542bad976581c734d9e3b269488649",
+      "bytes": 4867,
+      "transformation": null
+    },
+    {
       "path": "agent-forensic-handoff/scripts/recovery/README.md",
       "sourceSha256": "13e5e90ff0458993a2ee9e567a7c3479c610006577b3bae1f0dee69eb9c83b0a",
       "publishedCandidateSha256": "13e5e90ff0458993a2ee9e567a7c3479c610006577b3bae1f0dee69eb9c83b0a",
@@ -5894,13 +5907,6 @@
       "onlyByteChange": true
     }
   ],
-  "qualificationScope": "I09 C04 measured negative adoption decision; runtime unchanged and I08 complete cumulative/UI explicitly reused. New local and independently reconstructed FTS experiments plus real-profile CheckOnly. F36 pending. No human acceptance.",
-  "humanAcceptance": false,
-  "qualification": "QUALIFICATION-I09.json",
-  "testedProductCommit": "b06c7f2bdc78c6f6149414a761c53efcf3c4d067",
-  "candidateSealSha256": "8f23c69703158a72a9e12734e107ea2f4aff52758773f5eea97997755ee9aa9d",
-  "closureDocumentationChanges": [
-    "README.md"
-  ],
-  "testedSourceFilesUnchangedAtClosure": 838
+  "qualificationScope": "C02/C03 bounded measured alternatives;841 inherited sources intact; no runtime change. Exact I08 cumulative/UI reuse pending verification. F36 deferred; no human acceptance.",
+  "humanAcceptance": false
 }

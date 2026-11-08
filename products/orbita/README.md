@@ -1,3 +1,15 @@
+# I10: grafos e historial medidos, con validadores conservados
+
+C02 mide una página de diez miembros en grafos sintéticos de 20 y 100 miembros. Verificar toda la pertenencia y sólo los cuerpos de la página ahorra lectura, pero acepta corrupción fuera de la página que la comprobación integral rechaza. Se descarta esa alternativa; no se cambia la prueba íntegra, los lectores ni los límites.
+
+C03 mide historias de 8, 32 y 64 versiones y consultas ramificadas. Una caché acotada del hash de sobre, sin cachear validación ni permisos, no alcanza el criterio de beneficio fijado antes de ejecutar. El control del laboratorio muestra ahorro con IntegrityBatch dentro de un corte compartido, pero la ruta pública de historial observada abre consumidores sin ese corte. Una extensión que respeta únicamente contextos ya existentes no se activa. No se atribuye al producto el ahorro de ese laboratorio ni se descarta un futuro protocolo de corte compartido.
+
+Los dos scripts de `agent-forensic-handoff/scripts/qualification/measure_i10_*` contienen los experimentos reproducibles. La aplicación no los importa. Pasaron los 100 oráculos existentes ejecutados en la investigación, y los adversarios declarados quedaron registrados. Se conservan las 841 fuentes heredadas y los 155 archivos de regresión. La acumulada I08 de 1251 PASS, una omisión Windows heredada y cero fallos es evidencia reutilizable por igualdad de código, no una nueva ejecución I10.
+
+Esta publicación aún requiere repetir los experimentos desde reconstrucción remota y completar el sello. F36 sigue pendiente por decisión explícita, sin PASS. No hay aceptación humana ni promoción productiva.
+
+---
+
 # I09: búsqueda FTS medida, con el buscador exacto conservado
 
 I09 completa C04 sobre `b06c7f2bdc78c6f6149414a761c53efcf3c4d067` con la decisión de no adoptar las dos preselecciones GIN evaluadas. La variante nativa pierde coincidencias en 6 de 19 consultas y la preprocesada con Unicode61 en 2. Esta última sigue perdiendo un token con Unicode de uso privado y otro de 4096 caracteres. El refinamiento exacto no recupera filas excluidas previamente.
