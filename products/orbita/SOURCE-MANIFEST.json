@@ -1,14 +1,15 @@
 {
   "schema": "orbita-source-manifest-1",
   "increment": "I10",
-  "status": "MEASURED_NO_ADOPTION_PENDING_REMOTE_VERIFICATION_AND_SEAL",
+  "status": "I10_SCOPED_TECHNICAL_SEALED_REMOTE_REBUILT",
   "files": [
     {
       "path": "README.md",
       "sourceSha256": "8e5180a78d66e0c623f0fc548b993743ed874af4b64d8155e8519442a9cccffb",
-      "publishedCandidateSha256": "8e5180a78d66e0c623f0fc548b993743ed874af4b64d8155e8519442a9cccffb",
-      "bytes": 18182,
-      "transformation": "I10 measured investigation prefix preserving qualified earlier guide"
+      "publishedCandidateSha256": "1a350f3516a306e282f853985b6e6566f25d58264b7e1cd4d0a5e603339ba7cb",
+      "bytes": 20164,
+      "transformation": "Reviewed I10 closure documentation; executable source bytes unchanged",
+      "testedProductSha256": "8e5180a78d66e0c623f0fc548b993743ed874af4b64d8155e8519442a9cccffb"
     },
     {
       "path": "agent-forensic-handoff/.github/workflows/ci.yml",
@@ -5907,6 +5908,13 @@
       "onlyByteChange": true
     }
   ],
-  "qualificationScope": "C02/C03 bounded measured alternatives;841 inherited sources intact; no runtime change. Exact I08 cumulative/UI reuse pending verification. F36 deferred; no human acceptance.",
-  "humanAcceptance": false
+  "qualificationScope": "I10 C02/C03 bounded measured negative decisions; no runtime change. I08 complete cumulative/UI explicitly reused. New local and remote graph/history/entrypoint experiments and real-profile CheckOnly. Historical PG01 recovery plus current authenticated ciphertext custody. F36 pending. No human acceptance.",
+  "humanAcceptance": false,
+  "qualification": "QUALIFICATION-I10.json",
+  "testedProductCommit": "3de9e3ec1bbf8b1db9f3d9a04985cfa2dc378e53",
+  "candidateSealSha256": "8fa3ab1bee6d2f8fa22a89eda7193f11da3841010cc3e75799e300a8a72f0282",
+  "closureDocumentationChanges": [
+    "README.md"
+  ],
+  "testedSourceFilesUnchangedAtClosure": 840
 }

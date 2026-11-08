@@ -1,0 +1,104 @@
+{
+  "schema": "orbita.public.qualification.v1",
+  "at": "2026-11-08T19:10:37.389299+00:00",
+  "status": "PASS_SCOPED_TECHNICAL_I10",
+  "testedProductCommit": "3de9e3ec1bbf8b1db9f3d9a04985cfa2dc378e53",
+  "candidateSealSha256": "8fa3ab1bee6d2f8fa22a89eda7193f11da3841010cc3e75799e300a8a72f0282",
+  "publishedSourceFiles": 841,
+  "localSourceFiles": 843,
+  "testedSourceFilesUnchangedAtClosure": 840,
+  "closureDocumentationChanges": [
+    "README.md"
+  ],
+  "executableSourcesChangedAtClosure": false,
+  "sourceBytesUnchangedDuringTests": true,
+  "independentHTTPSReconstruction": true,
+  "freshNodeDependencies": false,
+  "freshPythonEnvironment": false,
+  "dependencyMode": "Qualified dependencies reused with identical locks and current npm ls/pip check",
+  "decisions": [
+    "DO_NOT_ADOPT_PAGE_ONLY_BODY_VERIFICATION",
+    "DO_NOT_ADOPT_PURE_DIGEST_MEMO_FOR_MEASURED_WORKLOADS",
+    "DO_NOT_ADOPT_INAPPLICABLE_EXISTING_CONTEXT_BATCH"
+  ],
+  "runtimeOptimizationAdopted": false,
+  "productMetrics": {
+    "tests": 1252,
+    "passed": 1251,
+    "skipped": 1,
+    "failed": 0,
+    "profile": "local-serial",
+    "seconds": 6231.140999999974,
+    "evidenceMode": "PASS_REUSED_EXACT_UNCHANGED_RUNTIME_NO_NEW_CUMULATIVE",
+    "originalIncrement": "I08",
+    "newExecution": false
+  },
+  "rootMetrics": {
+    "passed": 292,
+    "skipped": 1,
+    "failed": 0,
+    "overlapWithProduct": true,
+    "originalIncrement": "I08",
+    "newExecution": false
+  },
+  "cumulativeEvidenceMode": "REUSED_EXACT_I08_NO_NEW_FULL_EXECUTION",
+  "discoveredFiles": {
+    "core": 29,
+    "app": 76,
+    "python": 50
+  },
+  "inheritedFullCommands": 106,
+  "newFullCommands": 0,
+  "experimentRuns": [
+    {
+      "name": "GRAPH-HISTORY-EXPERIMENT1",
+      "seconds": 212.59399999998277,
+      "currentOracleTests": 100
+    },
+    {
+      "name": "HISTORY-ENTRYPOINT1",
+      "seconds": 14.35999999998603,
+      "currentOracleTests": 0
+    },
+    {
+      "name": "GRAPH-HISTORY-REMOTE1",
+      "seconds": 224.68700000000536,
+      "currentOracleTests": 100
+    },
+    {
+      "name": "HISTORY-ENTRYPOINT-REMOTE1",
+      "seconds": 13.578000000008615,
+      "currentOracleTests": 0
+    }
+  ],
+  "uniqueExistingOraclesPerMainRun": 100,
+  "experimentScope": "Bounded synthetic measured alternatives only. Page proof fails off-page integrity. Pure digest memo fails predefined benefit. Existing-context batching is inapplicable on the unchanged public history route. No universal rejection of future shared-cut designs; no new full cumulative/UI/restore execution.",
+  "nativeUI": {
+    "mode": "REUSED_EXACT_I08",
+    "newExecution": false,
+    "limitation": "Original synthetic personal/managed observation; personal waiting uses a test-only transport barrier. No human acceptance."
+  },
+  "realProfileStartup": {
+    "status": "PASS_REAL_PROFILE_CHECKONLY_NO_SERVER",
+    "checkOnly": true,
+    "serverStarted": false
+  },
+  "operationalRecovery": {
+    "mode": "REUSED_UNCHANGED_PG01",
+    "newExecution": false,
+    "currentCiphertextCustody": "Authentic manifest and all ciphertext bytes verified; this is not another restore"
+  },
+  "externalJanus": "NOT_QUALIFIED",
+  "f36": {
+    "status": "DEFERRED_EXPLICITLY_NOT_QUALIFIED",
+    "fullF36Passed": false
+  },
+  "original22x60": "FAIL_PRESERVED",
+  "failuresPreserved": true,
+  "allExistingTestsRetained": true,
+  "internalDeadlinesUnchanged": true,
+  "privateEvidencePublished": false,
+  "humanAcceptance": false,
+  "productivePromotion": false,
+  "remainingIncrements": []
+}
