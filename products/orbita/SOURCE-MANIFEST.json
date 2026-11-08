@@ -1,14 +1,15 @@
 {
   "schema": "orbita-source-manifest-1",
   "increment": "I09",
-  "status": "MEASURED_NO_ADOPTION_PENDING_REMOTE_VERIFICATION_AND_SEAL",
+  "status": "I09_SCOPED_TECHNICAL_SEALED_REMOTE_REBUILT",
   "files": [
     {
       "path": "README.md",
       "sourceSha256": "0d544309dccd907b6cd8ad6d55f2746f8b1f9f4818271b84101549b25cf3e205",
-      "publishedCandidateSha256": "0d544309dccd907b6cd8ad6d55f2746f8b1f9f4818271b84101549b25cf3e205",
-      "bytes": 15755,
-      "transformation": "I09 experiment status prefix preserving qualified I08 guide"
+      "publishedCandidateSha256": "8d812bff5c73adcf5751a01b73ca5ea35620a8fa3e291c6d7eb6fa82e7efda35",
+      "bytes": 16490,
+      "transformation": "Reviewed I09 closure documentation; executable source bytes unchanged",
+      "testedProductSha256": "0d544309dccd907b6cd8ad6d55f2746f8b1f9f4818271b84101549b25cf3e205"
     },
     {
       "path": "agent-forensic-handoff/.github/workflows/ci.yml",
@@ -5893,6 +5894,13 @@
       "onlyByteChange": true
     }
   ],
-  "qualificationScope": "C04 measured investigation;840 inherited source bytes unchanged; no runtime optimization or schema migration. Exact inherited cumulative reuse pending remote verification. F36 deferred; no human acceptance.",
-  "humanAcceptance": false
+  "qualificationScope": "I09 C04 measured negative adoption decision; runtime unchanged and I08 complete cumulative/UI explicitly reused. New local and independently reconstructed FTS experiments plus real-profile CheckOnly. F36 pending. No human acceptance.",
+  "humanAcceptance": false,
+  "qualification": "QUALIFICATION-I09.json",
+  "testedProductCommit": "b06c7f2bdc78c6f6149414a761c53efcf3c4d067",
+  "candidateSealSha256": "8f23c69703158a72a9e12734e107ea2f4aff52758773f5eea97997755ee9aa9d",
+  "closureDocumentationChanges": [
+    "README.md"
+  ],
+  "testedSourceFilesUnchangedAtClosure": 838
 }

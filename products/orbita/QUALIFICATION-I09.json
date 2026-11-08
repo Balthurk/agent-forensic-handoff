@@ -1,0 +1,97 @@
+{
+  "schema": "orbita.public.qualification.v1",
+  "at": "2026-11-08T18:40:36.889449+00:00",
+  "status": "PASS_SCOPED_TECHNICAL_I09",
+  "testedProductCommit": "b06c7f2bdc78c6f6149414a761c53efcf3c4d067",
+  "candidateSealSha256": "8f23c69703158a72a9e12734e107ea2f4aff52758773f5eea97997755ee9aa9d",
+  "publishedSourceFiles": 839,
+  "localSourceFiles": 841,
+  "testedSourceFilesUnchangedAtClosure": 838,
+  "closureDocumentationChanges": [
+    "README.md"
+  ],
+  "executableSourcesChangedAtClosure": false,
+  "sourceBytesUnchangedDuringTests": true,
+  "independentHTTPSReconstruction": true,
+  "freshNodeDependencies": false,
+  "freshPythonEnvironment": false,
+  "dependencyMode": "Reused qualified dependencies with identical locks and current npm ls/pip check",
+  "decision": "DO_NOT_ADOPT_EVALUATED_NATIVE_PRESELECTIONS",
+  "runtimeOptimizationAdopted": false,
+  "indexOrSchemaMigrated": false,
+  "productMetrics": {
+    "tests": 1252,
+    "passed": 1251,
+    "skipped": 1,
+    "failed": 0,
+    "profile": "local-serial",
+    "seconds": 6231.140999999974,
+    "evidenceMode": "PASS_REUSED_EXACT_UNCHANGED_RUNTIME_NO_NEW_CUMULATIVE",
+    "originalIncrement": "I08",
+    "newExecution": false
+  },
+  "rootMetrics": {
+    "passed": 292,
+    "skipped": 1,
+    "failed": 0,
+    "overlapWithProduct": true,
+    "originalIncrement": "I08",
+    "newExecution": false
+  },
+  "cumulativeEvidenceMode": "REUSED_EXACT_I08_NO_NEW_FULL_EXECUTION",
+  "discoveredFiles": {
+    "core": 29,
+    "app": 76,
+    "python": 50
+  },
+  "inheritedFullCommands": 106,
+  "newFullCommands": 0,
+  "experimentRuns": [
+    {
+      "name": "FTS-EXPERIMENT1",
+      "seconds": 139.31299999999464,
+      "currentOracleTests": 10
+    },
+    {
+      "name": "FTS-REMOTE-EXPERIMENT2",
+      "seconds": 140.03099999998813,
+      "currentOracleTests": 10
+    }
+  ],
+  "parityMismatches": {
+    "native_raw": 6,
+    "unicode61_preprocessed": 2
+  },
+  "queriesPerVariant": 19,
+  "experimentScope": "Two simple-config native GIN preselection variants with exact refinement; synthetic1000/10000rows. False negatives reject both despite selective speedup. Not a rejection of all possible index designs.",
+  "publicationComparisonLimit": "Prototype uses one operator TEMP table and no product fences, outbox or RLS; its lower publication cost is not an equivalent deployment claim.",
+  "nativeUI": {
+    "mode": "REUSED_EXACT_I08",
+    "newExecution": false,
+    "limitation": "Original synthetic personal/managed observation; personal waiting uses a test-only transport barrier. No human acceptance."
+  },
+  "realProfileStartup": {
+    "status": "PASS_REAL_PROFILE_CHECKONLY_NO_SERVER",
+    "checkOnly": true,
+    "serverStarted": false
+  },
+  "operationalRecovery": {
+    "mode": "REUSED_UNCHANGED_PG01",
+    "newExecution": false
+  },
+  "externalJanus": "NOT_QUALIFIED",
+  "f36": {
+    "status": "DEFERRED_EXPLICITLY_NOT_QUALIFIED",
+    "fullF36Passed": false
+  },
+  "original22x60": "FAIL_PRESERVED",
+  "prelaunchFailurePreserved": true,
+  "allExistingTestsRetained": true,
+  "internalDeadlinesUnchanged": true,
+  "privateEvidencePublished": false,
+  "humanAcceptance": false,
+  "productivePromotion": false,
+  "remainingIncrements": [
+    "I10"
+  ]
+}

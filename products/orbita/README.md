@@ -1,12 +1,16 @@
-# I09: búsqueda FTS medida, sin adoptar una preselección incompatible
+# I09: búsqueda FTS medida, con el buscador exacto conservado
 
-I09 ha medido dos preselecciones GIN con tsvector simple, texto original y texto preprocesado con Unicode61, seguidas del comprobador exacto. La primera pierde coincidencias en 6 de 19 consultas de paridad; la segunda en 2. El preprocesado sigue perdiendo un token con Unicode de uso privado y otro de 4096 caracteres. El refinamiento no recupera filas excluidas previamente.
+I09 completa C04 sobre `b06c7f2bdc78c6f6149414a761c53efcf3c4d067` con la decisión de no adoptar las dos preselecciones GIN evaluadas. La variante nativa pierde coincidencias en 6 de 19 consultas y la preprocesada con Unicode61 en 2. Esta última sigue perdiendo un token con Unicode de uso privado y otro de 4096 caracteres. El refinamiento exacto no recupera filas excluidas previamente.
 
-Se conservan el buscador actual, todas las pruebas, los límites y el esquema. Los diez oráculos FTS actuales pasaron, incluidos Unicode, sintaxis admitida, transacciones, aislamiento y publicación/replay. Con 10000 filas sintéticas, la mediana de una búsqueda selectiva pasó de 1.449 s a 0.023 s en la variante preprocesada; ese beneficio no compensa la pérdida de equivalencia. La consulta amplia midió 1.469 s y 1.156 s. Las mediciones de inserción en tablas TEMP omiten los controles operativos y no representan una mejora equivalente de la publicación del producto.
+El experimento local y el reconstruido desde HTTPS completaron sus mediciones y pasaron los diez oráculos FTS actuales en cada ejecución. La paridad ordenada fue idéntica. Con 10000 filas sintéticas, la búsqueda selectiva remota midió 1.376 s en el camino actual y 0.021 s en la variante preprocesada; la consulta amplia, 1.395 s y 1.276 s. El beneficio selectivo no sustituye la equivalencia. Las inserciones TEMP del operador omiten controles operativos y sus tiempos no son una mejora comparable de publicación completa.
 
-El experimento reproducible está en `agent-forensic-handoff/scripts/qualification/measure_i09_fts.py`. No lo importa la aplicación. Esta candidata conserva los 840 archivos heredados y los 155 archivos de regresión; la acumulada I08 de 1251 PASS y una omisión es evidencia elegible por igualdad de bytes, no una nueva ejecución I09. Todavía faltan la comprobación del experimento desde reconstrucción remota y el sello de I09.
+El script reproducible está en `agent-forensic-handoff/scripts/qualification/measure_i09_fts.py`; la aplicación no lo importa. No se cambió el buscador, el esquema, los permisos ni ningún límite. Los 840 archivos heredados y los 155 archivos de regresión permanecen iguales. Se reutilizan explícitamente la acumulada I08 de 1251 PASS, una omisión Windows heredada y cero fallos, y su UI personal/gestionada. No se afirma una nueva acumulada ni una nueva UI I09. La raíz I08 se reutiliza con sus 292 PASS y una omisión, sin sumar totales solapados.
 
-La decisión se limita a las dos alternativas evaluadas; no demuestra que todo índice GIN posible sea incompatible. F36 sigue pendiente por decisión explícita, sin PASS. No hay aceptación humana ni promoción productiva. I10 permanece pendiente.
+Las fuentes se reconstruyeron desde HTTPS sin alternates. Las dependencias cualificadas se reutilizaron con locks idénticos y comprobaciones actuales. El arranque CheckOnly nuevo con el perfil real pasó sin importar datos ni abrir servidor permanente. Un intento prematuro de lanzamiento quedó preservado sin pruebas ejecutadas; el intento posterior remoto completó el experimento y los cierres independientes.
+
+La decisión se limita a estas dos variantes; no demuestra que todo índice posible sea incompatible. La recuperación operativa PG01 se conserva y reutiliza por igualdad de código. F36 sigue íntegro y pendiente por decisión explícita, sin PASS. No hay aceptación humana ni promoción productiva. I10 queda pendiente.
+
+`QUALIFICATION-I09.json` delimita la entrega y separa pruebas nuevas de evidencia reutilizada. I08 y los antecedentes conservados debajo mantienen su propio alcance.
 
 ---
 
