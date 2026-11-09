@@ -394,7 +394,54 @@ function evidenceUri(rawHash, decoded) {
   return `afh://evidence/sha256/${rawHash}/record/${decoded.ordinal}#bytes=${decoded.byteOffset}:${decoded.byteLength}`;
 }
 
+function processCopilotTool(db, event, normalized) {
+  const correlatedPatch = event.kind === "filesystem.patch" && Boolean(event.callId);
+  if (!correlatedPatch && !["tool.requested", "tool.started", "tool.completed", "mcp.completed", "tool.observed"].includes(event.kind)) return;
+  const nativeId = event.callId || normalized.nativeId || null;
+  const observedCommand = normalized.metadata?.command || extractCommand(normalized.input) || null;
+  // Native correlation is local to the observed session/source and turn,
+  // unless the adapter declares its call IDs unique for the whole session.
+  // Command text is a grouping attribute, never an execution identity.
+  db.executionBindings ??= new Map();
+  const turnScope = normalized.metadata?.callIdScope === "session" && event.callId ? null : event.turnId ?? null;
+  const bindingKey = stableStringify([event.sessionId, event.sourceId, nativeId || event.id, turnScope]);
+  const bindings = db.executionBindings.get(bindingKey) ?? [];
+  const requested = event.kind === "tool.requested";
+  // A start record is execution progress: it joins an open request but never
+  // provides terminal evidence.
+  const progress = event.kind === "tool.started";
+  const open = bindings.filter(binding => !binding.terminal);
+  let binding = requested ? null : open.length === 1 ? open[0] : !progress && open.length === 0 && bindings.length === 1 ? bindings[0] : null;
+  if (!binding) {
+    binding = { id: `tex-${shortHash([bindingKey, event.id], 24)}`, terminal: false };
+    bindings.push(binding); db.executionBindings.set(bindingKey, bindings);
+  }
+  if (!requested && !progress) binding.terminal = true;
+  const toolId = binding.id;
+  const existing = db.get("SELECT * FROM tool_execution WHERE id=$id", { id: toolId });
+  const toolName = existing?.tool_name || normalized.metadata?.toolName || normalized.subtype || "unknown";
+  const command = observedCommand || existing?.command_text || null;
+  const exitCode = normalized.metadata?.exitCode ?? existing?.exit_code ?? null;
+  const status = requested || progress ? (existing?.result_event_id ? existing.status : "INCOMPLETE") : (event.status || "UNKNOWN");
+  const semantic = !progress && event.outputPreview ? semanticExtract(event.outputPreview, status, exitCode) : existing?.semantic_extract ?? null;
+  const opening = requested || (progress && !existing?.call_event_id);
+  db.upsertTool({
+    id: toolId, sessionId: event.sessionId, actorId: progress && existing ? existing.actor_id : event.actorId,
+    toolName, command, cwd: normalized.metadata?.cwd ?? existing?.working_directory ?? null,
+    callEvent: opening ? event.id : existing?.call_event_id ?? null,
+    resultEvent: !requested && !progress ? event.id : existing?.result_event_id ?? null,
+    started: opening ? event.observedAt : existing?.started_at ?? null,
+    ended: !requested && !progress ? event.observedAt : existing?.ended_at ?? null,
+    status, exitCode, duration: normalized.metadata?.durationMs ?? existing?.duration_ms ?? null,
+    inputBlob: event.inputBlobSha256 ?? existing?.input_blob_sha256 ?? null,
+    outputBlob: event.outputBlobSha256 ?? existing?.output_blob_sha256 ?? null,
+    semantic,
+    fingerprint: shortHash([toolName, command || event.inputBlobSha256, normalized.metadata?.cwd ?? null], 32),
+  });
+}
+
 export function processTool(db, event, normalized) {
+  if (normalized.metadata?.callIdScope === "session") return processCopilotTool(db, event, normalized);
   const correlatedPatch = event.kind === "filesystem.patch" && Boolean(event.callId);
   if (!correlatedPatch && !["tool.requested", "tool.completed", "mcp.completed", "tool.observed"].includes(event.kind)) return;
   const callId = event.callId || event.nativeId || event.id;
@@ -486,14 +533,16 @@ function semanticExtract(output, status, exitCode) {
 function processArtifacts(db, evidence, event, artifacts, workspaceRoot, evidenceRefId) {
   for (const item of artifacts) {
     if (!item.path || typeof item.path !== "string") continue;
-    const logicalPath = workspaceRoot && path.isAbsolute(item.path) && item.path.startsWith(path.resolve(workspaceRoot) + path.sep)
-      ? path.relative(workspaceRoot, item.path).replaceAll(path.sep, "/")
+    const root = workspaceRoot ? path.resolve(workspaceRoot) : null;
+    const absolute = path.isAbsolute(item.path) ? path.resolve(item.path) : null;
+    const logicalPath = root && absolute && absolute.startsWith(root + path.sep)
+      ? path.relative(root, absolute).replaceAll(path.sep, "/")
       : item.path.replaceAll(path.sep, "/");
     const artifactId = `art-${shortHash([workspaceRoot || "", logicalPath], 24)}`;
     const contentBlob = typeof item.content === "string" ? evidence.putText(item.content, extensionFor(item.path)) : null;
     const diffBlob = typeof item.diff === "string" ? evidence.putText(item.diff, "diff") : null;
     const prior = db.get("SELECT id FROM artifact_revision WHERE artifact_id=$id ORDER BY observed_at DESC,id DESC LIMIT 1", { id: artifactId });
-    const status = event.status === "FAILED" ? "FAILED" : "LIVE_UNVERIFIED";
+    const status = item.status ?? (event.status === "FAILED" ? "FAILED" : "LIVE_UNVERIFIED");
     db.upsertArtifact({
       id: artifactId, logicalPath, kind: artifactKind(item.path), workspaceRoot: workspaceRoot ?? null,
       currentPath: item.path, currentStatus: status, currentSha: contentBlob?.sha256 ?? null,

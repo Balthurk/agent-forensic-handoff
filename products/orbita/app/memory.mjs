@@ -21,14 +21,17 @@ async function verifiedCase(item){return loadCase(item);}
 const keyOf=(id,event)=>id+':'+event;
 function graph(c){
  const db=new DatabaseSync(path.join(c.item.path,'case.pgstore'),{family:'case',readOnly:true});let rows;
- try{rows=db.prepare('SELECT id,turn_id,call_id,parent_event_id,kind,metadata_json FROM event WHERE canonical=1 ORDER BY record_ordinal,subordinal').all();}finally{db.close();}
+ try{rows=db.prepare('SELECT id,session_id,turn_id,call_id,parent_event_id,kind,metadata_json FROM event WHERE canonical=1 ORDER BY record_ordinal,subordinal').all();}finally{db.close();}
  const live=new Map(c.messages.map(m=>[m.id,m])),users=new Map(),calls=new Map(),links={};
- for(const row of rows){const m=live.get(row.id);if(!m)continue;if(m.role==='user'&&row.turn_id)users.set(row.turn_id,[...(users.get(row.turn_id)||[]),row.id]);
+ // Copilot turn counters restart per interaction; a bare turn ID is not a
+ // cross-interaction dependency. Missing native interactions remain unlinked.
+ const episode=row=>{const meta=JSON.parse(row.metadata_json||'{}');return meta.origin==='copilot.events'?(meta.interactionId?JSON.stringify([row.session_id,meta.interactionId]):null):row.turn_id;};
+ for(const row of rows){const m=live.get(row.id);if(!m)continue;const key=episode(row);if(m.role==='user'&&key)users.set(key,[...(users.get(key)||[]),row.id]);
    if(row.call_id&&['tool.call','tool.requested'].includes(row.kind))calls.set(row.call_id,row.id);}
  const nodes=new Map(rows.map(r=>[JSON.parse(r.metadata_json||'{}').nodeId,r]));
  for(const r of rows){if(!live.has(r.id))continue;const id=keyOf(c.item.id,r.id),deps=new Set();
    if(r.parent_event_id)deps.add(keyOf(c.item.id,r.parent_event_id));
-   for(const user of users.get(r.turn_id)||[])if(user!==r.id)deps.add(keyOf(c.item.id,user));
+   for(const user of users.get(episode(r))||[])if(user!==r.id)deps.add(keyOf(c.item.id,user));
    if(r.call_id&&!['tool.call','tool.requested'].includes(r.kind)&&calls.has(r.call_id))deps.add(keyOf(c.item.id,calls.get(r.call_id)));
    // A ChatGPT branch is a chronological chain, not a semantic dependency graph.
    // Bind the nearest captured user ancestor, not every earlier conversation node.

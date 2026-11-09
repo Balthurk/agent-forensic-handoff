@@ -36,7 +36,7 @@ export async function renderCase(db, caseDir, manifest, options = {}) {
   const decisions = db.all("SELECT * FROM decision_record ORDER BY COALESCE(valid_from_ordinal,0),id");
   const artifacts = db.all("SELECT * FROM artifact ORDER BY current_status,logical_path");
   const tools = db.all("SELECT * FROM tool_execution ORDER BY COALESCE(started_at,''),id");
-  const failures = tools.filter((tool) => ["FAILED", "INCOMPLETE"].includes(tool.status));
+  const failures = tools.filter((tool) => ["FAILED", "INCOMPLETE", "INTERRUPTED", "APPROVAL_DENIED"].includes(tool.status));
   const loops = loopGroups(db);
   const external = db.all("SELECT * FROM event WHERE canonical=1 AND (kind LIKE 'external.%' OR kind LIKE 'mcp.%') ORDER BY COALESCE(observed_at,''),source_id,record_ordinal");
   const validations = db.all("SELECT * FROM validation ORDER BY observed_at,id");

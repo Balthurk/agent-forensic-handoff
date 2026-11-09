@@ -84,7 +84,25 @@ Measured by `test/copilot.test.js` (capability present in the reconstructed case
 
 Real-session measurement (read-only, not committed; 11 local sessions, 12,268 records): 0 unknown records and 0 warnings; 1,290 tool executions, 1,287 correlated from request to completion; 3 without completion (one aborted `ask_user`, the rest in flight while measured); 1 `INTERRUPTED`; 3 `APPROVAL_DENIED`. The generic adapter on the same bytes: 9,464 unknown records, 0 user messages and 0 correlated tool calls.
 
-## Known gaps
+## Installed skill and Orbita integration
+
+The CLI and the user-level skill must both be updated. Orbita loads a separate
+AFH snapshot under `products/orbita/agent-forensic-handoff`; updating only the
+top-level CLI does not update the web importer. That snapshot now includes the
+same Copilot normalizer and session-scoped tool reducer, while retaining its
+PostgreSQL storage, document imports and existing non-Copilot correlation.
+`test/orbita-copilot.test.js` checks dispatch parity, discovery and request/start/
+completion correlation across that boundary.
+
+Orbita's context graph groups Copilot messages by the persisted session and
+`interactionId`, not the restarting `turnId` counter. An absent interaction ID
+does not create a guessed dependency on a different user request.
+
+Existing cases are immutable projections of the adapter used at import time.
+Re-audit and re-import the same bytes as a new case after an adapter upgrade;
+keep the earlier case for comparison rather than modifying its evidence.
+
+## Remaining gaps
 
 - Sub-agent records (`subagent.*`, envelope `agentId`, `parentToolCallId`), `assistant.reasoning`, `tool.user_requested`, `human_response.recorded`, `session.task_complete`, the retired permission claims and the fusion records are mapped from the schema only; they did not occur in the inspected sessions.
 - A sub-agent's lifecycle actor (`act:subagent:call:<toolCallId>`) and its record actor (`act:subagent:<agentId>`) are not merged; both carry `parentToolCallId` for joining.

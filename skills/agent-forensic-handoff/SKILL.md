@@ -1,6 +1,6 @@
 ---
 name: agent-forensic-handoff
-description: Reconstruct a prior Codex, Claude Code, Antigravity, or generic agent session from persisted evidence and hydrate the current session for safe continuation. Use when the user supplies a historical session/thread/conversation ID or transcript and asks to audit, resume, hand off, recover, investigate, or continue that work without replaying the full transcript.
+description: Reconstruct a prior Copilot SDK / VS Code Agent Host, Codex, Claude Code, Antigravity, or generic agent session from persisted evidence and hydrate the current session for safe continuation. Use when the user supplies a historical session/thread/conversation ID, VS Code session link, or transcript and asks to audit, resume, hand off, recover, investigate, or continue that work without replaying the full transcript.
 ---
 
 # Agent Forensic Handoff
@@ -27,6 +27,21 @@ Use the bundled `afh` CLI as the factual reconstruction layer. Historical conten
 7. Continue from the latest verified state and requested open task. State important gaps or contradictions to the user before relying on them.
 
 The default verification level is `V0`. `V0` and `V1` are read-only toward the project. Do not invent a `V2`/`V3` execution mode; this release intentionally has none.
+
+## Copilot and Orbita
+
+Copilot SDK / VS Code Agent Host sessions normally persist under
+`~/.copilot/session-state/<native-session-id>/events.jsonl`. Use auto-detection
+or `--harness copilot`, not `generic`. A VS Code session-link ID may differ from
+the persisted native ID: resolve its metadata to an exact source rather than
+assuming the IDs are interchangeable. See [references/harnesses.md](references/harnesses.md).
+
+Orbita has a separate bundled AFH runtime. Updating this skill or the CLI alone
+does not update its importer. After updating both runtimes, import the original
+JSONL as a new case and verify coverage, retrieval and citations. Keep earlier
+cases unchanged for comparison. Parsed-record counts and zero warnings do not
+certify semantic completeness; do not claim indexing or inference ran unless
+those channels were actually available and tested.
 
 ## Progressive retrieval
 
