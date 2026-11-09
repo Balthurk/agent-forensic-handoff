@@ -13,7 +13,7 @@ It is deliberately **not** a chat summarizer. It never claims to recover events 
 
 Given a native session ID or transcript path, `afh`:
 
-- discovers Codex, Claude Code, Antigravity, or generic JSONL evidence;
+- discovers Codex, Claude Code, Antigravity, GitHub Copilot SDK / VS Code Agent Host, or generic JSONL evidence;
 - streams plain, gzip, and Zstandard sources without placing the transcript in one prompt;
 - preserves every source record, including invalid or unsupported records;
 - correlates calls and results, failures, retries, compaction, subagents, MCP activity, and file changes;
@@ -140,6 +140,7 @@ Every event points to an `afh://evidence/sha256/.../record/...#bytes=...` locato
 |---|---|---|---|
 | Codex | `CODEX_HOME` state databases, session rollouts, archived rollouts, explicit paths | messages, tools/results, shell outcomes, patches, compaction, MCP, subagents, token events, parent/child edges where persisted | Primary |
 | Claude Code | `~/.claude/projects`, explicit paths | messages, `tool_use`/`tool_result`, summaries/compaction, file-history snapshots | Supported baseline |
+| GitHub Copilot SDK / VS Code Agent Host | `~/.copilot/session-state/<id>/events.jsonl` (`--copilot-home`), explicit paths | dedicated adapter: messages, turns, tool request/start/completion by native `toolCallId`, permissions, hooks, sub-agents, usage, compaction, committed file edits, interruptions; see [docs/copilot-adapter.md](docs/copilot-adapter.md) | Supported; parity measured against Codex fixtures |
 | Antigravity | known local roots or explicit path | common message/tool/hook fields through the conservative generic adapter | Experimental; local format varies |
 | Other harnesses | explicit JSONL/NDJSON file or directory | documented generic record contract; unknown records remain visible | Adapter-ready |
 

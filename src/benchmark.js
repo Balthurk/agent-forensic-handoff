@@ -18,6 +18,7 @@ export async function runBenchmark(options = {}) {
     { harness: "codex", transcript: path.join(FIXTURE_ROOT, "codex", "modern.jsonl"), truth: path.join(FIXTURE_ROOT, "codex", "modern-truth.json") },
     { harness: "claude", transcript: path.join(FIXTURE_ROOT, "claude", "basic.jsonl"), truth: path.join(FIXTURE_ROOT, "claude", "truth.json") },
     { harness: "generic", transcript: path.join(FIXTURE_ROOT, "generic", "mixed.jsonl"), truth: path.join(FIXTURE_ROOT, "generic", "truth.json") },
+    { harness: "copilot", transcript: path.join(FIXTURE_ROOT, "copilot", "session-state", "c0f1a07e-5e55-4000-8000-000000000001", "events.jsonl"), truth: path.join(FIXTURE_ROOT, "copilot", "truth.json") },
   ];
   const reports = [];
   for (const fixture of fixtures) reports.push(await evaluateFixture(root, fixture));
@@ -143,6 +144,11 @@ function prepareWorkspace(name, workspace) {
   if (name === "codex-modern") {
     ensureDir(path.join(workspace, "src"));
     fs.writeFileSync(path.join(workspace, "src", "modern.js"), "modern artifact\n");
+  }
+  if (name === "copilot-events") {
+    ensureDir(path.join(workspace, "src"));
+    fs.writeFileSync(path.join(workspace, "src", "parser.js"), "export const parse = (text) => text.trim();\n");
+    fs.writeFileSync(path.join(workspace, "src", "feature.js"), "export const feature = true;\n");
   }
 }
 

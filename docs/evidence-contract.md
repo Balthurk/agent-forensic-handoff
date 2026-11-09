@@ -63,7 +63,11 @@ Cosine similarity, RRF fusion values, and graph proximity are retrieval explanat
 
 A tool execution correlates request and result only through a shared native call ID or an explicitly defined adapter identity. It records available command text, working directory, start/end, status, exit code, duration, input/output blob hashes, a bounded semantic extract, and an invocation fingerprint.
 
+Call IDs are scoped to the session/source and turn unless an adapter declares them session-unique (`callIdScope: "session"`, used for Copilot `toolCallId`). A `tool.started` event is execution progress: it joins the open request but never supplies terminal evidence. The reported status of a harness (for example Copilot `success`) is retained verbatim next to the observed outcome (for example a non-zero shell exit code); an observed command failure is not hidden by a reported tool success. An explicit interrupted or denied completion is terminal evidence (`INTERRUPTED`, `APPROVAL_DENIED`), not an incomplete call.
+
 Missing results become `INCOMPLETE`. They do not become failures or successes by guesswork. Repeated fingerprints form a repetition group only after the configured deterministic threshold; such a group does not by itself prove an agent was stuck.
+
+Chronological links between records (such as Copilot `parentId`) are preserved as metadata and never converted into causal or graph edges.
 
 ## Artifact evidence
 

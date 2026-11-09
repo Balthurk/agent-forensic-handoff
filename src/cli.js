@@ -45,6 +45,7 @@ export async function main(argv) {
       codexHome: flags["codex-home"],
       claudeHome: flags["claude-home"],
       antigravityHome: flags["antigravity-home"],
+      copilotHome: flags["copilot-home"],
     });
     if (flags.json) return print(JSON.stringify(result, null, 2));
     print(`${result.reused ? "Reused" : "Created"} forensic case: ${result.caseDir}`);
@@ -277,8 +278,9 @@ function printHelp() {
   print(`Agent Forensic Handoff (afh) ${AFH_VERSION}
 
 Usage:
-  afh audit <session-id|path> [--harness auto|codex|claude|antigravity|generic]
+  afh audit <session-id|path> [--harness auto|codex|claude|antigravity|copilot|generic]
       [--workspace PATH] [--verify V0|V1] [--budget 6000] [--out AFH_HOME]
+      [--codex-home PATH] [--claude-home PATH] [--antigravity-home PATH] [--copilot-home PATH]
       [--no-children] [--max-child-sessions 32] [--inline-blob-bytes 16384]
       [--max-total-source-bytes 8589934592]
       [--allow-prefix] [--allow-symlink] [--json]

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { isCopilotEnvelope } from "./adapters.js";
 import { decodedLines } from "./evidence.js";
 import { expandHome, walkFiles } from "./util.js";
 
@@ -37,6 +38,7 @@ function existingVariant(filePath) {
 }
 
 async function sniffHarness(filePath) {
+  if (/[/\\]\.copilot[/\\]session-state[/\\]/i.test(filePath)) return "copilot";
   if (/[/\\]\.codex[/\\]|[/\\]codex[/\\]/i.test(filePath)) return "codex";
   if (/[/\\]\.claude[/\\]/i.test(filePath)) return "claude";
   if (/[/\\](?:antigravity|\.gemini)[/\\]/i.test(filePath)) return "antigravity";
@@ -46,10 +48,17 @@ async function sniffHarness(filePath) {
       if (["session_meta", "turn_context", "world_state", "response_item", "event_msg", "token_usage_record", "realtime_item", "inter_agent_communication_metadata", "compacted"].includes(record?.type)) return "codex";
       if (record?.sessionId && ["user", "assistant", "system", "progress", "summary", "file-history-snapshot"].includes(record?.type)) return "claude";
       if (record?.conversationId || record?.transcriptPath || record?.artifactDirectory) return "antigravity";
+      if (isCopilotEnvelope(record)) return "copilot";
       return "generic";
     }
   } catch {}
   return "generic";
+}
+
+// Copilot stores one session per directory; the file name carries no identity.
+function nativeIdForFile(file, harness) {
+  if (harness === "copilot" && path.basename(file).replace(/\.(?:zst|gz)$/i, "") === "events.jsonl") return path.basename(path.dirname(file));
+  return path.basename(file).replace(/\.(?:jsonl(?:\.zst|\.gz)?|ndjson)$/i, "");
 }
 
 function codexStateFiles(codexHome) {
@@ -272,6 +281,19 @@ function discoverAntigravity(identifier, options) {
   return { sources, edges: [] };
 }
 
+function discoverCopilot(identifier, options) {
+  const root = path.join(expandHome(options.copilotHome || path.join(os.homedir(), ".copilot")), "session-state");
+  if (!fs.existsSync(root) || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(identifier)) return { sources: [], edges: [] };
+  const sources = [];
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !entry.name.startsWith(identifier)) continue;
+    const file = existingVariant(path.join(root, entry.name, "events.jsonl"));
+    if (file) sources.push({ path: file, nativeId: entry.name, harness: "copilot", kind: "copilot-events", stateMetadata: {} });
+  }
+  // Sub-agents share their parent's events.jsonl; there are no child sources.
+  return { sources, edges: [] };
+}
+
 export async function resolveSession(identifier, options = {}) {
   const requestedHarness = options.harness || "auto";
   const expanded = expandHome(identifier);
@@ -284,7 +306,7 @@ export async function resolveSession(identifier, options = {}) {
     for (const file of files) {
       assertSourcePath(file, options);
       const harness = requestedHarness === "auto" ? await sniffHarness(file) : requestedHarness;
-      sources.push({ path: path.resolve(file), nativeId: path.basename(file).replace(/\.(?:jsonl(?:\.zst|\.gz)?|ndjson)$/i, ""), harness, kind: `${harness}-transcript`, stateMetadata: {} });
+      sources.push({ path: path.resolve(file), nativeId: nativeIdForFile(file, harness), harness, kind: `${harness}-transcript`, stateMetadata: {} });
     }
     return {
       requestedIdentifier: identifier,
@@ -296,12 +318,13 @@ export async function resolveSession(identifier, options = {}) {
     };
   }
 
-  const attempts = requestedHarness === "auto" ? ["codex", "claude", "antigravity"] : [requestedHarness];
+  const attempts = requestedHarness === "auto" ? ["codex", "claude", "antigravity", "copilot"] : [requestedHarness];
   for (const harness of attempts) {
     const result = harness === "codex" ? await discoverCodex(identifier, options)
       : harness === "claude" ? discoverClaude(identifier, options)
         : harness === "antigravity" ? discoverAntigravity(identifier, options)
-          : { sources: [], edges: [] };
+          : harness === "copilot" ? discoverCopilot(identifier, options)
+            : { sources: [], edges: [] };
     const exactIds = new Set(result.sources.map((source) => source.nativeId));
     if (result.sources.length) {
       if (exactIds.size > 1 && !exactIds.has(identifier) && !options.allowPrefix) {

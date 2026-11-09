@@ -37,6 +37,9 @@ function exactDuration(native){
 function terminalState(event,native){
   const status=String(native.terminal_status??event.status??'UNKNOWN').toUpperCase();
   if(native.approval_denied||status==='APPROVAL_DENIED'||status==='BLOCKED')return {lifecycle:'BLOCKED',outcome:'UNKNOWN',reason:'APPROVAL_DENIED'};
+  // Copilot writes an explicit interrupted completion; the lifecycle enum has no
+  // INTERRUPTED value, so the native reason is kept separately from CANCELLED.
+  if(native.interrupted===true)return {lifecycle:'CANCELLED',outcome:'UNKNOWN',reason:'INTERRUPTED'};
   if(native.cancelled||status==='CANCELLED'||status==='CANCELED')return {lifecycle:'CANCELLED',outcome:'UNKNOWN',reason:'CANCELLED'};
   if(native.timed_out||status==='TIMEOUT'||status==='TIMED_OUT')return {lifecycle:'FAILED',outcome:'OBSERVED_FAIL',reason:'TIMEOUT'};
   const code=native.exit_code??event.metadata?.exitCode;
@@ -86,10 +89,14 @@ export function decodeOccurrenceSource(root,source){
       let node=raw;for(const token of pointer.split('/').slice(1)){const key=token.replaceAll('~1','/').replaceAll('~0','~');if(node===null||typeof node!=='object'||!Object.hasOwn(node,key))throw failure('EVIDENCE_UNAVAILABLE','Historical locator does not resolve in RAW');node=node[key];}
       if(legacy&&acquired.id!=='evt4-'+digest([source.legacy_case_hash,acquired.legacy_event_id]))throw failure('INTEGRITY_FAILED','Legacy anchor differs from the preserved case binding');
       const locator={source_revision_id:source.source_revision_id,source_lineage_id:source.source_lineage_id,record_identity_epoch:record.identity_epoch,record_ordinal:record.ordinal,json_pointer:pointer,event_subindex:c.subindex,record_sha256:record.sha256};
-      const event=mappedEvent(acquired),p=c.item.payload??c.item,item=p.item??{},message=event.kind.startsWith('message.'),native=event.metadata?.occurrence_v1??{},nativeId=message?(p.id??item.id??event.native_id??null):(p.call_id??p.id??item.id??native.native_call_id??event.native_id??null);
-      const role=message?['message',event.kind==='message.user'?'user':event.kind==='message.agent'?'assistant':'instruction']:event.kind==='tool.fragment'?['fragment',p.stream??'stdout',p.fragment_id??canonical([source.source_lineage_id,record.identity_epoch,record.ordinal,pointer,c.subindex])]:[event.kind.endsWith('.requested')?'request':event.kind.endsWith('.observed')?'observed_terminal':'terminal'];
+      const event=mappedEvent(acquired),p=c.item.payload??c.item,item=p.item??{},message=event.kind.startsWith('message.'),native=event.metadata?.occurrence_v1??{},copilot=source.harness==='copilot';
+      // Copilot envelopes carry a per-record event id at the top level; only the
+      // declared native call/message ids may correlate occurrences.
+      const nativeId=copilot?(message?native.native_message_id??native.native_event_id:execution(event.kind)?native.native_call_id:native.native_event_id)??null:message?(p.id??item.id??event.native_id??null):(p.call_id??p.id??item.id??native.native_call_id??event.native_id??null);
+      const role=message?['message',event.kind==='message.user'?'user':event.kind==='message.agent'?'assistant':'instruction']:event.kind==='tool.fragment'?['fragment',p.stream??'stdout',p.fragment_id??canonical([source.source_lineage_id,record.identity_epoch,record.ordinal,pointer,c.subindex])]:event.kind==='tool.started'?['started']:[event.kind.endsWith('.requested')?'request':event.kind.endsWith('.observed')?'observed_terminal':'terminal'];
       const qualified=[source.source_lineage_id,record.identity_epoch,record.ordinal,historicalPointer,c.subindex];
-      placements.push({source,record,event,item:c.item,prefix:c.prefix,locator,qualified,acquisition_json_pointer:historicalPointer,representation_id:'rep4-'+digest([source.source_revision_id,record.ordinal,pointer,c.subindex]),nativeId,turn:p.turn_id??c.item.turn_id??native.turn_id??null,role,namespace:message?['message',role[1],'item']:['execution',item.id?'item':'call'],legacy});
+      const turn=copilot&&native.call_id_scope==='session'&&execution(event.kind)?null:p.turn_id??c.item.turn_id??native.turn_id??null;
+      placements.push({source,record,event,item:c.item,prefix:c.prefix,locator,qualified,acquisition_json_pointer:historicalPointer,representation_id:'rep4-'+digest([source.source_revision_id,record.ordinal,pointer,c.subindex]),nativeId,turn,role,namespace:message?['message',role[1],'item']:['execution',item.id?'item':'call'],legacy});
     }
   }
   // Only this synthetic profile carries a session-wide message guarantee.
@@ -103,13 +110,13 @@ export function prepareOccurrenceFacts(sources,seq,recordedAt,root,previous=empt
   for(const source of sources)for(const entry of decodeOccurrenceSource(root,source)){placements.push(entry);entries.set(entry.event.id,entry);}
   const groups=[],byKey=new Map(),byAnchor=new Map(),events=new Map();
   for(const entry of entries.values()){
-    const {event,nativeId,namespace,turn}=entry,isExecution=execution(event.kind),requested=event.kind.endsWith('.requested'),fragment=event.kind==='tool.fragment';
+    const {event,nativeId,namespace,turn}=entry,isExecution=execution(event.kind),requested=event.kind.endsWith('.requested'),fragment=event.kind==='tool.fragment',started=event.kind==='tool.started';
     const key=canonical([event.session_id,namespace,nativeId,turn,entry.guaranteedMessage?null:entry.source.source_lineage_id]),candidates=nativeId?byKey.get(key)??[]:[];let group=null;
     if(!isExecution&&entry.guaranteedMessage)group=candidates.length===1?candidates[0]:null;
-    else if(isExecution&&!requested){const open=candidates.filter(c=>c.request&&!c.terminal);if(open.length===1)group=open[0];else if(!open.length&&candidates.length===1)group=candidates[0];}
+    else if(isExecution&&!requested){const open=candidates.filter(c=>c.request&&!c.terminal);if(open.length===1)group=open[0];else if(!open.length&&candidates.length===1&&!started)group=candidates[0];}
     if(!group){const epoch=entry.guaranteedMessage?'session':'epoch:'+digest(['afh-identity03-v1',event.session_id,turn,entry.qualified]),keyId=nativeId?canonical([...namespace,nativeId]):canonical([isExecution?'execution':'message','anchor',entry.qualified]);group={id:'occ4-'+digest([event.session_id,epoch,keyId]),epoch,nativeId,entries:[],request:null,terminal:null,ambiguous:isExecution&&!requested&&!fragment&&event.kind.endsWith('.completed')};groups.push(group);if(nativeId){candidates.push(group);byKey.set(key,candidates);}}
     entry.canonicalId=nativeId?'evt4-'+digest([event.session_id,group.epoch,event.kind,nativeId,canonical(entry.role)]):'evt4-'+digest([...entry.qualified,canonical(entry.role)]);entry.group=group;group.entries.push(entry);byAnchor.set(event.id,entry);
-    if(requested)group.request=entry;else if(isExecution&&!fragment)group.terminal=entry;
+    if(requested)group.request=entry;else if(isExecution&&!fragment&&!started)group.terminal=entry;
   }
   const add=(table,data)=>facts[table].push({id:data.id,commit_seq:seq,data_json:data});
   for(const group of groups){

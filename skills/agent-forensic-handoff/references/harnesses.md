@@ -20,6 +20,10 @@ Discovery scans `~/.claude/projects` for an exact ID in supported transcript fil
 
 Discovery checks configured Antigravity roots and explicit paths. Because local transcript contracts vary, v0.1 uses conservative common-field normalization. Treat support as experimental and inspect warnings. Prefer an explicit export/path when ID lookup fails.
 
+## GitHub Copilot SDK / VS Code Agent Host
+
+Discovery reads `~/.copilot/session-state/<sessionId>/events.jsonl` (override with `--copilot-home`) or an explicit path; the session ID comes from the directory and `session.start.data.sessionId`, never from the `events.jsonl` file name. Auto-detection recognizes the `{id,parentId,timestamp,type,data}` envelope. The dedicated adapter follows the `@github/copilot-sdk` session-event schema plus inspected local records: messages, `assistant.turn_*`, tool request → `tool.execution_start` → `tool.execution_complete` by session-unique `toolCallId`, permissions, hooks, sub-agents (same file, envelope `agentId`), usage, compaction, `fileEdits`, aborts and resume-time interrupted completions. `parentId` is a write-order chain, not causality; `turnId` restarts per interaction. Unknown types and contract violations stay as warned cold evidence. Details and the parity matrix: `docs/copilot-adapter.md` in the AFH repository.
+
 ## Generic harnesses
 
 Provide JSONL/NDJSON with one JSON object per line. Useful fields include:

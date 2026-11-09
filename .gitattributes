@@ -20,3 +20,6 @@
 /scripts/reader-corpus-consumer.mjs -text
 /scripts/build-legacy-fixtures.mjs -text
 /archives/orbita-f36-generators-20261027/** -text
+
+# Synthetic Copilot evidence is addressed by byte offsets; keep it exact.
+/test/fixtures/copilot/** -text

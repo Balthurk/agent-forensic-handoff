@@ -1,0 +1,28 @@
+{
+  "name": "copilot-events",
+  "critical": {
+    "eventKinds": [
+      "session.meta", "session.settings", "session.turn_started", "session.turn_ended", "session.aborted", "session.resumed",
+      "session.shutdown", "session.warning", "session.error", "session.compaction_started", "session.compacted", "session.truncated",
+      "session.context_changed", "session.notification", "session.binary_asset", "session.task_complete",
+      "message.user", "message.agent", "message.instruction", "message.human_response", "reasoning.summary",
+      "tool.requested", "tool.started", "tool.completed", "permission.requested", "permission.completed",
+      "external.hook", "external.subagent", "external.tool_dispatch",
+      "telemetry.token_usage", "telemetry.usage_checkpoint", "telemetry.auxiliary_model", "forensic.unparsed_record"
+    ],
+    "actorKinds": ["HUMAN_USER", "PRIMARY_AGENT", "SUBAGENT", "TOOL", "MCP_SERVER", "HOOK", "HARNESS_SYSTEM", "EXTERNAL_SERVICE"],
+    "toolStatuses": { "COMPLETED": 10, "FAILED": 3, "APPROVAL_DENIED": 1, "INTERRUPTED": 1, "INCOMPLETE": 2 },
+    "artifacts": ["src/parser.js", "src/feature.js", "src/legacy.js"],
+    "decisions": [],
+    "externalMinimum": 1,
+    "unparsed": 1,
+    "warnings": 4,
+    "validationsMinimum": 3,
+    "hotTerms": ["fix the parser", "run the build too", "12 passing", "npm run lint", "INTERRUPTED", "APPROVAL_DENIED"],
+    "timelinePairs": [
+      ["session.meta", "message.user"], ["message.user", "tool.requested"], ["tool.requested", "tool.started"],
+      ["tool.started", "permission.requested"], ["permission.requested", "permission.completed"], ["permission.completed", "tool.completed"],
+      ["session.aborted", "session.resumed"]
+    ]
+  }
+}

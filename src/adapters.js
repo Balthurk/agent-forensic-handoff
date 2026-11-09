@@ -627,9 +627,591 @@ function outputMetadata(output) {
   };
 }
 
+// GitHub Copilot SDK / VS Code Agent Host persisted session events
+// (~/.copilot/session-state/<sessionId>/events.jsonl). Each line is an envelope
+// {id,parentId,timestamp,type,data[,agentId][,ephemeral]} defined by
+// @github/copilot-sdk schemas/session-events.schema.json. parentId is the
+// chronologically preceding event (a write-order chain, not causality), turnId
+// is an interaction-scoped counter, and toolCallId is unique within a session.
+// See docs/copilot-adapter.md for the contract and the parity matrix.
+const COPILOT_UNDOCUMENTED_PREFIX = "model.";
+const COPILOT_DOCUMENTED_MODEL_TYPES = new Set(["model.call_failure", "model.call_final_result", "model.call_finished", "model.call_start"]);
+const COPILOT_REQUIRED = {
+  "session.start": { sessionId: "string" },
+  "user.message": { content: "string" },
+  "system.message": { content: "string" },
+  "assistant.message": { content: "string" },
+  "assistant.turn_start": { turnId: "string" },
+  "assistant.turn_end": { turnId: "string" },
+  "tool.user_requested": { toolCallId: "string", toolName: "string" },
+  "tool.execution_start": { toolCallId: "string", toolName: "string" },
+  "tool.execution_complete": { toolCallId: "string", success: "boolean" },
+  "hook.start": { hookInvocationId: "string", hookType: "string" },
+  "hook.end": { hookInvocationId: "string", hookType: "string" },
+  "permission.requested": { requestId: "string" },
+  "permission.completed": { requestId: "string" },
+  "external_tool.requested": { requestId: "string", toolCallId: "string" },
+  "external_tool.completed": { requestId: "string" },
+  "subagent.started": { toolCallId: "string" },
+  "subagent.completed": { toolCallId: "string" },
+  "subagent.failed": { toolCallId: "string" },
+};
+
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function str(value) {
+  return typeof value === "string" && value.length ? value : null;
+}
+
+function int(value) {
+  return Number.isInteger(value) ? value : null;
+}
+
+function pointerExists(root, pointer) {
+  let node = root;
+  for (const token of pointer.split("/").slice(1)) {
+    const key = token.replaceAll("~1", "/").replaceAll("~0", "~");
+    if (node === null || typeof node !== "object" || !Object.hasOwn(node, key)) return false;
+    node = node[key];
+  }
+  return true;
+}
+
+// Every emitted pointer must resolve inside the exact source record.
+function firstPointer(record, ...candidates) {
+  return candidates.find((candidate) => pointerExists(record, candidate)) ?? "";
+}
+
+function compact(value) {
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined && item !== null));
+}
+
+const copilotHarnessActor = () => actor("act:harness:copilot", ACTOR_KINDS.SYSTEM, "harness", "GitHub Copilot");
+const copilotUserActor = () => actor("act:user", ACTOR_KINDS.USER, "user");
+
+function copilotAgentActor(record) {
+  return str(record.agentId)
+    ? actor(`act:subagent:${record.agentId}`, ACTOR_KINDS.SUBAGENT, "subagent", null, record.agentId)
+    : actor("act:agent:primary", ACTOR_KINDS.AGENT, "assistant");
+}
+
+function copilotEnvelope(record, data) {
+  return compact({
+    origin: "copilot.events",
+    nativeEventId: str(record.id),
+    parentEventId: str(record.parentId),
+    eventType: str(record.type),
+    agentId: str(record.agentId),
+    persistedEphemeral: record.ephemeral === true ? true : null,
+    interactionId: str(data.interactionId),
+    parentToolCallId: str(data.parentToolCallId),
+    model: str(data.model),
+  });
+}
+
+function copilotEvent(record, { occurrence = {}, metadata = {}, ...spec }) {
+  const data = isPlainObject(record.data) ? record.data : {};
+  const turnId = spec.turnId !== undefined ? spec.turnId : str(data.turnId);
+  const event = normalized({ subtype: str(record.type), nativeId: str(record.id), ...spec, turnId, metadata: { ...copilotEnvelope(record, data), ...metadata } }, record, data);
+  // The shared helper derives Codex-shaped terminal facts from the payload;
+  // Copilot terminal facts are supplied only by the explicit mappings below.
+  event.metadata.occurrence_v1 = {
+    ...event.metadata.occurrence_v1,
+    native_call_id: spec.callId ?? null, turn_id: turnId ?? null, encoding: `copilot.${record.type}`,
+    clock_domain: null, duration: null, duration_ms: null, terminal_status: null,
+    approval_denied: false, cancelled: false, timed_out: false, explicit_success: null,
+    explicit_error: false, exit_code: null, cwd: null, parts: [],
+    call_id_scope: "session", native_event_id: str(record.id), native_message_id: str(data.messageId),
+    ...occurrence,
+  };
+  return event;
+}
+
+function copilotUnknown(record, subtype, metadata = {}) {
+  const data = isPlainObject(record?.data) ? record.data : {};
+  return copilotEvent(record ?? {}, {
+    kind: "forensic.unknown_record", subtype, actor: copilotHarnessActor(), status: "PRESERVED",
+    metadata: { keys: isPlainObject(record) ? Object.keys(record).sort() : [], dataKeys: Object.keys(data).sort(), ...metadata },
+  });
+}
+
+function copilotArguments(value) {
+  if (value === undefined) return "";
+  return typeof value === "string" ? value : JSON.stringify(value);
+}
+
+function copilotToolStatus(data) {
+  const code = str(data.error?.code);
+  if (data.success === false) return code === "denied" ? "APPROVAL_DENIED" : code === "interrupted" ? "INTERRUPTED" : "FAILED";
+  if (data.success === true) {
+    const exit = int(data.shellExecution?.exitCode);
+    return exit !== null && exit !== 0 ? "FAILED" : "COMPLETED";
+  }
+  return "UNKNOWN";
+}
+
+function copilotFileOperation(kind) {
+  return kind === "create" ? "CREATE" : kind === "edit" ? "UPDATE" : kind === "delete" ? "DELETE" : String(kind ?? "UNKNOWN").toUpperCase();
+}
+
+function copilotSession(record, data, ctx) {
+  const context = isPlainObject(data.context) ? data.context : {};
+  const parent = str(data.detachedFromSpawningParentSessionId);
+  const nativeId = data.sessionId;
+  return {
+    id: `ses:copilot:${nativeId}`, nativeId, harness: "copilot", sourceId: ctx.sourceId,
+    parentNativeId: parent, cwd: str(context.cwd) ?? ctx.stateMetadata?.cwd ?? null,
+    startedAt: normalizeTimestamp(data.startTime ?? record.timestamp).value,
+    title: ctx.stateMetadata?.title ?? null, harnessVersion: str(data.copilotVersion), model: str(data.selectedModel),
+    metadata: compact({
+      producer: str(data.producer), eventSchemaVersion: int(data.version), gitRoot: str(context.gitRoot),
+      repository: str(context.repository), branch: str(context.branch), headCommit: str(context.headCommit),
+      hostType: str(context.hostType), contextTier: str(data.contextTier), autoTier: str(data.autoTier),
+      reasoningEffort: str(data.reasoningEffort), remoteSteerable: typeof data.remoteSteerable === "boolean" ? data.remoteSteerable : null,
+      alreadyInUse: typeof data.alreadyInUse === "boolean" ? data.alreadyInUse : null,
+      detachedFromSpawningParentSessionId: parent,
+    }),
+  };
+}
+
+function copilotObserved(kind, { status = "OBSERVED", input, metadata = (data) => ({}), pointer = "/data" } = {}) {
+  return (record, data) => [copilotEvent(record, {
+    kind, actor: copilotHarnessActor(), status: typeof status === "function" ? status(data) : status,
+    input: input ? input(data) ?? "" : "", metadata: compact(metadata(data)), pointer: firstPointer(record, pointer, "/data"),
+  })];
+}
+
+const copilotSettings = copilotObserved("session.settings", { status: "APPLIED", input: (data) => JSON.stringify(data), metadata: () => ({}) });
+
+function copilotHook(record, data) {
+  const hookType = data.hookType;
+  const input = isPlainObject(data.input) ? data.input : {};
+  const linked = hookType === "preToolUse" && Array.isArray(input.toolCalls)
+    ? input.toolCalls.map((call) => str(call?.id)).filter(Boolean)
+    : str(input.toolCallId) ? [input.toolCallId] : [];
+  const start = record.type === "hook.start";
+  const output = isPlainObject(data.output) ? JSON.stringify(data.output) : str(data.output) ?? "";
+  return [copilotEvent(record, {
+    kind: "external.hook", subtype: `${record.type}.${hookType}`,
+    actor: actor(`act:hook:${hookType}`, ACTOR_KINDS.HOOK, "hook", hookType),
+    output: start ? "" : output || str(data.error?.message) || "",
+    status: start ? "STARTED" : data.success === true ? "COMPLETED" : data.success === false ? "FAILED" : "UNKNOWN",
+    metadata: compact({
+      hookInvocationId: data.hookInvocationId, hookType, toolName: str(input.toolName),
+      linkedToolCallIds: linked.length ? linked : null,
+      hookToolLink: start ? (linked.length ? "NATIVE_TOOL_CALL_ID" : "UNAVAILABLE") : null,
+      contextInjected: !start && typeof data.output?.additionalContext === "string" ? true : null,
+      reportedSuccess: typeof data.success === "boolean" ? data.success : null,
+    }),
+    pointer: start ? firstPointer(record, "/data/input", "/data") : firstPointer(record, "/data/output", "/data/error", "/data"),
+  })];
+}
+
+function copilotAssistantMessage(record, data) {
+  const agent = copilotAgentActor(record);
+  const events = [];
+  const turnMeta = compact({ messageId: str(data.messageId), phase: str(data.phase), chunkIndex: int(data.chunkIndex), chunkCount: int(data.chunkCount) });
+  if (data.content) events.push(copilotEvent(record, {
+    kind: "message.agent", actor: agent, input: data.content, nativeId: str(data.messageId), phase: str(data.phase),
+    metadata: { ...turnMeta, userVisible: true }, pointer: "/data/content",
+  }));
+  const encrypted = Boolean(data.reasoningOpaque || data.encryptedContent || data.reasoningBlocks);
+  if (str(data.reasoningText)) events.push(copilotEvent(record, {
+    kind: "reasoning.summary", subtype: "assistant.message.reasoningText", actor: agent, input: data.reasoningText,
+    status: "AVAILABLE", metadata: { encryptedContentPresent: encrypted, privateReasoningRecoverable: false }, pointer: "/data/reasoningText",
+  }));
+  else if (encrypted) events.push(copilotEvent(record, {
+    kind: "reasoning.summary", subtype: "assistant.message.opaque", actor: agent, status: "UNAVAILABLE",
+    metadata: { encryptedContentPresent: true, privateReasoningRecoverable: false }, pointer: "/data",
+  }));
+  const requests = Array.isArray(data.toolRequests) ? data.toolRequests : [];
+  requests.forEach((request, index) => {
+    const pointer = `/data/toolRequests/${index}`;
+    if (!isPlainObject(request) || !str(request.toolCallId)) {
+      events.push(copilotEvent(record, {
+        kind: "forensic.unknown_record", subtype: "copilot.assistant.message.toolRequest.contract_violation",
+        actor: copilotHarnessActor(), status: "PRESERVED", metadata: { missing: ["toolCallId"], requestIndex: index }, pointer,
+      }));
+      return;
+    }
+    events.push(copilotEvent(record, {
+      kind: "tool.requested", subtype: "assistant.message.toolRequest", actor: agent,
+      input: copilotArguments(request.arguments), status: "REQUESTED", nativeId: str(data.messageId), callId: request.toolCallId,
+      metadata: compact({
+        toolName: str(request.name) ?? "unknown", toolType: str(request.type) ?? "function", toolTitle: str(request.toolTitle),
+        mcpServerName: str(request.mcpServerName), mcpToolName: str(request.mcpToolName),
+        intentionSummary: str(request.intentionSummary), requestIndex: index, messageId: str(data.messageId), callIdScope: "session",
+      }),
+      occurrence: {
+        native_call_id: request.toolCallId,
+        parts: typeof request.arguments === "string" ? [{ role: "arguments", text: request.arguments, json_pointer: `${pointer}/arguments` }] : [],
+      },
+      pointer,
+    }));
+  });
+  if (!events.length) events.push(copilotEvent(record, {
+    kind: "message.agent", actor: agent, input: "", status: "EMPTY", nativeId: str(data.messageId),
+    metadata: { ...turnMeta, userVisible: false }, pointer: "/data/content",
+  }));
+  return events;
+}
+
+function copilotUserMessage(record, data) {
+  // Human authorship is asserted only for unsourced root-agent prompts; the
+  // schema reserves `source` for skills, inter-agent prompts and other origins.
+  const human = !str(record.agentId) && data.source == null;
+  const attachments = Array.isArray(data.attachments) ? data.attachments.filter(isPlainObject).map((item) => compact({
+    type: str(item.type), mimeType: str(item.mimeType), displayName: str(item.displayName),
+    hasPath: typeof item.path === "string" ? true : null, byteLength: int(item.byteLength), assetId: str(item.assetId),
+  })) : [];
+  return [copilotEvent(record, {
+    kind: human ? "message.user" : "message.instruction",
+    actor: human ? copilotUserActor() : actor(`act:source:${str(data.source) ?? "subagent-prompt"}`, ACTOR_KINDS.UNKNOWN, "message_source", str(data.source)),
+    input: data.content, nativeId: str(data.messageId),
+    metadata: compact({
+      userVisible: true, attribution: human ? "UNSOURCED_ROOT_PROMPT" : "NON_HUMAN_OR_UNVERIFIED_SOURCE",
+      source: str(data.source), delivery: str(data.delivery), agentMode: str(data.agentMode),
+      isAutopilotContinuation: typeof data.isAutopilotContinuation === "boolean" ? data.isAutopilotContinuation : null,
+      transformedContentPresent: typeof data.transformedContent === "string" ? true : null,
+      parentAgentTaskId: str(data.parentAgentTaskId), attachments: attachments.length ? attachments : null,
+    }),
+    pointer: "/data/content",
+  })];
+}
+
+function copilotToolStarted(record, data) {
+  const mcp = str(data.mcpServerName);
+  const shell = isPlainObject(data.shellToolInfo) ? data.shellToolInfo : null;
+  return [copilotEvent(record, {
+    kind: "tool.started",
+    actor: mcp ? actor(`act:mcp:${mcp}`, ACTOR_KINDS.MCP, "mcp_server", mcp) : actor(`act:tool:${data.toolName}`, ACTOR_KINDS.TOOL, "tool", data.toolName),
+    input: copilotArguments(data.arguments), status: "STARTED", callId: data.toolCallId,
+    metadata: compact({
+      toolName: data.toolName, toolTitle: str(data.toolTitle), mcpServerName: mcp, mcpToolName: str(data.mcpToolName),
+      mcpTransport: str(data.mcpTransport), mcpConfigSource: str(data.mcpConfigSource), callIdScope: "session",
+      shellWritesFiles: typeof shell?.hasWriteFileRedirection === "boolean" ? shell.hasWriteFileRedirection : null,
+      shellPossiblePathCount: Array.isArray(shell?.possiblePaths) ? shell.possiblePaths.length : null,
+    }),
+    occurrence: {
+      native_call_id: data.toolCallId,
+      parts: typeof data.arguments === "string" ? [{ role: "arguments", text: data.arguments, json_pointer: "/data/arguments" }] : [],
+    },
+    pointer: firstPointer(record, "/data/arguments", "/data"),
+  })];
+}
+
+function copilotToolCompleted(record, data) {
+  const status = copilotToolStatus(data);
+  const result = isPlainObject(data.result) ? data.result : null;
+  const error = isPlainObject(data.error) ? data.error : null;
+  const exitCode = int(data.shellExecution?.exitCode);
+  const edits = Array.isArray(data.fileEdits) ? data.fileEdits.filter((edit) => isPlainObject(edit) && str(edit.path)) : [];
+  // `model: "resumed"` was observed only on the completion the runtime writes
+  // for a call it found unfinished while resuming the session.
+  const resumeSentinel = data.model === "resumed";
+  const parts = [];
+  if (typeof result?.content === "string") parts.push({ role: "result", text: result.content, json_pointer: "/data/result/content" });
+  if (typeof result?.detailedContent === "string") parts.push({ role: "result", text: result.detailedContent, json_pointer: "/data/result/detailedContent" });
+  if (typeof error?.message === "string") parts.push({ role: "result", text: error.message, json_pointer: "/data/error/message" });
+  return [copilotEvent(record, {
+    kind: "tool.completed",
+    actor: resumeSentinel ? copilotHarnessActor() : actor("act:tool:unknown", ACTOR_KINDS.TOOL, "tool"),
+    output: str(result?.content) ?? str(error?.message) ?? "", status, callId: data.toolCallId,
+    // fileEdits lists mutations the built-in editor actually committed, even
+    // when a later step failed; it carries paths and kinds, not file bytes.
+    artifacts: edits.map((edit) => ({ path: edit.path, operation: copilotFileOperation(edit.kind), content: null, diff: null, status: "LIVE_UNVERIFIED" })),
+    metadata: compact({
+      reportedSuccess: data.success, errorCode: str(error?.code), exitCode, callIdScope: "session",
+      isUserRequested: typeof data.isUserRequested === "boolean" ? data.isUserRequested : null,
+      sandboxed: typeof data.sandboxed === "boolean" ? data.sandboxed : null,
+      fileEditCount: edits.length || null, detailedContentPresent: typeof result?.detailedContent === "string" ? true : null,
+      binaryResultCount: Array.isArray(result?.binaryResultsForLlm) ? result.binaryResultsForLlm.length : null,
+      resumeSentinel: resumeSentinel || null,
+    }),
+    occurrence: {
+      native_call_id: data.toolCallId, terminal_status: status, explicit_success: data.success,
+      explicit_error: data.success === false, exit_code: exitCode,
+      approval_denied: error?.code === "denied", interrupted: error?.code === "interrupted", parts,
+    },
+    pointer: firstPointer(record, "/data/result", "/data/error", "/data"),
+  })];
+}
+
+function copilotPermissionDecider(source) {
+  if (source === "human_response") return copilotUserActor();
+  if (str(source)) return actor(`act:policy:${source}`, ACTOR_KINDS.AUTOMATION, "permission_policy", source);
+  return copilotHarnessActor();
+}
+
+function copilotPermissionStatus(kind) {
+  if (!kind) return "UNKNOWN";
+  if (kind.startsWith("approved")) return "APPROVED";
+  if (kind.startsWith("denied")) return "DENIED";
+  return kind === "cancelled" ? "CANCELLED" : "UNKNOWN";
+}
+
+const COPILOT_HANDLERS = {
+  "session.start": (record, data, ctx) => {
+    const session = copilotSession(record, data, ctx);
+    return [copilotEvent(record, {
+      kind: "session.meta", subtype: "copilot", actor: copilotHarnessActor(), status: "OBSERVED", session,
+      sessionEdges: session.parentNativeId ? [{ parentNativeId: session.parentNativeId, childNativeId: session.nativeId, type: "SPAWNED" }] : [],
+      metadata: session.metadata, pointer: "/data",
+    })];
+  },
+  "session.resume": copilotObserved("session.resumed", { metadata: (data) => ({
+    resumeTime: str(data.resumeTime), eventCount: int(data.eventCount), eventsFileSizeBytes: int(data.eventsFileSizeBytes),
+    sessionWasActive: data.sessionWasActive, continuePendingWork: data.continuePendingWork, alreadyInUse: data.alreadyInUse,
+    cwd: str(data.context?.cwd), selectedModel: str(data.selectedModel),
+  }) }),
+  "session.shutdown": copilotObserved("session.shutdown", {
+    status: (data) => str(data.shutdownType)?.toUpperCase() ?? "OBSERVED", input: (data) => str(data.errorReason),
+    metadata: (data) => {
+      const changes = isPlainObject(data.codeChanges) ? data.codeChanges : isPlainObject(data.accountingSnapshot?.codeChanges) ? data.accountingSnapshot.codeChanges : {};
+      return {
+        shutdownType: str(data.shutdownType), errorReason: str(data.errorReason), totalPremiumRequests: data.totalPremiumRequests,
+        totalApiDurationMs: data.totalApiDurationMs ?? data.accountingSnapshot?.agentMetrics?.main?.totalApiDurationMs,
+        currentModel: str(data.currentModel) ?? str(data.accountingSnapshot?.currentModel),
+        reportedCodeChanges: compact({
+          linesAdded: int(changes.linesAdded), linesRemoved: int(changes.linesRemoved), filesModifiedCount: int(changes.filesModifiedCount),
+          filesModified: Array.isArray(changes.filesModified) ? changes.filesModified.filter((item) => typeof item === "string") : null,
+        }),
+      };
+    },
+  }),
+  "session.error": copilotObserved("session.error", { status: "ERROR", input: (data) => data.message, pointer: "/data/message", metadata: (data) => ({
+    errorType: str(data.errorType), errorCode: str(data.errorCode), statusCode: int(data.statusCode), providerErrorType: str(data.providerErrorType), remediation: str(data.remediation),
+  }) }),
+  "session.warning": copilotObserved("session.warning", { input: (data) => data.message, pointer: "/data/message", metadata: (data) => ({ warningType: str(data.warningType) }) }),
+  "session.info": copilotObserved("session.info", { input: (data) => data.message, pointer: "/data/message", metadata: (data) => ({ infoType: str(data.infoType) }) }),
+  "session.model_change": copilotSettings,
+  "session.model_deselected": copilotSettings,
+  "session.mode_changed": copilotSettings,
+  "session.mode_notice_delivered": copilotSettings,
+  "session.permissions_changed": copilotSettings,
+  "session.auto_mode_resolved": copilotSettings,
+  "session.session_limits_changed": copilotSettings,
+  "session.remote_steerable_changed": copilotSettings,
+  "session.request_body_compression_disabled": copilotSettings,
+  "tool_search.activated": copilotSettings,
+  "subagent.selected": copilotSettings,
+  "subagent.deselected": copilotSettings,
+  "subagent.configured": copilotSettings,
+  "session.context_changed": copilotObserved("session.context_changed", { metadata: (data) => ({
+    cwd: str(data.cwd), gitRoot: str(data.gitRoot), repository: str(data.repository), branch: str(data.branch), headCommit: str(data.headCommit),
+  }) }),
+  "session.context_cleared": copilotObserved("session.context_cleared", { metadata: (data) => ({ messagesCleared: int(data.messagesCleared) }) }),
+  "session.compaction_start": copilotObserved("session.compaction_started", { status: "STARTED", metadata: (data) => ({
+    compactionAttemptId: str(data.compactionAttemptId), trigger: str(data.trigger), currentTokens: int(data.currentTokens), tokenLimit: int(data.tokenLimit),
+  }) }),
+  "session.compaction_complete": copilotObserved("session.compacted", {
+    status: (data) => data.success === true ? "COMPLETED" : data.success === false ? "FAILED" : "UNKNOWN",
+    input: (data) => str(data.summaryContent), pointer: "/data/summaryContent",
+    metadata: (data) => ({
+      compactionAttemptId: str(data.compactionAttemptId), trigger: str(data.trigger), outcome: str(data.outcome), error: str(data.error),
+      preCompactionTokens: int(data.preCompactionTokens), postCompactionTokens: int(data.postCompactionTokens),
+      messagesRemoved: int(data.messagesRemoved), tokensRemoved: int(data.tokensRemoved), checkpointNumber: int(data.checkpointNumber),
+    }),
+  }),
+  "session.truncation": copilotObserved("session.truncated", { metadata: (data) => ({
+    tokenLimit: int(data.tokenLimit), tokensRemoved: int(data.tokensRemovedDuringTruncation),
+    messagesRemoved: int(data.messagesRemovedDuringTruncation), performedBy: str(data.performedBy),
+  }) }),
+  "session.usage_record": copilotObserved("telemetry.token_usage", { pointer: "/data/usage", metadata: (data) => {
+    const usage = isPlainObject(data.usage) ? data.usage : {};
+    return {
+      model: str(usage.model), inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, cacheReadTokens: usage.cacheReadTokens,
+      cacheWriteTokens: usage.cacheWriteTokens, reasoningTokens: usage.reasoningTokens, cost: usage.cost, durationMs: usage.duration,
+      apiCallId: str(usage.apiCallId), initiator: str(usage.initiator), finishReason: str(usage.finishReason), numToolCalls: usage.numToolCalls,
+    };
+  } }),
+  "session.usage_checkpoint": copilotObserved("telemetry.usage_checkpoint", { metadata: (data) => ({
+    totalNanoAiu: data.totalNanoAiu, totalPremiumRequests: data.totalPremiumRequests,
+  }) }),
+  "session.task_complete": copilotObserved("session.task_complete", {
+    status: (data) => data.success === false ? "FAILED" : str(data.outcome)?.toUpperCase() ?? "COMPLETED",
+    input: (data) => str(data.summary), pointer: "/data/summary",
+    metadata: (data) => ({ reportedByAgent: true, outcome: str(data.outcome), reportedSuccess: data.success, reason: str(data.reason) }),
+  }),
+  "session.completion_receipt": copilotObserved("session.completion_receipt", { metadata: (data) => ({
+    stopReason: str(data.stopReason), attempt: int(data.attempt), successfulToolCount: int(data.successfulToolCount), failedToolCount: int(data.failedToolCount),
+  }) }),
+  "session.handoff": copilotObserved("session.handoff", { input: (data) => str(data.summary), metadata: (data) => ({
+    sourceType: str(data.sourceType), remoteSessionId: str(data.remoteSessionId), host: str(data.host),
+  }) }),
+  "session.workspace_file_changed": copilotObserved("session.workspace_changed", { metadata: (data) => ({ path: str(data.path), operation: str(data.operation) }) }),
+  "session.plan_changed": copilotObserved("session.workspace_changed", { metadata: (data) => ({ file: "plan", operation: str(data.operation) }) }),
+  "session.autopilot_objective_changed": copilotObserved("session.workspace_changed", { metadata: (data) => ({ file: "autopilot_objective", operation: str(data.operation), status: str(data.status) }) }),
+  "session.schedule_created": copilotObserved("session.schedule", { input: (data) => str(data.prompt), metadata: (data) => ({ scheduleId: int(data.id), origin: str(data.origin) }) }),
+  "session.schedule_cancelled": copilotObserved("session.schedule", { status: "CANCELLED", metadata: (data) => ({ scheduleId: int(data.id) }) }),
+  "session.schedule_rearmed": copilotObserved("session.schedule", { status: "REARMED", metadata: (data) => ({ scheduleId: int(data.id) }) }),
+  "session.binary_asset": copilotObserved("session.binary_asset", { metadata: (data) => ({
+    assetId: str(data.assetId), assetType: str(data.type), mimeType: str(data.mimeType), byteLength: int(data.byteLength),
+  }) }),
+  "session.canvas.recorded": copilotObserved("session.canvas", { status: "OPEN", metadata: (data) => ({ instanceId: str(data.instanceId), canvasId: str(data.canvasId) }) }),
+  "session.canvas.removed": copilotObserved("session.canvas", { status: "CLOSED", metadata: (data) => ({ instanceId: str(data.instanceId), canvasId: str(data.canvasId) }) }),
+  "session.fusion_route_failed": copilotObserved("telemetry.fusion", { status: "FAILED" }),
+  "session.fusion_resolved": copilotObserved("telemetry.fusion"),
+  "session.fusion_handoff": copilotObserved("telemetry.fusion"),
+  "session.fusion_commit_started": copilotObserved("telemetry.fusion", { status: "STARTED" }),
+  "session.fusion_completed": copilotObserved("telemetry.fusion", { status: (data) => str(data.outcome)?.toUpperCase() ?? "OBSERVED" }),
+  "session.fusion_change_checkpoint": copilotObserved("telemetry.fusion"),
+  "assistant.fusion_phase_completed": copilotObserved("telemetry.fusion", { status: (data) => str(data.status)?.toUpperCase() ?? "OBSERVED" }),
+  "assistant.fusion_phase_failed": copilotObserved("telemetry.fusion", { status: "FAILED" }),
+  "session.permission_recovery": copilotObserved("permission.recovery", { status: (data) => str(data.status)?.toUpperCase() ?? "OBSERVED", metadata: (data) => ({
+    episodeId: str(data.episodeId), reason: str(data.reason), onBlocked: str(data.onBlocked),
+  }) }),
+  "mcp.oauth_recovery_completed": copilotObserved("session.mcp_oauth", { status: (data) => str(data.outcome)?.toUpperCase() ?? "OBSERVED", metadata: (data) => ({ serverName: str(data.serverName) }) }),
+  "assistant.turn_start": copilotObserved("session.turn_started", { status: "STARTED", metadata: () => ({}) }),
+  "assistant.turn_end": copilotObserved("session.turn_ended", { status: "ENDED", metadata: () => ({}) }),
+  abort: copilotObserved("session.aborted", { status: "ABORTED", input: (data) => str(data.reason), metadata: (data) => ({ reason: str(data.reason) }) }),
+  "system.notification": (record, data) => {
+    const kind = isPlainObject(data.kind) ? data.kind : {};
+    return [copilotEvent(record, {
+      kind: "session.notification", subtype: `system.notification.${str(kind.type) ?? "unknown"}`, actor: copilotHarnessActor(),
+      input: data.content ?? "", status: str(kind.status)?.toUpperCase() ?? "OBSERVED",
+      metadata: compact({ notificationType: str(kind.type), agentId: str(kind.agentId), agentType: str(kind.agentType), shellId: str(kind.shellId), exitCode: int(kind.exitCode) }),
+      pointer: firstPointer(record, "/data/content", "/data"),
+    })];
+  },
+  "system.message": (record, data) => [copilotEvent(record, {
+    kind: "message.instruction", actor: actor(`act:system:${str(data.role) ?? "system"}`, ACTOR_KINDS.SYSTEM, str(data.role) ?? "system"),
+    input: data.content, metadata: compact({ role: str(data.role), name: str(data.name) }), pointer: "/data/content",
+  })],
+  "user.message": copilotUserMessage,
+  "assistant.message": copilotAssistantMessage,
+  "assistant.reasoning": (record, data) => [copilotEvent(record, {
+    kind: "reasoning.summary", actor: copilotAgentActor(record), input: data.content ?? "", status: str(data.content) ? "AVAILABLE" : "UNAVAILABLE",
+    metadata: { privateReasoningRecoverable: false, reasoningId: str(data.reasoningId) }, pointer: firstPointer(record, "/data/content", "/data"),
+  })],
+  "skill.invoked": (record, data) => [copilotEvent(record, {
+    kind: "message.instruction", actor: actor(`act:skill:${str(data.name) ?? "unknown"}`, ACTOR_KINDS.SYSTEM, "skill", str(data.name)),
+    input: data.content ?? "", metadata: compact({ skillName: str(data.name), skillSource: str(data.source), trigger: str(data.trigger), pluginName: str(data.pluginName) }),
+    pointer: firstPointer(record, "/data/content", "/data"),
+  })],
+  "skill.invoked_ref": (record, data) => [copilotEvent(record, {
+    kind: "message.instruction", actor: actor(`act:skill:${str(data.name) ?? "unknown"}`, ACTOR_KINDS.SYSTEM, "skill", str(data.name)),
+    metadata: compact({ skillName: str(data.name), contentId: str(data.contentId), contentLength: int(data.contentLength), trigger: str(data.trigger), referenceOnly: true }),
+    pointer: "/data",
+  })],
+  "skill.context_delivered": (record, data) => [copilotEvent(record, {
+    kind: "message.instruction", actor: actor("act:skill:context", ACTOR_KINDS.SYSTEM, "skill"), input: data.content ?? "",
+    metadata: compact({ skillSource: str(data.source) }), pointer: firstPointer(record, "/data/content", "/data"),
+  })],
+  "skill.context_delivered_ref": (record, data) => [copilotEvent(record, {
+    kind: "message.instruction", actor: actor("act:skill:context", ACTOR_KINDS.SYSTEM, "skill"),
+    metadata: compact({ skillSource: str(data.source), contentId: str(data.contentId), referenceOnly: true }), pointer: "/data",
+  })],
+  "tool.user_requested": (record, data) => [copilotEvent(record, {
+    kind: "tool.requested", actor: copilotUserActor(), input: copilotArguments(data.arguments), status: "REQUESTED", callId: data.toolCallId,
+    metadata: { toolName: data.toolName, userRequested: true, callIdScope: "session" },
+    occurrence: { native_call_id: data.toolCallId },
+    pointer: firstPointer(record, "/data/arguments", "/data"),
+  })],
+  "tool.execution_start": copilotToolStarted,
+  "tool.execution_complete": copilotToolCompleted,
+  "hook.start": copilotHook,
+  "hook.end": copilotHook,
+  "permission.requested": (record, data) => {
+    const request = isPlainObject(data.permissionRequest) ? data.permissionRequest : {};
+    const toolCallId = str(request.toolCallId) ?? str(data.promptRequest?.toolCallId);
+    return [copilotEvent(record, {
+      kind: "permission.requested", actor: copilotHarnessActor(), input: JSON.stringify(request), status: "REQUESTED", callId: toolCallId,
+      metadata: compact({
+        requestId: data.requestId, toolCallId, permissionKind: str(request.kind), promptKind: str(data.promptRequest?.kind),
+        permissionMode: str(data.permissionMode), agentMode: str(data.agentMode), ownerSessionId: str(data.ownerSessionId),
+        resolvedByHook: typeof data.resolvedByHook === "boolean" ? data.resolvedByHook : null, intention: str(request.intention),
+      }),
+      pointer: firstPointer(record, "/data/permissionRequest", "/data"),
+    })];
+  },
+  "permission.completed": (record, data) => {
+    const result = isPlainObject(data.result) ? data.result : {};
+    return [copilotEvent(record, {
+      kind: "permission.completed", actor: copilotPermissionDecider(data.decisionSource), output: JSON.stringify(result),
+      status: copilotPermissionStatus(str(result.kind)), callId: str(data.toolCallId),
+      metadata: compact({ requestId: data.requestId, toolCallId: str(data.toolCallId), resultKind: str(result.kind), decisionSource: str(data.decisionSource) }),
+      pointer: firstPointer(record, "/data/result", "/data"),
+    })];
+  },
+  "permission.carriedForward": copilotObserved("permission.legacy_claim", { status: "NON_AUTHORITATIVE" }),
+  "permission.messageAuthorization": copilotObserved("permission.legacy_claim", { status: "NON_AUTHORITATIVE" }),
+  "permission.messageAuthorizationRead": copilotObserved("permission.legacy_claim", { status: "NON_AUTHORITATIVE" }),
+  "permission.messageAuthorizationDegraded": copilotObserved("permission.legacy_claim", { status: "NON_AUTHORITATIVE" }),
+  "permission.assentDetected": copilotObserved("permission.legacy_claim", { status: "NON_AUTHORITATIVE" }),
+  "permission.contextualAuthorization": copilotObserved("permission.legacy_claim", { status: "NON_AUTHORITATIVE" }),
+  "human_response.recorded": (record, data) => [copilotEvent(record, {
+    kind: "message.human_response",
+    actor: data.actor === "human_response" ? copilotUserActor() : data.actor === "host_automation"
+      ? actor("act:automation:host", ACTOR_KINDS.AUTOMATION, "host_automation") : actor("act:unknown:responder", ACTOR_KINDS.UNKNOWN, "responder"),
+    input: copilotArguments(data.response), callId: str(data.toolCallId),
+    metadata: compact({ requestId: str(data.requestId), toolCallId: str(data.toolCallId), responder: str(data.actor) }),
+    pointer: firstPointer(record, "/data/response", "/data"),
+  })],
+  "external_tool.requested": (record, data) => [copilotEvent(record, {
+    kind: "external.tool_dispatch", actor: copilotHarnessActor(), input: copilotArguments(data.arguments), status: "REQUESTED", callId: data.toolCallId,
+    metadata: compact({ requestId: data.requestId, toolName: str(data.toolName), dispatchSessionId: str(data.sessionId), workingDirectory: str(data.workingDirectory) }),
+    pointer: firstPointer(record, "/data/arguments", "/data"),
+  })],
+  "external_tool.completed": (record, data) => [copilotEvent(record, {
+    kind: "external.tool_dispatch", actor: copilotHarnessActor(), status: "COMPLETED",
+    metadata: { requestId: data.requestId, resultCarriedBy: "tool.execution_complete" }, pointer: "/data",
+  })],
+  "subagent.started": (record, data) => copilotSubagent(record, data, "STARTED"),
+  "subagent.completed": (record, data) => copilotSubagent(record, data, data.cancelled === true ? "CANCELLED" : "COMPLETED"),
+  "subagent.failed": (record, data) => copilotSubagent(record, data, "FAILED"),
+};
+
+function copilotSubagent(record, data, status) {
+  // Sub-agents run inside this session file; their own records carry the
+  // envelope agentId. No child session or causal edge is synthesized here.
+  const instance = str(record.agentId);
+  return [copilotEvent(record, {
+    kind: "external.subagent", subtype: record.type,
+    actor: actor(instance ? `act:subagent:${instance}` : `act:subagent:call:${data.toolCallId}`, ACTOR_KINDS.SUBAGENT, str(data.agentName) ?? "subagent", str(data.agentDisplayName), instance),
+    input: str(data.agentDescription) ?? "", output: str(data.error) ?? "", status, callId: data.toolCallId,
+    metadata: compact({
+      toolCallId: data.toolCallId, agentName: str(data.agentName), agentType: str(data.agentType), executionMode: str(data.executionMode),
+      totalToolCalls: int(data.totalToolCalls), totalTokens: int(data.totalTokens), durationMs: int(data.durationMs),
+    }),
+    pointer: "/data",
+  })];
+}
+
+export function isCopilotEnvelope(record) {
+  return isPlainObject(record) && typeof record.id === "string" && typeof record.type === "string"
+    && typeof record.timestamp === "string" && Object.hasOwn(record, "parentId") && isPlainObject(record.data);
+}
+
+export function normalizeCopilot(record, ctx) {
+  if (!isCopilotEnvelope(record)) return [copilotUnknown(isPlainObject(record) ? record : {}, "copilot.invalid_envelope")];
+  const data = record.data;
+  if (record.type.startsWith(COPILOT_UNDOCUMENTED_PREFIX)) {
+    return [copilotEvent(record, {
+      kind: "telemetry.auxiliary_model", actor: actor("act:service:copilot-auxiliary-model", ACTOR_KINDS.SERVICE, "auxiliary_model"),
+      status: "OBSERVED", turnId: null,
+      metadata: compact({
+        documented: COPILOT_DOCUMENTED_MODEL_TYPES.has(record.type), auxiliaryKind: str(data.kind),
+        auxiliaryModel: str(data.model) ?? str(data.modelCall?.model), auxiliaryCallId: str(data.callId), auxiliaryTurn: int(data.turn),
+      }),
+      pointer: "/data",
+    })];
+  }
+  const handler = COPILOT_HANDLERS[record.type];
+  if (!handler) return [copilotUnknown(record, `copilot.${record.type}`)];
+  const missing = Object.entries(COPILOT_REQUIRED[record.type] ?? {})
+    .filter(([key, type]) => type === "string" ? typeof data[key] !== "string" || (key !== "content" && !data[key]) : typeof data[key] !== type)
+    .map(([key]) => key);
+  if (missing.length) return [copilotUnknown(record, `copilot.${record.type}.contract_violation`, { missing })];
+  return handler(record, data, ctx);
+}
+
 export function normalizeRecord(record, context) {
   if (context.harness === "codex") return normalizeCodex(record, context);
   if (context.harness === "claude") return normalizeClaude(record, context);
+  if (context.harness === "copilot") return normalizeCopilot(record, context);
   return normalizeGeneric(record, context);
 }
 

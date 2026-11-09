@@ -76,7 +76,7 @@ Adapters map source-specific records into one normalized structure. They must:
 - keep unknown fields recoverable in cold evidence;
 - add fixtures for every supported format/version family.
 
-Codex and Claude have dedicated normalizers. Antigravity and unknown harnesses currently use a conservative common-field adapter. This is honest portability: a shared kernel and installable skill, not a false claim that all proprietary transcript schemas are identical.
+Codex, Claude and GitHub Copilot SDK / VS Code Agent Host (`events.jsonl`, see [copilot-adapter.md](copilot-adapter.md)) have dedicated normalizers. Antigravity and unknown harnesses currently use a conservative common-field adapter. This is honest portability: a shared kernel and installable skill, not a false claim that all proprietary transcript schemas are identical.
 
 ## Idempotence
 
