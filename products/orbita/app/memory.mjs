@@ -1,5 +1,5 @@
 import fs from '../agent-forensic-handoff/src/common-files.js';import path from 'node:path';import {randomUUID} from 'node:crypto';import {DatabaseSync} from '../agent-forensic-handoff/src/common-store.js';
-import {library,loadCase,getEvidence,DATA,refreshLibrary} from './corpus.mjs';
+import {library,loadCase,getEvidence,DATA,refreshLibrary,withVerifiedCaseReuse} from './corpus.mjs';
 import {verifyCaseIntegrity} from '../agent-forensic-handoff/src/integrity.js';
 import {readEvidence} from '../agent-forensic-handoff/src/render.js';
 import {queryCase} from '../agent-forensic-handoff/src/retrieval.js';
@@ -87,7 +87,10 @@ export async function listProposals(){if(!fs.existsSync(proposalDir))return [];c
   }catch(e){out.push({id:filename.slice(0,-5),bindingStatus:'invalid',error:e.message});}}
  return out;
 }
-export async function retrievePackage(question,ids,{mode='hybrid',profile='conversational',maxBytes=100000,labels=[],facets={},extraLinks={},rerank='mmr',semanticKnowledge=true,knownAt=null,validAt=null,roots=[],hops=2,needs=[],signal}={},{embeddingProvider=provider}={}){
+// Every channel of one retrieval shares the case verified at its start; the final
+// admission below re-verifies each case from its sealed bytes.
+export function retrievePackage(...args){return withVerifiedCaseReuse(()=>retrievePackageVerified(...args));}
+async function retrievePackageVerified(question,ids,{mode='hybrid',profile='conversational',maxBytes=100000,labels=[],facets={},extraLinks={},rerank='mmr',semanticKnowledge=true,knownAt=null,validAt=null,roots=[],hops=2,needs=[],signal}={},{embeddingProvider=provider}={}){
  contextNeeds(question,needs);await cancellationPoint(signal);refreshLibrary();const started=Date.now(),plan=queryPlan(question,{profile});if(!['lexical','semantic','hybrid'].includes(mode))throw new Error('Invalid retrieval mode');
  for(const time of [knownAt,validAt])if(time!==null&&(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(time)||time.endsWith('-00:00')||Number.isNaN(Date.parse(time))))throw new Error('Use an explicit RFC3339 instant with known timezone');
  if((knownAt||validAt)&&!semanticKnowledge)throw new Error('Temporal cuts require the semantic record channel');
@@ -158,6 +161,6 @@ export async function retrievePackage(question,ids,{mode='hybrid',profile='conve
  if(contextPlanValue)contextPlanValue.snapshot=await retainContext({question,ids,options:{mode,profile,knownAt,validAt,roots,maxBytes,rerank,labels,facets,needs},plan:contextPlanValue,records,seeds,links,state:discovered.contextState,signal});
  const pkg=buildMemoryPackage({query:question,plan:{...plan,mode,rerank,fusion:'rrf-k60',selectionPolicy:'relevance+user_episode_diversity+marginal_bytes',processMessageWeight:processWeight,evidenceUnit:'whole_source_message_with_dependency_closure',labelBoost:labels,facetBoost:facets,episodePolicy:'same_turn_user+nearest_user_ancestor+explicit_parent+tool_call; no inferred semantic antecedents',identityConflicts, equivalentFooterOccurrences:[...identityStates.values()].filter(v=>v.status==='equivalent_terminal_memory_footer').length},records,seeds,links,sources,backends,needs:selected.map(i=>({conversationId:i.id,request:question})),maxBytes,selectionPolicy:'marginal_utility',utilities:Object.fromEntries(ranks),groups,knowledgeContext,contextPlan:contextPlanValue});
  // Re-open every admitted source after ranking. Failure is never published as verified evidence.
- for(const c of caseCache){await cancellationPoint(signal);const fresh=await verifiedCase(c.item);if(fresh.manifest.caseHash!==c.manifest.caseHash)throw new Error('CASE_REVISION_CHANGED_DURING_RETRIEVAL');for(const e of pkg.evidence.filter(e=>e.conversationId===c.item.id)){const current=fresh.messages.find(m=>m.id===e.id);if(!current||current.text!==e.text||current.sha256!==e.sha256||current.representationId!==e.representationId)throw new Error('EVIDENCE_CHANGED_DURING_RETRIEVAL');readEvidence(c.item.path,e.uri);}}
+ for(const c of caseCache){await cancellationPoint(signal);const fresh=await loadCase(c.item,{fresh:true});if(fresh.manifest.caseHash!==c.manifest.caseHash)throw new Error('CASE_REVISION_CHANGED_DURING_RETRIEVAL');for(const e of pkg.evidence.filter(e=>e.conversationId===c.item.id)){const current=fresh.messages.find(m=>m.id===e.id);if(!current||current.text!==e.text||current.sha256!==e.sha256||current.representationId!==e.representationId)throw new Error('EVIDENCE_CHANGED_DURING_RETRIEVAL');readEvidence(c.item.path,e.uri);}}
  await cancellationPoint(signal);return pkg;
 }

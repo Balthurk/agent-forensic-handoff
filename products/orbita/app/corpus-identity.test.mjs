@@ -11,7 +11,7 @@ test('whole-corpus plan respects the inherited exact native footer equivalence w
 });
 test('real conflicting versions block affected targets even when one was already processed in another cut',async()=>{
  const a=await add('old','Se permite publicar el informe.','01a154a3-e7d9-7990-9ebb-ac32839ca892');let calls=0;const inferDraft=async prompt=>{calls++;return {value:draftForInput(prompt),model:'gpt-6.1-sol',usage:null,elapsedMs:1,receipt:'controlled-only'};};
- const single=await createCorpusPlan({conversationIds:[a.id]});await runCorpusPlan({id:single.id,maxTargets:1,enableProposals:true},{inferDraft});assert.equal(calls,1);
+ const single=await createCorpusPlan({conversationIds:[a.id]}),first=await runCorpusPlan({id:single.id,maxTargets:1,enableProposals:true},{inferDraft});assert.equal(calls,1);assert.equal(first.processedTargets,1,'single-cut target must be processed before the conflict cut: '+JSON.stringify(first.outcomes));
  const b=await add('contradiction','No se permite publicar el informe.','01a154a3-e7d9-7990-9ebb-ac32839ca892');const conflict=await createCorpusPlan({conversationIds:[a.id,b.id]});assert.equal(conflict.inventory.conflictingOccurrences,1);assert.equal(conflict.counts.blocked,2);assert.equal(conflict.processedTargets,0);assert.equal(conflict.processingPercent,0);assert.ok(conflict.page.every(t=>t.error==='conflicting_occurrence_or_context'));
  const result=await runCorpusPlan({id:conflict.id,maxTargets:8,enableProposals:true},{inferDraft});assert.equal(result.attempted,0);assert.equal(calls,1);assert.equal((await createCorpusPlan({conversationIds:[a.id]})).processedTargets,1);
 });

@@ -1,4 +1,4 @@
-import fs from '../agent-forensic-handoff/src/common-files.js';import path from 'node:path';import {createHash,randomUUID} from 'node:crypto';import {fileURLToPath} from 'node:url';
+import fs from '../agent-forensic-handoff/src/common-files.js';import path from 'node:path';import {createHash,randomUUID} from 'node:crypto';import {fileURLToPath} from 'node:url';import {AsyncLocalStorage} from 'node:async_hooks';
 import {DatabaseSync} from '../agent-forensic-handoff/src/common-store.js';
 import {loadManifest,readEvidence} from '../agent-forensic-handoff/src/render.js';
 import {verifyCaseIntegrity} from '../agent-forensic-handoff/src/integrity.js';
@@ -36,7 +36,14 @@ const stop=new Set('que como cual cuales donde cuando para por con una uno unos 
 export const words=s=>[...new Set(norm(s).match(/[\p{L}\p{N}_-]{3,}/gu)||[])].filter(x=>!stop.has(x));
 function body(record){if(record.node?.message)return sharedContentText(record.node.message.content);const p=record.payload??record;if(p.content)return typeof p.content==='string'?p.content:JSON.stringify(p.content);return String(p.message??p.text??p.output??JSON.stringify(p));}
 function captureDocument(manifest,item){if(!manifest.documentEvidence)return null;const d=JSON.parse(fs.readFileSync(path.join(item.path,manifest.documentEvidence.path),'utf8'));if(item.document&&(item.document.documentId!==d.header.documentId||item.document.revision!==d.header.revision||JSON.stringify(item.document.metadata)!==JSON.stringify(d.header.metadata)))throw new Error('DOCUMENT_LIBRARY_BINDING');return d;}
-export async function loadCase(item){
+// One request consults the same sealed case from several channels. Within that
+// request only, reuse a completed integrity verification while the case identity
+// and manifest revision are unchanged; callers re-verify with fresh:true.
+const verifiedReads=new AsyncLocalStorage();
+export function withVerifiedCaseReuse(run){return verifiedReads.run(new Map(),run);}
+export async function loadCase(item,{fresh=false}={}){
+  const reuse=fresh?null:verifiedReads.getStore(),prior=reuse?.get(item.path);
+  if(prior&&prior.item.id===item.id&&prior.item.title===item.title&&loadManifest(item.path).caseHash===prior.manifest.caseHash)return prior;
   // Original evidence is authoritative. Derived indexes have their own verification
   // in memory.mjs; a broken vector sidecar must degrade that channel, not hide sources.
   const verification=await verifyCaseIntegrity(item.path,{verifyProjections:false});if(!verification.passed)throw new Error(`Integridad inválida: ${item.title}`);
@@ -55,7 +62,7 @@ export async function loadCase(item){
     const text=body(raw);const role=raw.node?.message?.author?.role??raw.payload?.role??(row.kind==='message.user'?'user':row.kind.startsWith('tool.')?'tool':'assistant');
     messages.push({...row,text,role,channel:raw.node?.message?.channel??null,conversationId:item.id,conversationTitle:item.title,url:item.url||null,sha256:evidence.recordSha256});}
   const capturePath=path.join(item.path,'acquisition/capture.json');const capture=fs.existsSync(capturePath)?JSON.parse(fs.readFileSync(capturePath,'utf8')):null;
-  const c={item,manifest,messages,capture,verification:{passed:true,checkedAt:new Date().toISOString()}};cache.set(item.id,c);return c;
+  const c={item,manifest,messages,capture,verification:{passed:true,checkedAt:new Date().toISOString()}};cache.set(item.id,c);reuse?.set(item.path,c);return c;
 }
 export async function getLibrary(){(await import('./documents.mjs')).reconcileDocuments();refreshLibrary();return await Promise.all(library.map(async item=>{try{const c=await loadCase(item);return{...item,path:undefined,messages:c.messages.length,records:c.manifest.metrics.sourceRecords,hash:c.manifest.caseHash,coverage:c.capture?.coverage??'SOURCE_SNAPSHOT',verified:true,roles:c.capture?.roles??null};}catch(e){return{...item,path:undefined,verified:false,error:e.message};}}));}
 export async function importCapturedRevision({id,bytes,title,captureJob,revisionHash,beforePublish=()=>{},isCurrent=()=>true}){
